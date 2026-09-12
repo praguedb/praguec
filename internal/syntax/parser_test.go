@@ -57,6 +57,14 @@ func dump(file *File) string {
 			dumpDecl(&b, "record", d.Name, d.Annotations, d.Members)
 		case *Table:
 			dumpDecl(&b, "table", d.Name, d.Annotations, d.Members)
+		case *View:
+			fmt.Fprintf(&b, "view %s of %s\n", d.Name.Text, d.Source.Text)
+			for _, a := range d.Annotations {
+				fmt.Fprintf(&b, "  %s\n", annString(a))
+			}
+			for _, m := range d.Members {
+				fmt.Fprintf(&b, "  %s\n", viewMemberString(m))
+			}
 		case *Enum:
 			fmt.Fprintf(&b, "enum %s\n", d.Name.Text)
 			for _, m := range d.Members {
@@ -102,6 +110,21 @@ func dumpDecl(b *strings.Builder, keyword string, name Ident, anns []*Annotation
 			fmt.Fprintf(b, "  <unhandled member %T>\n", m)
 		}
 	}
+}
+
+// viewMemberString writes a view member back the way the source spelled it: the
+// narrowing in front of the name, the rename after it. A dump that wrote the
+// three spellings the same way would not be able to tell `SlimOdd odds` from a
+// selection of a member called `SlimOdd` renamed to `odds`.
+func viewMemberString(m *ViewMember) string {
+	s := m.Name.Text
+	if m.Narrow != nil {
+		s = m.Narrow.Text + " " + s
+	}
+	if m.As != nil {
+		s += " as " + m.As.Text
+	}
+	return s + annSuffix(m.Annotations)
 }
 
 // rangeList writes a reserved list back the way the source spelled it: a range
@@ -379,12 +402,10 @@ struct S {
 		{
 			// A construct the spec defines and this milestone does not read is
 			// the compiler's fault, not the user's, and says so.
-			name: "view declaration",
+			name: "import declaration",
 			src: `revision 1;
 namespace A;
-view SlimVenue of Venue {
-  name;
-}
+import "prague.protop";
 `,
 			wantCodes: []diag.Code{diag.NotYetImplemented},
 			wantLine:  3, wantCol: 1,
@@ -777,6 +798,104 @@ table T {
 			wantLine:  4, wantCol: 13,
 		},
 		{
+			// The best message in the milestone, and the reason it is its own
+			// code. A tag here is not a token in the wrong place: it is a
+			// misunderstanding of what a view is, so the message says what a
+			// view is instead of what the parser expected.
+			name: "a tag on a view member",
+			src: `revision 1;
+namespace A;
+view V of T {
+  sport_type_id = 5;
+}
+`,
+			wantCodes: []diag.Code{diag.TagInViewMember},
+			wantLine:  4, wantCol: 17,
+		},
+		{
+			// A view is a subset of one source. Without the `of` it is a subset
+			// of nothing, and it carries no tags of its own to fall back on.
+			name: "a view with no `of`",
+			src: `revision 1;
+namespace A;
+view V {
+  name;
+}
+`,
+			wantCodes: []diag.Code{diag.ViewSourceMissing},
+			wantLine:  3, wantCol: 8,
+		},
+		{
+			// The word is `of` and not merely some word: a view head is a name,
+			// `of`, and a source, and a parser that took whatever ident it
+			// found in the middle would read `view V from T` as a view of `T`
+			// with the `from` silently thrown away.
+			name: "a view whose source is not introduced by `of`",
+			src: `revision 1;
+namespace A;
+view V from T {
+  name;
+}
+`,
+			wantCodes: []diag.Code{diag.ViewSourceMissing},
+			wantLine:  3, wantCol: 8,
+		},
+		{
+			// The same mistake said the other way, and so the same code: the
+			// `of` is there and names nothing.
+			name: "a view whose `of` names nothing",
+			src: `revision 1;
+namespace A;
+view V of {
+  name;
+}
+`,
+			wantCodes: []diag.Code{diag.ViewSourceMissing},
+			wantLine:  3, wantCol: 11,
+		},
+		{
+			// The leading name of a view member narrows it to another view. A
+			// scalar is not one, and it is the case the parser can rule on
+			// alone: the scalars are closed and nothing declares a view over
+			// one of those names.
+			name: "a scalar in a view member's narrowing position",
+			src: `revision 1;
+namespace A;
+view V of T {
+  int64 x;
+}
+`,
+			wantCodes: []diag.Code{diag.ScalarInViewMember},
+			wantLine:  4, wantCol: 3,
+		},
+		{
+			// A field written into a view body is two mistakes, and both are
+			// independently true: the leading name is not a view, and the tag
+			// is not the view's to write.
+			name: "a field written into a view body is told both things",
+			src: `revision 1;
+namespace A;
+view V of T {
+  int64 x = 1;
+}
+`,
+			wantCodes: []diag.Code{diag.ScalarInViewMember, diag.TagInViewMember},
+			wantLine:  4, wantCol: 3,
+		},
+		{
+			// Section 3 gives an annotation one position, after what it
+			// describes, and a view body is not an exception to it.
+			name: "annotation before a view member",
+			src: `revision 1;
+namespace A;
+view V of T {
+  [cs: X] name;
+}
+`,
+			wantCodes: []diag.Code{diag.AnnotationNotAllowed},
+			wantLine:  4, wantCol: 3,
+		},
+		{
 			// Overlapping reservations are one reservation as far as a tag is
 			// concerned: the tag is retired once however many ranges cover it.
 			name: "overlapping reserved ranges retire a tag once",
@@ -907,18 +1026,22 @@ enum E
 // Recovery at the top level consumes the balanced `}` of the declaration it is
 // skipping, so one unreadable declaration costs exactly one diagnostic and the
 // next declaration parses.
+//
+// The declaration being skipped used to be a `view`, which the parser now
+// reads. An unknown keyword is what is left, and it is the better test anyway:
+// `view` was going to stop being unreadable, and `widget` never will be.
 func TestRecoveryAtTopLevelConsumesTheDeclarationItSkips(t *testing.T) {
 	f, file, bag := parse(t, `revision 1;
 namespace A;
-view SlimVenue of Venue {
-  name;
+widget W {
+  int64 a = 1;
 }
 struct S {
   int64 a = 1;
 }
 `)
-	if bag.Len() != 1 || bag.All()[0].Code != diag.NotYetImplemented {
-		t.Fatalf("got %d diagnostics, want one NotYetImplemented:\n%s", bag.Len(), diag.RenderAll(f, bag))
+	if bag.Len() != 1 || bag.All()[0].Code != diag.UnknownDeclaration {
+		t.Fatalf("got %d diagnostics, want one UnknownDeclaration:\n%s", bag.Len(), diag.RenderAll(f, bag))
 	}
 	assertDump(t, file, "revision 1\nnamespace A\nstruct S\n  int64 a = 1\n")
 }
@@ -1591,4 +1714,157 @@ table T {
 	if got := f.Slice(id.Type.Span); got != "int64" {
 		t.Errorf("the type spans %q, want %q", got, "int64")
 	}
+}
+
+// The three spellings of a view member, and the one position an annotation is
+// written in. A view member reaches a backend as a property of the generated
+// class exactly as a field does, so an annotation dropped from one is an
+// attribute missing from the generated C#.
+//
+// The runs here are written in reverse alphabetical order on purpose, for the
+// same reason TestParseAnnotations writes its runs that way: a stage that
+// sorted them would be invisible to a fixture that was sorted already.
+func TestParseViewMemberSpellings(t *testing.T) {
+	_, file := parseClean(t, `revision 1;
+namespace A;
+view SlimBetType of BetType
+  [cs: DataCache(CacheClassName = nameof(BPSlimBetTypeCache))]
+{
+  key as id;
+  event_id;
+  id as bet_type_id [cs: DataCacheIgnoreEquality];
+  SlimOdd odds [cs: Zeta] [cs: Alpha];
+}
+`)
+	assertDump(t, file, `revision 1
+namespace A
+view SlimBetType of BetType
+  [cs: DataCache(CacheClassName = nameof(BPSlimBetTypeCache))]
+  key as id
+  event_id
+  id as bet_type_id [cs: DataCacheIgnoreEquality]
+  SlimOdd odds [cs: Zeta] [cs: Alpha]
+`)
+
+	v, ok := file.Decls[0].(*View)
+	if !ok {
+		t.Fatalf("declaration is %T, want *View", file.Decls[0])
+	}
+	if v.Name.Text != "SlimBetType" || v.Source.Text != "BetType" {
+		t.Errorf("head is `view %s of %s`, want `view SlimBetType of BetType`", v.Name.Text, v.Source.Text)
+	}
+	// A plain selection is one ident: no type, because the type comes from the
+	// source, and no tag, because writing one would be the error.
+	if m := v.Members[1]; m.Narrow != nil || m.As != nil || m.Name.Text != "event_id" {
+		t.Errorf("`event_id;` read as %+v, want a bare selection", m)
+	}
+	// A rename carries both names. The one on the left is what the source
+	// calls the member; the one on the right is what this view calls it.
+	if m := v.Members[2]; m.Narrow != nil || m.As == nil || m.Name.Text != "id" || m.As.Text != "bet_type_id" {
+		t.Errorf("`id as bet_type_id;` read as %+v, want `id` renamed to `bet_type_id`", m)
+	}
+	// A narrowing's leading ident is the view, and the trailing one is still
+	// the member selected out of the source -- not the other way round.
+	if m := v.Members[3]; m.Narrow == nil || m.Narrow.Text != "SlimOdd" || m.Name.Text != "odds" {
+		t.Errorf("`SlimOdd odds;` read as %+v, want `odds` narrowed to `SlimOdd`", m)
+	}
+}
+
+// Nothing a view body contains is a reserved word, and this is where that is
+// cashed in. `of` and `as` read as keywords in exactly two positions and are
+// idents everywhere else; `key`, `alias` and `reserved` are the words section 1
+// spells members with and are selected here by name.
+//
+// `as as of;` and `SlimOdd as;` are the pair that says the decision is
+// positional rather than textual: in the first, a member named `as` is renamed
+// to `of`; in the second, a member named `as` is narrowed. Only the ident after
+// the second word tells a rename from a narrowing, and a lexer with keyword
+// kinds could not read either line at all.
+func TestViewMemberWordsAreNotKeywords(t *testing.T) {
+	_, file := parseClean(t, `revision 1;
+namespace A;
+view V of of {
+  of;
+  as;
+  as as of;
+  key;
+  key as id;
+  alias;
+  reserved;
+  view;
+  import;
+  SlimOdd as;
+}
+`)
+	assertDump(t, file, `revision 1
+namespace A
+view V of of
+  of
+  as
+  as as of
+  key
+  key as id
+  alias
+  reserved
+  view
+  import
+  SlimOdd as
+`)
+
+	v := file.Decls[0].(*View)
+	if v.Source.Text != "of" {
+		t.Errorf("the source is %q, want the declaration named `of`", v.Source.Text)
+	}
+	// `as as of;` is a rename: the middle word is the one in keyword position.
+	if m := v.Members[2]; m.Narrow != nil || m.As == nil || m.Name.Text != "as" || m.As.Text != "of" {
+		t.Errorf("`as as of;` read as %+v, want the member `as` renamed to `of`", m)
+	}
+	// `SlimOdd as;` is a narrowing of a member named `as`, which is the same
+	// two words in the same order as a rename minus the third.
+	if m := v.Members[9]; m.Narrow == nil || m.Narrow.Text != "SlimOdd" || m.Name.Text != "as" || m.As != nil {
+		t.Errorf("`SlimOdd as;` read as %+v, want `as` narrowed to `SlimOdd`", m)
+	}
+}
+
+// Spans for the nodes this milestone adds, written as the text each one must
+// slice back to -- a hand-computed offset would be a second implementation of
+// the same arithmetic and would agree with a mistake.
+func TestViewSpansCoverWhatWasWritten(t *testing.T) {
+	src := `revision 1;
+namespace A;
+
+view SlimBetType of BetType
+  [cs: DataCache]
+{
+  key as id;
+  event_id;
+  SlimOdd odds [cs: Z];
+}
+`
+	f, file := parseClean(t, src)
+
+	check := func(what string, span source.Span, want string) {
+		t.Helper()
+		if got := f.Slice(span); got != want {
+			t.Errorf("%s spans %q, want %q", what, got, want)
+		}
+	}
+
+	v, ok := file.Decls[0].(*View)
+	if !ok {
+		t.Fatalf("declaration is %T, want *View", file.Decls[0])
+	}
+	check("a view", v.Span, src[strings.Index(src, "view SlimBetType"):strings.LastIndex(src, "}")+1])
+	check("a view's name", v.Name.Span, "SlimBetType")
+	check("a view's source", v.Source.Span, "BetType")
+	check("a view's head annotation", v.Annotations[0].Span, "[cs: DataCache]")
+
+	check("a renamed member", v.Members[0].Span, "key as id;")
+	check("a renamed member's new name", v.Members[0].As.Span, "id")
+	check("a plain selection", v.Members[1].Span, "event_id;")
+	check("a narrowed member", v.Members[2].Span, "SlimOdd odds [cs: Z];")
+	// The narrowing is the leading ident alone: the diagnostic for a scalar
+	// written there underlines that word and not the member.
+	check("a narrowing", v.Members[2].Narrow.Span, "SlimOdd")
+	check("a view member's annotation", v.Members[2].Annotations[0].Span, "[cs: Z]")
 }

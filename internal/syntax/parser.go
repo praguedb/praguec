@@ -73,9 +73,19 @@ var protopAnnotations = map[string]bool{
 // syntax errors: a user who writes valid protop deserves to be told the
 // compiler is behind, not that they are wrong.
 var notYetDecls = map[string]bool{
-	"view":   true,
 	"import": true,
 }
+
+// ofWord and asWord are the two words that read as keywords inside a view and
+// are idents everywhere else -- `view X of Y` and `event_id as id`. Neither is
+// a token kind, and neither is reserved: `key as id;` selects a member named
+// `key`, and a table may still hold a field named `of` or `as`. What makes a
+// word one of these is the position it is written in, which is the whole of
+// the no-keyword-token-kinds decision.
+const (
+	ofWord = "of"
+	asWord = "as"
+)
 
 // Parse reads one file into an AST, appending every diagnostic it finds to bag.
 //
@@ -138,6 +148,8 @@ func (p *parser) parseDecl(file *File) {
 		file.Decls = append(file.Decls, p.parseTable())
 	case "enum":
 		file.Decls = append(file.Decls, p.parseEnum())
+	case "view":
+		file.Decls = append(file.Decls, p.parseView())
 	default:
 		if notYetDecls[word] {
 			p.bag.Errorf(diag.NotYetImplemented, tok.Span, "`%s` is not yet implemented", word)
@@ -229,6 +241,156 @@ func (p *parser) parseRecord() *Record {
 func (p *parser) parseTable() *Table {
 	h := p.parseTypeDecl()
 	return &Table{Name: h.name, Annotations: h.anns, Members: h.members, Span: h.span}
+}
+
+// parseView reads `view SlimSportGame of SportGame { ... }`.
+//
+// `of` is an ident in the third position, not a token kind -- which is the
+// no-keyword-token-kinds decision paying out a third time, after `key key` and
+// `alias`. A view may still hold a member named `of`, and a table a field named
+// one.
+//
+// The source is a name and stays one. Whether `SportGame` is declared, whether
+// it is a table or a record, and whether every member below selects something
+// it actually has are all questions about a whole program rather than about
+// this file.
+func (p *parser) parseView() *View {
+	kw := p.next()
+	v := &View{Span: kw.Span}
+
+	name, ok := p.expectIdent()
+	if !ok {
+		p.recoverDecl()
+		return v
+	}
+	v.Name = name
+	v.Span = v.Span.To(name.Span)
+
+	src, ok := p.parseViewSource()
+	if !ok {
+		p.recoverDecl()
+		return v
+	}
+	v.Source = src
+	v.Span = v.Span.To(src.Span)
+
+	if v.Annotations, ok = p.parseAnnotations(); !ok {
+		p.recoverDecl()
+		return v
+	}
+	if _, ok := p.expect(KindLBrace); !ok {
+		p.recoverDecl()
+		return v
+	}
+	for !p.at(KindRBrace) && !p.at(KindEOF) {
+		if m := p.parseViewMember(); m != nil {
+			v.Members = append(v.Members, m)
+		}
+	}
+	if closing, ok := p.expect(KindRBrace); ok {
+		v.Span = v.Span.To(closing.Span)
+	}
+	return v
+}
+
+// parseViewSource reads the `of SportGame` of a view head. The two ways of
+// getting it wrong -- no `of` at all, and an `of` with nothing after it -- are
+// one mistake said two ways, so they are one diagnostic: the view names nothing
+// to be a view of.
+func (p *parser) parseViewSource() (Ident, bool) {
+	if p.at(KindIdent) && p.text(p.peek()) == ofWord {
+		p.next()
+		if p.at(KindIdent) {
+			return p.identOf(p.next()), true
+		}
+	}
+	tok := p.peek()
+	p.bag.Errorf(diag.ViewSourceMissing, tok.Span,
+		"a view is a subset of one source and declares no members of its own; name that source, as in `view V %s SportGame { ... }`", ofWord)
+	return Ident{Span: tok.Span}, false
+}
+
+// parseViewMember reads one line of a view body, in all three of its spellings:
+//
+//	sport_type_id;      a plain selection
+//	event_id as id;     the same, renamed
+//	SlimOdd odds;       narrowed to another view
+//
+// Each is idents and a `;`, so the shape is told by arity and by position and
+// by nothing else. Two idents in a row are a narrowing -- unless the second is
+// the `as` of a rename, which the ident after it settles. Nothing is reserved
+// anywhere in here: `key as id;` selects the member named `key`, the composite
+// identity's own word, and `SlimOdd as;` would narrow a member named `as`.
+func (p *parser) parseViewMember() *ViewMember {
+	p.rejectAnnotations("the member's name")
+
+	tok := p.peek()
+	if tok.Kind != KindIdent {
+		p.bag.Errorf(diag.UnexpectedToken, tok.Span, "expected a view member's name, found %s", tok.Kind)
+		p.next()
+		p.recoverStmt()
+		return nil
+	}
+
+	lead := p.identOf(p.next())
+	m := &ViewMember{Name: lead, Span: lead.Span}
+	if p.at(KindIdent) && !p.atRename() {
+		narrow := lead
+		m.Narrow = &narrow
+		m.Name = p.identOf(p.next())
+		m.Span = m.Span.To(m.Name.Span)
+		p.checkNarrowing(narrow)
+	}
+	if p.atRename() {
+		p.next() // the `as`
+		as := p.identOf(p.next())
+		m.As = &as
+		m.Span = m.Span.To(as.Span)
+	}
+
+	// A tag here is not a syntax slip. A view is pinned to its source's tags
+	// and only the source extends the tag space, so the member is told what a
+	// view is rather than which token was expected.
+	if p.at(KindAssign) {
+		p.bag.Errorf(diag.TagInViewMember, p.peek().Span,
+			"a view may not write a tag: `%s` is pinned to the tag its source gives it, and only the source extends the tag space; a tag added here is never written by the producer, so it would decode to nil forever while squatting a slot the source may later claim",
+			m.Name.Text)
+		p.recoverStmt()
+		return m
+	}
+
+	var ok bool
+	if m.Annotations, ok = p.parseAnnotations(); !ok {
+		p.recoverStmt()
+		return m
+	}
+	if semi, ok := p.expect(KindSemi); ok {
+		m.Span = m.Span.To(semi.Span)
+	}
+	return m
+}
+
+// atRename reports whether the parser is at the `as` of `event_id as id`. The
+// ident after it is what makes it one: `SlimOdd as;` narrows a member named
+// `as`, and only the third word tells the two apart.
+func (p *parser) atRename() bool {
+	return p.at(KindIdent) && p.text(p.peek()) == asWord && p.peekAt(1).Kind == KindIdent
+}
+
+// checkNarrowing reports a scalar written in a view member's leading position.
+// That position asks for the member's type to be narrowed to another view, and
+// a scalar is not one -- a member that keeps the type its source gives it is
+// written as its name alone. Whether the name is a view at all is otherwise a
+// question for the stage that resolves it; a scalar is the one case this file
+// can answer by itself, because the scalars are a closed set and nothing can
+// declare a view over that name.
+func (p *parser) checkNarrowing(narrow Ident) {
+	if !scalarTypes[narrow.Text] {
+		return
+	}
+	p.bag.Errorf(diag.ScalarInViewMember, narrow.Span,
+		"`%s` is a scalar and a view member narrows to another view; a member keeps the type its source gives it when it is written as its name alone",
+		narrow.Text)
 }
 
 // declHead is what struct, record and table are read into before they become nodes of

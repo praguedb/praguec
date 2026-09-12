@@ -110,6 +110,54 @@ type Table struct {
 
 func (*Table) isDecl() {}
 
+// View is `view SlimSportGame of SportGame { ... }`: a field subset of one
+// source, at that source's tags. Tag, type and presence come from the source,
+// and the view line carries the name and an optional rename.
+//
+// Source is the name as written and is not resolved -- whether `SportGame` is a
+// table, a record, or nothing at all is a question about a whole program, and
+// the view inherits the source's topic rather than restating it, so there is no
+// second place for the two to disagree.
+type View struct {
+	Name        Ident
+	Source      Ident
+	Annotations []*Annotation
+	Members     []*ViewMember
+	Span        source.Span
+}
+
+func (*View) isDecl() {}
+
+// ViewMember is one line of a view body, in all three of its spellings:
+//
+//	sport_type_id;      a plain selection
+//	event_id as id;     the same, renamed
+//	SlimOdd odds;       narrowed to another view
+//
+// It is not a Member. A view body and a struct body have no line in common --
+// a view may never write a tag and a struct has nothing to select from -- so
+// one type that could hold either would exist only to be type-switched back
+// apart by everything that reads it.
+type ViewMember struct {
+	// Narrow is the leading name of `SlimOdd odds;`, nil when the member takes
+	// the source's type unchanged. It asks for the member's type to be narrowed
+	// to another view; that the narrowing is a view, and a view of the right
+	// thing, is checked where the two declarations are both in scope.
+	Narrow *Ident
+
+	// Name is the member selected out of the source -- `odds`, not `SlimOdd`.
+	Name Ident
+
+	// As is the rename of `event_id as id;`, nil when the member keeps its
+	// name. `as` is an ident in the position after the name, not a keyword:
+	// `key as id;` selects the member named `key`, which is exactly why the
+	// lexer reserves no words.
+	As *Ident
+
+	Annotations []*Annotation
+	Span        source.Span
+}
+
 // Enum is `enum EventStatus { ... }`.
 type Enum struct {
 	Name    Ident

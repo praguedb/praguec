@@ -58,6 +58,11 @@ const (
 	// KeyNotAllowed is a `key` on a declaration that has no identity. Only a
 	// table has one, and only a table can be the target of a relation.
 	KeyNotAllowed Code = 202
+	// ViewSourceMissing is a view that names nothing to be a view of, either
+	// because the `of` is absent or because nothing follows it. A view is a
+	// subset of one source and carries none of its own tags, so a view without
+	// a source describes nothing.
+	ViewSourceMissing Code = 203
 
 	// TagOutOfRange is a field tag outside the legal range. A tag is 1-based
 	// because a MessagePack key is tag - 1, so tag 0 names no slot.
@@ -85,6 +90,16 @@ const (
 	// TypeArgumentsNotAllowed is a `<...>` on a type that takes none. Only a
 	// collection is generic; `int64<string>` names no type protop has.
 	TypeArgumentsNotAllowed Code = 307
+	// TagInViewMember is a `= N` on a view member. A view is pinned to its
+	// source's tags and only the source extends the tag space: a tag written
+	// here is never populated by the producer, so it would deserialize to nil
+	// forever while squatting a slot the source might later claim.
+	TagInViewMember Code = 308
+	// ScalarInViewMember is a scalar in the narrowing position of a view
+	// member. The leading name of `SlimOdd odds;` asks for the member's type to
+	// be narrowed to another view, and a scalar is not one -- a member that
+	// keeps its source's type is written with no leading name at all.
+	ScalarInViewMember Code = 309
 
 	// AnnotationNotAllowed is an annotation written where the grammar has no
 	// slot for one. An annotation follows what it describes, and there is no
