@@ -56,6 +56,34 @@ Identity takes two forms in the corpus: a stored field *is* the identity, or a
 get-only tuple *over* stored fields is, in which case it occupies a position of
 its own and duplicates what its components already carry.
 
+## relation
+
+A declared reference from one payload type to another's identity. The referring
+type holds a **foreign key** — a field whose value is the other type's identity.
+Distinct from containment: a related type exists independently and is referred
+to, a contained one has no identity and cannot.
+
+A relation requires a referent that exists as a payload type. Most of the
+corpus's foreign-key-shaped members have none, and carry a **snapshot** instead.
+
+## snapshot
+
+An `Id` field paired with an inline copy of what it identifies, at its own key,
+where **no payload type for the referent exists**. The corpus's `SportType`
+beside `SportTypeId`: two members, two keys, two halves of one referent.
+
+A snapshot is not a cached relation and not a join — there is nothing to join
+to, which is why the copy is there at all. It is the whole representation. The
+two halves can disagree, most consequentially about presence, which is a species
+of **drift**.
+
+## index
+
+A lookup structure built over a payload type's members so the application can
+find rows by something other than identity. Not a property of the data: the
+same type is indexed differently by different consumers, and the choice changes
+with read patterns rather than with the payload.
+
 ## presence
 
 Whether a field distinguishes "absent" from "set to the zero value". Explicit
@@ -108,7 +136,8 @@ writes. In the corpus, the cache shells are empty by design.
 
 Carrying an annotation from protop into the generated C# verbatim, without
 protopc understanding what it means. The mechanism by which protop-generated
-types reach generators protopc knows nothing about.
+types reach generators protopc knows nothing about — and the reason a concept
+can be expressible without being part of the language.
 
 ## table
 
