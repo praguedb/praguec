@@ -33,18 +33,16 @@ var scalarTypes = map[string]bool{
 // syntax errors: a user who writes valid protop deserves to be told the
 // compiler is behind, not that they are wrong.
 var notYetDecls = map[string]bool{
-	"record": true,
 	"table":  true,
 	"view":   true,
 	"import": true,
 }
 
 // notYetMembers is the same courtesy one level down, for the words that open a
-// member the parser cannot read yet. All four sit in leading position, which is
-// the only reason they can be recognised without being reserved -- `key key =
-// 1 (event_id, bet_type_id);` names a member `key` in the second position.
+// member the parser cannot read yet. All three sit in leading position, which
+// is the only reason they can be recognised without being reserved -- `key key
+// = 1 (event_id, bet_type_id);` names a member `key` in the second position.
 var notYetMembers = map[string]bool{
-	"repeated": true,
 	"key":      true,
 	"alias":    true,
 	"reserved": true,
@@ -100,6 +98,8 @@ func (p *parser) parseDecl(file *File) {
 		p.parseNamespace(file)
 	case "struct":
 		file.Decls = append(file.Decls, p.parseStruct())
+	case "record":
+		file.Decls = append(file.Decls, p.parseRecord())
 	case "enum":
 		file.Decls = append(file.Decls, p.parseEnum())
 	default:
@@ -174,36 +174,61 @@ func (p *parser) parseNamespace(file *File) {
 }
 
 func (p *parser) parseStruct() *Struct {
+	h := p.parseTypeDecl()
+	return &Struct{Name: h.name, Members: h.members, Span: h.span}
+}
+
+// parseRecord reads `record StaticDataRef { ... }`. It is parseStruct with a
+// different node, and deliberately so: section 4 gives the two keywords
+// different emissions and different rules about being referenced, and none of
+// that is a question the grammar asks.
+func (p *parser) parseRecord() *Record {
+	h := p.parseTypeDecl()
+	return &Record{Name: h.name, Members: h.members, Span: h.span}
+}
+
+// declHead is what struct and record are read into before they become nodes of
+// their own: the shape the declarations share, which is all the parser sees.
+type declHead struct {
+	name    Ident
+	members []Member
+	span    source.Span
+}
+
+// parseTypeDecl reads `<keyword> Name { <members> }`, the keyword already
+// peeked at by the caller that dispatched on it.
+func (p *parser) parseTypeDecl() declHead {
 	kw := p.next()
-	s := &Struct{Span: kw.Span}
+	h := declHead{span: kw.Span}
 
 	name, ok := p.expectIdent()
 	if !ok {
 		p.recoverDecl()
-		return s
+		return h
 	}
-	s.Name = name
-	s.Span = s.Span.To(name.Span)
+	h.name = name
+	h.span = h.span.To(name.Span)
 
 	if _, ok := p.expect(KindLBrace); !ok {
 		p.recoverDecl()
-		return s
+		return h
 	}
 	for !p.at(KindRBrace) && !p.at(KindEOF) {
-		if f := p.parseField(); f != nil {
-			s.Fields = append(s.Fields, f)
+		if m := p.parseMember(); m != nil {
+			h.members = append(h.members, m)
 		}
 	}
 	if closing, ok := p.expect(KindRBrace); ok {
-		s.Span = s.Span.To(closing.Span)
+		h.span = h.span.To(closing.Span)
 	}
-	return s
+	return h
 }
 
-// parseField reads one tagged member, `decimal(4)? live_limit_manual_single =
-// 36;`. It consumes at least one token on every path, which is what keeps the
-// body loop that calls it moving.
-func (p *parser) parseField() *Field {
+// parseMember reads one line of a declaration body. The leading word decides
+// which construct it is, and a word in leading position is the construct even
+// though the same word is a legal name elsewhere: `repeated` opens a repeated
+// field, and protop has no type by that name for it to be confused with.
+func (p *parser) parseMember() Member {
 	tok := p.peek()
 	if tok.Kind != KindIdent {
 		p.bag.Errorf(diag.UnexpectedToken, tok.Span, "expected a field type, found %s", tok.Kind)
@@ -213,6 +238,36 @@ func (p *parser) parseField() *Field {
 	}
 	if word := p.text(tok); notYetMembers[word] {
 		p.bag.Errorf(diag.NotYetImplemented, tok.Span, "`%s` is not yet implemented", word)
+		p.next()
+		p.recoverStmt()
+		return nil
+	}
+
+	var lead Token
+	repeated := p.text(tok) == "repeated"
+	if repeated {
+		lead = p.next()
+	}
+	f := p.parseField()
+	if f == nil {
+		// A nil *Field has to be returned as a nil Member, not as an interface
+		// holding a nil pointer, or the body loop appends a member that is not
+		// there.
+		return nil
+	}
+	if repeated {
+		f.Repeated = true
+		f.Span = lead.Span.To(f.Span)
+	}
+	return f
+}
+
+// parseField reads one tagged member, `decimal(4)? live_limit_manual_single =
+// 36;`. It consumes at least one token on every path, which is what keeps the
+// body loop that calls it moving.
+func (p *parser) parseField() *Field {
+	if tok := p.peek(); tok.Kind != KindIdent {
+		p.bag.Errorf(diag.UnexpectedToken, tok.Span, "expected a field type, found %s", tok.Kind)
 		p.next()
 		p.recoverStmt()
 		return nil
@@ -279,16 +334,15 @@ func (p *parser) parseTypeRef() (TypeRef, bool) {
 		t.Span = t.Span.To(p.next().Span)
 	}
 
-	p.checkScalar(t)
+	p.checkTypeRef(t)
 	return t, true
 }
 
-func (p *parser) checkScalar(t TypeRef) {
-	if !scalarTypes[t.Name.Text] {
-		p.bag.Errorf(diag.NotYetImplemented, t.Name.Span,
-			"`%s` is not one of protop's scalar types; a field of a declared type is not yet implemented", t.Name.Text)
-		return
-	}
+// checkTypeRef checks the one thing a type can be checked for with nothing
+// resolved. A name outside protop's scalar set is a reference to a declared
+// type -- `Venue? venue = 7;` -- and whether that declaration exists is a
+// question for the stage that knows what is in scope.
+func (p *parser) checkTypeRef(t TypeRef) {
 	switch {
 	case t.Name.Text == scaledScalar && t.Precision == nil:
 		p.bag.Errorf(diag.PrecisionRequired, t.Name.Span,

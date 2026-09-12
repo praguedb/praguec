@@ -75,12 +75,27 @@ type Decl interface {
 // Struct is `struct Venue { ... }`: value semantics, no identity, embedded in
 // whatever holds it.
 type Struct struct {
-	Name   Ident
-	Fields []*Field
-	Span   source.Span
+	Name    Ident
+	Members []Member
+	Span    source.Span
 }
 
 func (*Struct) isDecl() {}
+
+// Record is `record StaticDataRef { ... }`: no identity either, emitted as a
+// C# class rather than a C# struct.
+//
+// Structurally it is a struct with a different keyword, and the parser treats
+// it as one. The whole of the difference is what section 4 says the keyword
+// means -- and that a record cannot be a relation target, because a relation
+// resolves against a key and a record has none.
+type Record struct {
+	Name    Ident
+	Members []Member
+	Span    source.Span
+}
+
+func (*Record) isDecl() {}
 
 // Enum is `enum EventStatus { ... }`.
 type Enum struct {
@@ -91,13 +106,33 @@ type Enum struct {
 
 func (*Enum) isDecl() {}
 
+// Member is one line of a struct, record or table body. Like Decl it is a
+// marker: the member shapes have little in common beyond appearing between the
+// same braces, and every caller type-switches.
+//
+// One ordered slice rather than a slice per shape, because source order is what
+// a backend emits and what a diagnostic quotes -- `reserved` above the key is
+// how section 1 is written, and the tree says so.
+type Member interface {
+	isMember()
+}
+
 // Field is one tagged member, `decimal(4)? live_limit_manual_single = 36;`.
+// The fields are declared in the order the source writes them.
 type Field struct {
+	// Repeated is the `repeated` of `repeated StaticDataRef runners = 47;`.
+	// Whether that means composition or a collection of references is decided
+	// by whether the element type declares identity, which is a question for
+	// the stage that resolves names.
+	Repeated bool
+
 	Type TypeRef
 	Name Ident
 	Tag  IntLit
 	Span source.Span
 }
+
+func (*Field) isMember() {}
 
 // TypeRef is a field's type as written. The name is not resolved here, so a
 // scalar keyword and a reference to a declared type are the same node -- only

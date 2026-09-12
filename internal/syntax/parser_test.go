@@ -52,10 +52,9 @@ func dump(file *File) string {
 	for _, d := range file.Decls {
 		switch d := d.(type) {
 		case *Struct:
-			fmt.Fprintf(&b, "struct %s\n", d.Name.Text)
-			for _, f := range d.Fields {
-				fmt.Fprintf(&b, "  %s %s = %d\n", typeString(f.Type), f.Name.Text, f.Tag.Value)
-			}
+			dumpDecl(&b, "struct", d.Name, d.Members)
+		case *Record:
+			dumpDecl(&b, "record", d.Name, d.Members)
 		case *Enum:
 			fmt.Fprintf(&b, "enum %s\n", d.Name.Text)
 			for _, m := range d.Members {
@@ -66,6 +65,24 @@ func dump(file *File) string {
 		}
 	}
 	return b.String()
+}
+
+// dumpDecl writes one declaration and its members, which is where struct and
+// record differ by their keyword and by nothing else.
+func dumpDecl(b *strings.Builder, keyword string, name Ident, members []Member) {
+	fmt.Fprintf(b, "%s %s\n", keyword, name.Text)
+	for _, m := range members {
+		switch m := m.(type) {
+		case *Field:
+			lead := ""
+			if m.Repeated {
+				lead = "repeated "
+			}
+			fmt.Fprintf(b, "  %s%s %s = %d\n", lead, typeString(m.Type), m.Name.Text, m.Tag.Value)
+		default:
+			fmt.Fprintf(b, "  <unhandled member %T>\n", m)
+		}
+	}
 }
 
 // typeString writes a TypeRef back the way the source spelled it.
@@ -165,10 +182,10 @@ struct S
 `)
 
 	s := file.Decls[0].(*Struct)
-	if x := s.Fields[0].Type; !x.Optional || x.Precision != nil {
+	if x := s.Members[0].(*Field).Type; !x.Optional || x.Precision != nil {
 		t.Errorf("int64? is %+v, want Optional and no Precision", x)
 	}
-	y := s.Fields[1].Type
+	y := s.Members[1].(*Field).Type
 	if !y.Optional {
 		t.Errorf("decimal(4)? is not Optional")
 	}
@@ -256,11 +273,11 @@ struct S {
 		{
 			// A construct the spec defines and this milestone does not read is
 			// the compiler's fault, not the user's, and says so.
-			name: "record declaration",
+			name: "view declaration",
 			src: `revision 1;
 namespace A;
-record R {
-  int64 id = 1;
+view SlimVenue of Venue {
+  name;
 }
 `,
 			wantCodes: []diag.Code{diag.NotYetImplemented},
@@ -297,28 +314,18 @@ record R {
 			wantLine:  3, wantCol: 1,
 		},
 		{
-			// A field of a declared type is good protop that needs name
-			// resolution, which is a later milestone -- not a syntax error.
-			name: "field of a declared type",
+			// A precision belongs to `decimal` alone, and a declared type is
+			// told it so in the same words a scalar is: neither is resolved
+			// here, and the fix is the same.
+			name: "precision on a declared type",
 			src: `revision 1;
 namespace A;
 struct S {
-  Venue venue = 1;
+  Venue(4) v = 1;
 }
 `,
-			wantCodes: []diag.Code{diag.NotYetImplemented},
-			wantLine:  4, wantCol: 3,
-		},
-		{
-			name: "repeated member",
-			src: `revision 1;
-namespace A;
-struct S {
-  repeated int64 xs = 1;
-}
-`,
-			wantCodes: []diag.Code{diag.NotYetImplemented},
-			wantLine:  4, wantCol: 3,
+			wantCodes: []diag.Code{diag.PrecisionNotAllowed},
+			wantLine:  4, wantCol: 9,
 		},
 	}
 
@@ -440,8 +447,8 @@ enum E
 func TestRecoveryAtTopLevelConsumesTheDeclarationItSkips(t *testing.T) {
 	f, file, bag := parse(t, `revision 1;
 namespace A;
-record R {
-  int64 id = 1;
+view SlimVenue of Venue {
+  name;
 }
 struct S {
   int64 a = 1;
@@ -451,4 +458,96 @@ struct S {
 		t.Fatalf("got %d diagnostics, want one NotYetImplemented:\n%s", bag.Len(), diag.RenderAll(f, bag))
 	}
 	assertDump(t, file, "revision 1\nnamespace A\nstruct S\n  int64 a = 1\n")
+}
+
+// `record` is `struct` with a different keyword: the parser reads one shape and
+// section 4 gives the two different meanings. A field may name a declared type,
+// and `repeated` is a modifier on the field rather than part of its type.
+//
+// Nothing here is resolved -- `Venue` names no declaration in this file and the
+// parser has nothing to say about that, because whether a name is in scope is a
+// question only the stage that knows the scope can ask.
+func TestParseRecordNamedTypesAndRepeated(t *testing.T) {
+	_, file := parseClean(t, `revision 1;
+namespace A;
+record StaticDataRef {
+  int64  id   = 1;
+  string name = 2;
+}
+struct S {
+  StaticDataRef  sport_type = 1;
+  StaticDataRef? home_team  = 2;
+  repeated StaticDataRef runners = 3;
+  Venue? venue = 4;
+}
+`)
+	assertDump(t, file, `revision 1
+namespace A
+record StaticDataRef
+  int64 id = 1
+  string name = 2
+struct S
+  StaticDataRef sport_type = 1
+  StaticDataRef? home_team = 2
+  repeated StaticDataRef runners = 3
+  Venue? venue = 4
+`)
+
+	if _, ok := file.Decls[0].(*Record); !ok {
+		t.Errorf("first declaration is %T, want *Record", file.Decls[0])
+	}
+	s := file.Decls[1].(*Struct)
+	// `repeated` is not part of the type: the element type is what a later
+	// stage resolves, and the collection is a property of the field.
+	runners := s.Members[2].(*Field)
+	if !runners.Repeated || runners.Type.Name.Text != "StaticDataRef" {
+		t.Errorf("runners is %+v, want Repeated of StaticDataRef", runners)
+	}
+	if s.Members[0].(*Field).Repeated {
+		t.Error("sport_type is Repeated")
+	}
+}
+
+// Whether protop's scalar set is closed at all is unresolved -- #32 -- and the
+// parser no longer branches on it: a name outside the set is a reference to a
+// declared type. What keeps the census honest is the fixture. Every type
+// section 1 names is one of the six or a declaration in the same file, so a
+// seventh scalar appearing in the spec fails here rather than parsing quietly
+// as a name that will resolve to nothing.
+func TestSpecSubsetNamesNoTypeItDoesNotDeclare(t *testing.T) {
+	_, file := parseClean(t, readFixture(t, specSubsetFixture))
+
+	declared := map[string]bool{}
+	for _, d := range file.Decls {
+		switch d := d.(type) {
+		case *Struct:
+			declared[d.Name.Text] = true
+		case *Record:
+			declared[d.Name.Text] = true
+		case *Enum:
+			declared[d.Name.Text] = true
+		}
+	}
+	for _, d := range file.Decls {
+		for _, m := range declMembers(d) {
+			f, ok := m.(*Field)
+			if !ok {
+				continue
+			}
+			if name := f.Type.Name.Text; !scalarTypes[name] && !declared[name] {
+				t.Errorf("field %s names %s, which is neither a scalar nor declared in the fixture", f.Name.Text, name)
+			}
+		}
+	}
+}
+
+// declMembers is the body of whichever declaration carries one.
+func declMembers(d Decl) []Member {
+	switch d := d.(type) {
+	case *Struct:
+		return d.Members
+	case *Record:
+		return d.Members
+	}
+	return nil
 }
