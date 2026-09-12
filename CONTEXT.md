@@ -16,7 +16,14 @@ language itself is specified in [`docs/spec/protop.md`](docs/spec/protop.md).
 ## protopc
 
 The compiler. Reads protop and writes C#. It is not a `protoc` plugin and does
-not invoke `protoc`; it parses protop itself.
+not invoke `protoc`; it parses protop itself. Written in Go, and run *before*
+the build rather than inside it — see
+[ADR-0002](docs/adr/0002-protopc-is-written-in-go.md).
+
+Split frontend/backend, the way LLVM is: the frontend parses and checks source
+into one resolved **schema model**, and a **backend** turns that model into a
+target language. A backend never sees source or AST. C# is the first backend,
+not the only one — the spec's annotation table already reserves `go:`.
 
 ## oracle
 
