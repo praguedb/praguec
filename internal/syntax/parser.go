@@ -383,6 +383,13 @@ func (p *parser) parseViewMember() *ViewMember {
 
 	var ok bool
 	if m.Annotations, ok = p.parseAnnotations(); !ok {
+		// The recovery here cannot be observed, and is kept for the shape.
+		// scanAnnotation fails in exactly two places -- at the end of the file,
+		// and on a `}` that closes a brace the annotation did not open -- and
+		// neither consumes the token it stopped on, so the parser is sitting on
+		// EOF or on a `}` at depth zero. recoverStmt returns immediately on
+		// both. Removing the call changes nothing; so would leaving it out of
+		// the next branch, which is why it is written the same way as the rest.
 		p.recoverStmt()
 		return m
 	}
