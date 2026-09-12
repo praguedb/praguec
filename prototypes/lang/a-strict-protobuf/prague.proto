@@ -103,18 +103,18 @@ message SportGame {
   //
   // ONE. The `field:` string named a member of this same message and protoc
   // never checked it. Moving the annotation ONTO the member it describes
-  // removes the string entirely — see `snapshot_of` below for what survives,
-  // and why. Relation-borne member names across this file went 11 -> 6:
+  // removes the string entirely:
   //
-  //   GONE  `references` is a UNARY fact — "this member holds T's identity".
-  //         Sat on the member it describes, it has no field name left to get
-  //         wrong. That error became unrepresentable, not merely unchecked.
-  //   STAYS `snapshot_of` is a BINARY fact — it pairs two members. One of the
-  //         two must name the other, wherever the annotation is written.
+  //   UNARY fact ("this member holds T's identity") — sat on the member it
+  //   describes, `references` has no field name left to get wrong. That error
+  //   became unrepresentable, not merely unchecked.
+  //   BINARY fact ("these two members are halves of one thing") — one of the
+  //   two must name the other, wherever the annotation is written. It cannot
+  //   be absorbed by position.
   //
-  // That rule holds across the file: composite_key and alias are binary too,
-  // and every member-naming string left here is one of them. An annotation
-  // absorbs a unary fact for free; a binary one always costs a name.
+  // Every member-naming string left in this file is binary: the two composite
+  // keys and the alias. An annotation absorbs a unary fact for free; a binary
+  // one always costs a name.
   //
   // TWO, and this is the larger one. `target: "SportType"` named a type that
   // DOES NOT EXIST. Measured across the corpus: SportTypeId, CountryId,
@@ -167,22 +167,24 @@ message SportGame {
   // OWNED, not related: StaticDataRef has no key, so nothing can point at it.
   repeated StaticDataRef runners = 47;
 
-  // The embedded pairs. `snapshot_of` does NOT resolve through a relation to
-  // another table — there is no other table, which is the whole point above.
-  // It says: these two members are two halves of one referent, so they must
-  // agree about presence. That check needs no target type to exist, which is
-  // why it survives the finding that killed `references` on these fields.
+  // THE EMBEDDED PAIRS, now plain fields. `snapshot_of` bound each of these to
+  // the id above that it is the inline copy of, and it is DEFERRED: the pairing
+  // is real, but nothing in phase 1 needs it yet.
   //
-  // Note 58 and 59: the foreign key is EXPLICIT
-  // (nullable) and so should be the snapshot — but a message field may not
-  // carry IMPLICIT and EXPLICIT is its only legal value, so these four lines
-  // look identical whatever the truth is. protoc ties nothing together here.
-  // In the corpus these two facts have already come apart.
-  StaticDataRef sport_type = 55 [(protop.snapshot_of) = "sport_type_id"];
-  StaticDataRef country    = 56 [(protop.snapshot_of) = "country_id"];
-  StaticDataRef league     = 57 [(protop.snapshot_of) = "league_id"];
-  StaticDataRef home_team  = 58 [(protop.snapshot_of) = "home_team_id"];
-  StaticDataRef away_team  = 59 [(protop.snapshot_of) = "away_team_id"];
+  // The cost is exact. The one check it bought was that the two halves agree
+  // about presence, and THREE of the corpus's 15 pairs do not — SlimSportGame
+  // has `long? HomeTeamId` beside a non-nullable `StaticDataRef HomeTeam
+  // = null!`. protop now emits that as written and says nothing. Known gap.
+  //
+  // Spelling A could not have checked it well anyway: 58 and 59 pair with
+  // EXPLICIT (nullable) ids and so should themselves be nullable, but a message
+  // field may not carry IMPLICIT and EXPLICIT is its only legal value, so all
+  // five lines look identical whatever the truth is.
+  StaticDataRef sport_type = 55;
+  StaticDataRef country    = 56;
+  StaticDataRef league     = 57;
+  StaticDataRef home_team  = 58;
+  StaticDataRef away_team  = 59;
 }
 
 // ===========================================================================
@@ -210,6 +212,40 @@ message BetType {
   // Exists so this type's API matches its view, SlimBetType, below.
   option (protop.alias) = { name: "bet_type_id" field: "id" };
 
+  // CARDINALITY IS NOT DECLARED, BECAUSE IT IS ALREADY WRITTEN DOWN.
+  //
+  // The question: SportGame has `league_id`, so how does anyone know one League
+  // is in many Games? Compare the foreign key to the DECLARING TYPE'S OWN KEY:
+  //
+  //   FK *is* the whole key       -> one-to-one, enforced by the key itself.
+  //   FK is PART of a composite   -> many-to-one; the rest of the composite is
+  //                                  exactly what distinguishes the many.
+  //   FK is not in the key at all  -> many-to-one, unconstrained.
+  //
+  // One-to-many is that same fact read backwards, so it needs no declaration
+  // either. Checked against the corpus, three for three: BetType's key is
+  // (event_id, bet_type_id) and event_id is part of it -> many BetTypes per
+  // SportGame; LiveObject's key IS event_id -> exactly one; Search's key is
+  // (event_id, channel_id) -> many; SportGame.league_id is in no key -> many
+  // SportGames per League. All correct.
+  //
+  // So four cardinality keywords would be four ways to RESTATE, unchecked, what
+  // the file already says — the same failure that took `topic` out of the
+  // language. Many-to-many falls out too: a type whose key is exactly two
+  // foreign keys IS a join table. The corpus has none.
+  //
+  // THE RULE IS SOUND, NOT COMPLETE, and the difference matters. Every
+  // one-to-one it reports is enforced by a key, so it cannot be wrong. A
+  // many-to-one it reports may be one-to-one in truth with nothing saying so —
+  // an FK outside the key that happens to be unique. It errs by declining to
+  // promise, never by inventing a guarantee; a declared `one_to_one` would err
+  // the other way, asserting uniqueness nothing checks, which is worse because
+  // code will trust it.
+  //
+  // The extension table looks like the counterexample and is not: a type that
+  // exists only to carry more columns for one SportGame has `event_id` as its
+  // whole key, so case one fires and derives one-to-one correctly.
+  //
   // THE ONLY REAL RELATION IN THIS FILE — and its target is ambiguous. SIX
   // corpus types declare EventId as their identity (BO/BP SportGame, BO/BP/—
   // LiveObject, SlimSportGame). They are twins and projections of each other,
@@ -261,7 +297,18 @@ message SlimSportGame {
   int64 league_id     = 4;
   int64 home_team_id  = 5 [features.field_presence = EXPLICIT];
   Venue venue         = 7;
-  StaticDataRef sport_type = 55 [(protop.snapshot_of) = "sport_type_id"];
+  StaticDataRef sport_type = 55;
+}
+
+// A VIEW OF A NON-CACHED TYPE. Odd is a record — no key, nothing points at it —
+// and it still has a view, because a view is about tags and members, not about
+// identity.
+message SlimOdd {
+  option (protop.shape) = SHAPE_RECORD;
+  option (protop.view_of) = "Odd";
+
+  string name      = 1;
+  int64  timestamp = 5;
 }
 
 // SlimBetType projects BetType tag-for-tag — including the composite key at
@@ -295,5 +342,15 @@ message SlimBetType {
 
   int64 timestamp = 25 [(protop.field_attribute) = "[DataCacheFromTimestamp]"];
 
-  repeated Odd odds = 26;
+  // A MEMBER NARROWED TO A VIEW. Tag 26 holds `repeated Odd` in BetType and
+  // `repeated SlimOdd` here, and SlimOdd must be a view OF Odd — that is the
+  // whole check, and here nothing performs it. The corpus does exactly this:
+  // BOBetTypeCacheItem.Odds is List<Odd>, SlimBetType.Odds is SlimOdd[].
+  //
+  // In A the narrowing is not written at all. It is INDISTINGUISHABLE from a
+  // type disagreement at a shared tag — which is drift, the thing views exist
+  // to prevent. Spelling B says `SlimOdd odds;` and the source tag stays
+  // pinned; A says `repeated SlimOdd odds = 26;` and protoc reads a wholly
+  // unrelated message with an unrelated field at tag 26.
+  repeated SlimOdd odds = 26;
 }

@@ -11,9 +11,9 @@
 //   namespace X;               C# namespace
 //   struct / record / table    three declaration keywords in place of `message`
 //   view X of Y                a field-subset at Y's tags
+//   T member;   (in a view)    take that tag, narrowed to view T
 //   key                        identity: a field, or a tuple over fields
 //   = N [references(T)]        this field holds T's identity
-//   = N [snapshot_of(f)]       this field is a denormalized copy of f's target
 //   repeated                   an OWNED child collection, on the wire
 //   ?                          presence
 //   decimal(N)                 scaled money
@@ -23,11 +23,17 @@
 //
 // TWO KINDS OF ANNOTATION, TOLD APART BY POSITION:
 //
-//   after the field, in [ ]   protop's own, a CLOSED set. protopc reads it,
+//   AFTER the thing, in [ ]   protop's own, a CLOSED set. protopc reads it,
 //                             checks it, and an unknown one is an ERROR.
-//                             This is PROTOBUF'S OWN SLOT for field options,
-//                             and protop's options go where Protobuf's go.
-//   before the declaration    verbatim C# attribute text. protopc copies it
+//                             On a field that is after the tag, which is
+//                             PROTOBUF'S OWN SLOT for field options. On a
+//                             type it is after the declaration head:
+//
+//                                 table Foo [something] { ... }
+//
+//                             One rule, both levels: the annotation follows
+//                             what it describes.
+//   BEFORE the declaration    verbatim C# attribute text. protopc copies it
 //                             and does not read it. This is C#'S OWN SLOT,
 //                             and the text is written exactly as emitted.
 //
@@ -46,10 +52,11 @@
 //   [DataCacheFromTimestamp]              <- copied into the C# output
 //   int64 timestamp = 25 [range_index];   <- read by protopc      (hypothetical)
 //
-// WHAT THIS COSTS, recorded honestly: protop has no type-level annotation of
-// its own today, so nothing yet tests the rule above a field. If one is ever
-// needed, Protobuf's own answer — a statement inside the body, `option x = y;`
-// — is the slot, and B would borrow that too rather than invent a third place.
+// The type-level slot is DEFINED AND EMPTY. protop has no type-level annotation
+// of its own today — the topic went to C# passthrough, the shape is a keyword,
+// and cardinality turned out to be derivable (see BetType). Defining the slot
+// anyway is deliberate: it is where the next one goes, and settling that now
+// costs nothing, whereas discovering it later invites a third syntax.
 //
 // SPELLING A CANNOT HAVE THIS RULE. A has exactly one slot, the field-option
 // bracket, so its checked options and its verbatim C# text share it:
@@ -148,9 +155,10 @@ table SportGame {
   // BetTypeId (11 members) DO name a cached type, and carry no copy.
   //
   // Exactly complementary: the copy exists because the referent does not. So
-  // each of these is the id half of an embedded pair, and `snapshot_of` below
-  // is what binds the halves. The one real relation in this file is
-  // `event_id [references(SportGame)]` in BetType.
+  // each of these is the id half of an embedded pair whose other half is the
+  // StaticDataRef below. Binding the two was `snapshot_of`, now deferred. The
+  // one real relation in this file is `event_id [references(SportGame)]` in
+  // BetType.
   int64 sport_type_id = 2;
   int64 country_id    = 3;
   int64 league_id     = 4;
@@ -179,22 +187,21 @@ table SportGame {
   // reference. That line is drawn by whether the child type declares a key.
   repeated StaticDataRef runners = 47;
 
-  // The embedded pairs. They carry their own tags because they really are on
-  // the wire — but they are not independent fields, and `snapshot_of` is what
-  // says so. It resolves to a MEMBER of this message, not through it to a
-  // table: there is no table. Two halves of one referent, which must agree.
+  // THE EMBEDDED PAIRS, now written as plain fields. `snapshot_of` bound each
+  // of these to the id above that it is the inline copy of, and it is DEFERRED
+  // — the pairing is real, but nothing in phase 1 needs it yet.
   //
-  // This is the check that pays for the whole idea, and it lands on the right
-  // line: the corpus has 15 of these pairs and THREE disagree with their own
-  // foreign key about presence. Below, `home_team` is `?` because
-  // `home_team_id` is. SlimSportGame gets this wrong — `long? HomeTeamId` with
-  // a non-nullable `StaticDataRef HomeTeam = null!` — and the diagnostic would
-  // point here, at the snapshot, which is the line that is actually wrong.
-  StaticDataRef  sport_type = 55 [snapshot_of(sport_type_id)];
-  StaticDataRef  country    = 56 [snapshot_of(country_id)];
-  StaticDataRef  league     = 57 [snapshot_of(league_id)];
-  StaticDataRef? home_team  = 58 [snapshot_of(home_team_id)];
-  StaticDataRef? away_team  = 59 [snapshot_of(away_team_id)];
+  // The cost is exact and should not be soft-pedalled: the one check it bought
+  // was that the two halves agree about presence, and THREE of the corpus's 15
+  // pairs do not. SlimSportGame has `long? HomeTeamId` beside a non-nullable
+  // `StaticDataRef HomeTeam = null!`. Deferring `snapshot_of` means protop
+  // emits that as written and says nothing. That is a known, accepted gap, not
+  // an oversight.
+  StaticDataRef  sport_type = 55;
+  StaticDataRef  country    = 56;
+  StaticDataRef  league     = 57;
+  StaticDataRef? home_team  = 58;
+  StaticDataRef? away_team  = 59;
 }
 
 // --- TABLE, COMPOSITE KEY ---------------------------------------------------
@@ -212,8 +219,55 @@ table BetType {
   // it too, and protoc compiles that without a word (measured).
   key key = 1 (event_id, bet_type_id);
 
-  // A bare foreign key: no snapshot, because BetType carries no copy of the
-  // SportGame it belongs to. One annotation, one member, nothing else to bind.
+  // CARDINALITY IS NOT DECLARED, BECAUSE IT IS ALREADY WRITTEN DOWN.
+  //
+  // The question this answers: SportGame has `league_id`, so how does anyone
+  // know one League is in many Games? Compare the foreign key to the DECLARING
+  // TYPE'S OWN KEY, and there are only three cases:
+  //
+  //   FK *is* the whole key        -> one-to-one. At most one row of this type
+  //                                   per target row, enforced by the key.
+  //   FK is PART of a composite    -> many-to-one. The rest of the composite is
+  //                                   exactly what distinguishes the many.
+  //   FK is not in the key at all  -> many-to-one, unconstrained.
+  //
+  // And the inverse — one-to-many — is the same fact read backwards. It needs
+  // no declaration because it adds nothing.
+  //
+  // Checked against every cached corpus type, three for three:
+  //   BetType      key (event_id, bet_type_id), event_id is FK, PART of it
+  //                -> many BetTypes per SportGame.               correct
+  //   LiveObject   key event_id, which IS the FK
+  //                -> exactly one LiveObject per SportGame.      correct
+  //   Search       key (event_id, channel_id), FK is part
+  //                -> many Searches per SportGame.               correct
+  //   SportGame.league_id  not in SportGame's key at all
+  //                -> many SportGames per League.                correct
+  //
+  // WHAT THE RULE ACTUALLY GUARANTEES — it is SOUND, NOT COMPLETE, and the two
+  // are not the same promise. Every one-to-one it reports is real, because the
+  // key enforces it; there is no way to have a duplicate. But a many-to-one it
+  // reports may be one-to-one in truth, with nothing in the schema saying so.
+  //
+  // The extension table is the case that tests this and PASSES: a type that
+  // exists only to carry more columns for one SportGame declares `key event_id`
+  // and case one fires — one-to-one, derived, correct, no keyword needed. It
+  // looks like a counterexample and is not.
+  //
+  // The case that genuinely escapes is the third one: an FK OUTSIDE the key
+  // that happens to be unique anyway. The rule reports many-to-one and is not
+  // wrong about anything it can see — it simply cannot see a uniqueness nobody
+  // wrote down. Note which way that errs: it never invents a guarantee, only
+  // declines to promise one. A declared `one_to_one` would err the other way,
+  // asserting uniqueness that nothing checks — and an unchecked assertion of
+  // uniqueness is worse than a missing one, because code will trust it.
+  //
+  // So: derived, not declared, and no `unique` keyword until the corpus shows
+  // one. It has no instance of the escaping case.
+  //
+  // MANY-TO-MANY falls out of the same rule and needs no syntax either: a type
+  // whose key is exactly two foreign keys IS a join table. BetType is not one,
+  // because bet_type_id references nothing. The corpus has no join table.
   // THE ONLY REAL RELATION IN THIS FILE — and its target is ambiguous. SIX
   // corpus types declare EventId as their identity. They are twins and
   // projections of each other, sharing an identity AND a key space, so naming
@@ -276,10 +330,17 @@ view SlimSportGame of SportGame {
   sport_type;
 
   // Relations need no mention at all. They are annotations ON the members, so
-  // they travel with the members a view lists — `sport_type` is still a
-  // snapshot of `sport_type_id`, which is still a reference to SportType.
-  // With a separate relations block this had to be a RULE ("a view may not
-  // declare relations of its own"); on the property it is just what happens.
+  // they travel with the members a view lists. With a separate relations block
+  // this had to be a RULE ("a view may not declare relations of its own"); on
+  // the member it is just what happens.
+}
+
+// A VIEW OF A NON-CACHED TYPE. `Odd` is a record — no key, nothing points at
+// it — and it still has a view, because a view is about tags and members, not
+// about identity. SlimOdd is what SlimBetType carries in place of Odd.
+view SlimOdd of Odd {
+  name;
+  timestamp;
 }
 
 [DataCacheTopic("Cache.[v:brandId].BetType")]
@@ -297,5 +358,18 @@ view SlimBetType of BetType {
 
   limit_manual_single;
   timestamp;
-  odds;
+
+  // A MEMBER NARROWED TO A VIEW. Tag 26 in BetType holds `repeated Odd`; here
+  // it holds `repeated SlimOdd`, and SlimOdd must be a view OF Odd — which is
+  // the whole check. Writing a type before the member name is what asks for the
+  // narrowing; a bare member name takes the source's type unchanged.
+  //
+  // This is not a hypothetical. The corpus does exactly this and nothing in the
+  // language could say so until now:
+  //     BOBetTypeCacheItem.Odds  is  List<Odd>
+  //     SlimBetType.Odds         is  SlimOdd[]     <- same tag, narrower type
+  //
+  // Note what it makes checkable: a view of a view is still pinned to the
+  // original tags, so SlimOdd cannot quietly renumber and desync tag 26.
+  SlimOdd odds;
 }

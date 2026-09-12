@@ -6,12 +6,23 @@ Two spellings of the same content, written so they can be read side by side.
 |---|---|
 | [`a-strict-protobuf/prague.proto`](a-strict-protobuf/prague.proto) | protop as a strict profile. **Verified: compiles under `protoc` 36.1.** |
 | [`a-strict-protobuf/protop/options.proto`](a-strict-protobuf/protop/options.proto) | the option vocabulary spelling A needs. |
-| [`b-native/prague.protop`](b-native/prague.protop) | protop as its own language. **Verified: `protoc` rejects it at line 89, `revision 1;`.** |
+| [`b-native/prague.protop`](b-native/prague.protop) | protop as its own language. **Verified: `protoc` rejects it at line 96, `revision 1;`.** |
 
 The first pass asked whether **table / record / struct** could be spelled at all.
-This pass cut two constructs *out* of the language — the cache topic and the
-index — and then moved a third, relations, from a block onto the members
-themselves. Both moves were subtractions, and both paid.
+Every pass since has been a subtraction, and every subtraction has paid:
+
+| cut | why | finding |
+|---|---|---|
+| `topic` | a C# attribute wearing a keyword | 1 |
+| `index` | a decision about queries, not a fact about data | 2 |
+| derived index member | existed only to be indexed | 3 |
+| `relations { }` block | a fact about a member belongs on the member | 5 |
+| `snapshot_of` | real, but nothing in phase 1 consumes it — deferred, not retired | 5a |
+| cardinality keywords, `ManyToMany` | derivable from the FK and the declaring type's `key` | 5b |
+
+What went *in* is one line: a view member may be narrowed to a view of its own
+type (`SlimOdd odds;`), which the corpus has been doing all along with no way to
+say so (finding 11).
 
 ---
 
@@ -226,7 +237,7 @@ is a strictly better failure mode, and spelling A gets it too. (What it does
 *not* fix is `references` naming a type that does not exist — see finding 4,
 where that turned out to be 25 of the corpus's 36 foreign-key-shaped members.)
 
-**`snapshot_of` is binary** — it pairs a foreign key with its denormalized copy,
+**`snapshot_of` was binary** — it pairs a foreign key with its denormalized copy,
 which are two different members at two different tags. One of the two must name
 the other, and no choice of where to write the annotation changes that:
 
@@ -234,10 +245,13 @@ the other, and no choice of where to write the annotation changes that:
 StaticDataRef? home_team = 58 [snapshot_of(home_team_id)];
 ```
 
+It is **deferred out of phase 1** (see finding 5a), but it is the cleanest
+example of the binary case and so is kept here as one.
+
 The rule generalises across the whole file. Every member-naming string left in
-`prague.proto` is binary — 6 `snapshot_of`, 4 composite-key components, 1 alias
-target, 2 view renames — and every one that vanished was unary. **A relation
-between two members always costs a name; a property of one member never does.**
+`prague.proto` is binary — 4 composite-key components, 1 alias target, 2 view
+renames — and every one that vanished was unary. **A relation between two
+members always costs a name; a property of one member never does.**
 
 Three things survive unchanged from the block form:
 
@@ -255,13 +269,81 @@ Under the block form this had to be a *rule* — "a view may not declare relatio
 of its own". On the member it is simply what happens: the annotation travels with
 the member the view lists, or the member is not there.
 
-**Fog, and now a principled boundary:** the corpus has **no many-to-many**, and
-it is the one relation with *no single owning member* — there is no field that
-holds the other side's identity, which is the whole reason a join table exists.
-So it is the one relation that stays message-level, and that is a consequence of
-the unary/binary rule rather than an exception to it. It remains ungrounded: *a
-decision that cannot express the corpus is not done*, and the inverse holds too —
-a construct the corpus never exercises is not tested.
+**Many-to-many needed no message-level form after all.** It was the one relation
+with no single owning member, and so looked like the one that had to stay on the
+message. Finding 5b removes it entirely: a type whose key is exactly two foreign
+keys *is* the join table, and that is already written down. The corpus has no
+such type, so it stays fog — but fog with a derivation waiting for it rather than
+an unchecked option standing in.
+
+## 5a. `snapshot_of` is deferred, and the gap it leaves is exact
+
+Deferred out of phase 1. The pairing is real and measured — 15 corpus pairs — but
+nothing in phase 1 consumes it, and a construct nothing consumes is a construct
+nothing tests.
+
+What deferring costs, stated precisely rather than waved at: the one check it
+bought was **that the two halves agree about presence**, and **3 of the 15 pairs
+do not**. `SlimSportGame` carries
+
+```csharp
+public long? HomeTeamId { get; set; }
+public StaticDataRef HomeTeam { get; set; } = null!;   // not nullable
+```
+
+protop phase 1 emits that as written and says nothing. Known, accepted gap.
+
+Spelling A could barely have checked it anyway: a message field may not carry
+`IMPLICIT` presence (protoc errors) and `EXPLICIT` is its only legal value, so
+all five snapshot lines look identical whatever the truth is. The check was
+always going to be B's, or protopc's on top of A.
+
+Extension `50041` is **held, not retired** — the fact it named did not stop being
+true.
+
+## 5b. Cardinality is derivable, so it is not declared
+
+The question that prompted it: `SportGame` has `league_id`; how does anyone know
+one League is in many Games?
+
+Compare the foreign key against **the declaring type's own `key`**:
+
+| FK vs. the declaring type's key | cardinality |
+|---|---|
+| FK **is** the whole key | one-to-one — at most one row per target row, *enforced by the key* |
+| FK is **part of** a composite key | many-to-one — the rest of the composite is exactly what distinguishes the many |
+| FK is **not in** the key | many-to-one, unconstrained |
+
+One-to-many is that same fact read backwards, so it needs no declaration either.
+Many-to-many likewise: a key that is exactly two foreign keys *is* a join table.
+
+Checked against the corpus:
+
+| type | key | `event_id` | derived | right? |
+|---|---|---|---|---|
+| `BOBetTypeCacheItem` | `(EventId, BetTypeId)` | part of it | many BetTypes per game | ✅ |
+| `LiveObjectCacheItem` | `EventId` | **is** it | exactly one per game | ✅ |
+| `BOSearchCacheItem` | `(EventId, ChannelId)` | part of it | many per game | ✅ |
+| `SportGame.league_id` | `EventId` | not in it | many games per league | ✅ |
+
+**The rule is sound, not complete**, and the two are different promises. Every
+one-to-one it derives is enforced by a key and cannot be wrong. A many-to-one it
+derives *may* be one-to-one in truth — an FK outside the key that happens to be
+unique — with nothing in the schema saying so.
+
+Note which way that errs. The derivation never invents a guarantee; it only
+declines to promise one. A declared `one_to_one` errs the other way, asserting a
+uniqueness **nothing checks** — strictly worse, because code will trust it. That
+is the same failure that took `topic` out of the language: unchecked restatement
+of something the file already carries.
+
+The **extension table** is the case that looks like a counterexample and is not.
+A type existing only to carry more columns for one `SportGame` declares
+`key event_id`, case one fires, and one-to-one is derived correctly with no
+keyword at all.
+
+So: no cardinality vocabulary in either spelling. Spelling A's `Cardinality` enum
+and its message-level `ManyToMany` are both gone; `50022` is retired.
 
 ## 6. Position tells the two kinds of annotation apart, and a name cannot
 
@@ -309,10 +391,25 @@ extend both `MessageOptions` and `FieldOptions`. A needs `type_attribute` and
 `field_attribute`, and every author must know which context they are in. B has
 one bracket per slot, and the slot says which.
 
-Recorded as a cost of the position rule: protop has **no type-level annotation of
-its own today**, so nothing yet tests the rule above a field. If one is ever
-needed, Protobuf's own answer is a body statement (`option x = y;`), and B should
-borrow that rather than invent a third place.
+**The rule extends to the type level, where it costs nothing to settle now.** The
+annotation follows what it describes, so on a type it goes after the declaration
+head:
+
+```protop
+table Foo [something] { ... }
+```
+
+One rule at both levels. The slot is **defined and empty**: protop has no
+type-level annotation of its own today — `topic` became C# passthrough, `shape`
+is a keyword, and cardinality turned out to be derivable (finding 5b). Defining
+it anyway is deliberate. It is where the next one goes, and settling that while
+nothing depends on it costs nothing, where discovering it later invites a third
+syntax. Protobuf's own answer at that level is a body statement (`option x = y;`)
+— B does **not** borrow that, because it would put the same kind of fact in two
+different places depending only on whether it describes a type or a field.
+
+Recorded as a cost: nothing yet exercises the type-level slot, so the rule above
+a field is asserted and not tested.
 
 A related small finding: **retired extension numbers cannot be reserved.**
 `reserved` is a message-level statement and protoc rejects it inside `extend`,
@@ -424,6 +521,41 @@ indexed `SportTypeId`, `CountryId` and `LeagueId` where `BOSportGameCacheItem`
 indexed none of them — that divergence was the loudest thing in the old view
 syntax, and it was never schema in the first place.
 
+### A view member can itself be narrowed to a view — and the corpus does it
+
+Measured, at the same tag:
+
+```csharp
+BOBetTypeCacheItem.Odds   is   List<Odd>
+SlimBetType.Odds          is   SlimOdd[]
+```
+
+A view of a view, and no version of the syntax could say so until now. The
+spelling falls out of what a view line already is — a bare member name takes the
+source's type unchanged, so writing a **type before the name** is what asks for
+the narrowing:
+
+```protop
+view SlimBetType of BetType {
+  name;              // tag 4, BetType's type
+  SlimOdd odds;      // tag 26, narrowed — and SlimOdd must be a view of Odd
+}
+```
+
+That last clause is the whole check, and it is worth naming what it buys: the
+view stays pinned to the *source's* tags however deep the nesting goes, so
+`SlimOdd` cannot quietly renumber and desync tag 26.
+
+`SlimOdd` also settles a smaller question by existing: **a view's source need not
+be a table.** `Odd` is a record — no key, nothing points at it — and it has a
+view all the same, because a view is about tags and members, not identity.
+
+**Spelling A cannot express the narrowing at all.** It writes
+`repeated SlimOdd odds = 26;`, which is indistinguishable from a *type
+disagreement at a shared tag* — which is drift, the exact thing views exist to
+prevent. protoc reads an unrelated message with an unrelated field at tag 26 and
+says nothing.
+
 ## 12. What was borrowed, and from where
 
 | loan | source | what it gave |
@@ -472,13 +604,16 @@ own parser. Spelling A's problem is not that it cannot carry the information:
 | relation target | ✅ field option | ❌ exists, is a table, has a key | ✅ |
 | relation FK type | ✅ field option | ❌ matches target's key | ✅ |
 | relation owner | ✅ **by construction** | ✅ **unrepresentable if wrong** | ✅ |
-| snapshot pairing | ✅ field option | ❌ exists, type, **presence agrees** | ✅ |
+| snapshot pairing | *deferred (5a)* | — | — |
+| cardinality | *derived, not carried (5b)* | n/a | n/a |
 | alias | ✅ option | ❌ field name | ✅ |
 | view source | ✅ option | ❌ existence, shape | ✅ |
 | view field/tag/type/presence | ✅ option | ❌ all four | ✅ |
+| view member narrowed to a view | ❌ **inexpressible** — reads as drift | ❌ | ✅ `SlimOdd odds;` |
 | decimal scale | ✅ option | ❌ applicability | ✅ |
 | attribute placement | ⚠️ two option names | ❌ | ✅ one slot each |
 | checked vs verbatim | ⚠️ one shared bracket | ❌ | ✅ by position |
+| type-level annotation slot | ✅ `option` in the body | n/a | ✅ `table Foo [x]` — defined, empty |
 
 Every ❌ is a diagnostic protopc has to implement itself. The strict-profile bet
 — *"lean on protoc so protopc does less"* — pays off for the Protobuf core and

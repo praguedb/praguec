@@ -41,24 +41,17 @@ message CompositeKey {
   repeated string field = 3;  // component fields, in tuple order
 }
 
-enum Cardinality {
-  CARDINALITY_UNKNOWN = 0;
-  CARDINALITY_ONE     = 1;  // local FK field -> one row of target
-  CARDINALITY_MANY    = 2;  // far side holds the FK
-  CARDINALITY_MANY_TO_MANY = 3;  // via a join table. NO CORPUS INSTANCE.
-}
-
-// Many-to-many, which has NO CORPUS INSTANCE — and after the measurement above,
-// no plausible one either: a join needs two keyed ends, and 25 of the corpus's
-// 36 FK-shaped members have no keyed end to join to. It is the one relation
-// with no single owning field, so it is the one that must stay message-level;
-// that placement is a consequence of the unary/binary rule, not an exception.
-// It remains the fog it was, now with a measurement against it.
-message ManyToMany {
-  string member  = 1;
-  string target  = 2;
-  string through = 3;
-}
+// CARDINALITY HAS NO VOCABULARY HERE. The enum that used to sit at this spot
+// is gone, and so is the message-level ManyToMany beside it — both derivable
+// from `references` plus the declaring message's own key. See the note on
+// `references` below, and BetType in prague.proto for the derivation checked
+// against the corpus.
+//
+// Many-to-many in particular: a join needs two keyed ends, and 25 of the
+// corpus's 36 FK-shaped members have no keyed end to join to. A type whose key
+// is exactly two foreign keys IS the join table, and the corpus has no such
+// type. It stays fog, now with a measurement against it rather than an
+// unchecked enum value standing in for one.
 
 // [IgnoreMember] get/set passthrough to another field. No wire slot.
 message Alias {
@@ -73,7 +66,8 @@ extend google.protobuf.FileOptions {
 extend google.protobuf.MessageOptions {
   Shape shape = 50010;
   CompositeKey composite_key = 50021;
-  repeated ManyToMany many_to_many = 50022;
+
+  // RETIRED, never reused: 50022 was many_to_many — derivable, see above.
   repeated Alias alias = 50023;
   string view_of = 50024;
 
@@ -103,13 +97,29 @@ extend google.protobuf.FieldOptions {
   // Better than the message-level form it replaces, for a reason worth stating
   // precisely: that form carried `field: "sport_type_id"`, a STRING naming a
   // member of the same message, and protoc checked no part of it. On the field
-  // there is no `field:` to get wrong. Relation-borne member names in
-  // prague.proto went 11 -> 6, and the split is the general rule:
+  // there is no `field:` to get wrong. That is the general rule:
   //
   //   a UNARY fact (this member holds T's identity) sits on the member and
   //   costs no name at all;
   //   a BINARY fact (these two members are halves of one thing) must name one
   //   member from the other, wherever it is written.
+  //
+  // Every member-naming string still in prague.proto is binary — the two
+  // composite keys and the alias. Every one that vanished was unary.
+  //
+  // CARDINALITY IS NOT HERE, and no option is added for it. Compare the FK to
+  // the declaring message's own key: the FK IS the key -> one-to-one; the FK is
+  // part of a composite key -> many-to-one; the FK is in no key -> many-to-one
+  // unconstrained. One-to-many is the same fact backwards, and a key that is
+  // exactly two FKs is a join table. Three for three against the corpus (see
+  // prague.proto, BetType). Four keywords would restate, unchecked, what the
+  // file already carries — which is what took `topic` out of the language.
+  //
+  // Sound, not complete: every one-to-one derived is key-enforced and cannot be
+  // wrong, while a derived many-to-one may be unique in truth with nothing
+  // saying so. It declines to promise rather than inventing a guarantee, which
+  // is the safe direction; a declared one would assert uniqueness nothing
+  // checks. The extension table — key IS the FK — derives correctly.
   //
   // `references` names a TABLE, not a field: it resolves to that table's
   // declared key, so arity and type are checkable and a composite-key target
@@ -122,17 +132,19 @@ extend google.protobuf.FieldOptions {
   // grounded case does not pick a target out. protop has no answer for that.
   string references = 50040;
 
-  // This field is a denormalized copy of the referent that `snapshot_of` names
-  // the id of. It resolves to a MEMBER of the same message and stops there: it
-  // does NOT follow that member's `references`, because in every corpus
-  // instance there is nothing to follow. All 15 snapshot pairs sit on ids that
-  // name no type — the copy exists precisely BECAUSE the referent does not.
+  // DEFERRED, and 50041 is held for it rather than retired, because the thing
+  // it named is real and measured: 15 corpus pairs of `long XId` beside an
+  // inline `StaticDataRef X`, all of them on ids that name no type. The copy
+  // exists precisely BECAUSE the referent does not, so `snapshot_of` would have
+  // resolved to a MEMBER of the same message and stopped there — it could never
+  // have followed `references`, having nothing to follow.
   //
-  // The check it buys needs no target type to exist, which is why it survives
-  // that finding: the two halves must agree about presence. Three of the 15
-  // pairs do not, including SlimSportGame's `long? HomeTeamId` beside a
-  // non-nullable `StaticDataRef HomeTeam = null!`.
-  string snapshot_of = 50041;
+  // What deferring costs, exactly: the one check it bought was that the two
+  // halves agree about presence, and three of the 15 pairs do not, including
+  // SlimSportGame's `long? HomeTeamId` beside `StaticDataRef HomeTeam = null!`.
+  // Phase 1 emits that as written and says nothing.
+  //
+  // reserved 50041;  // snapshot_of — deferred, not retired
   int32 decimal_scale = 50012;
   string view_field = 50025;
   repeated string field_attribute = 50031;
