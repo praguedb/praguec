@@ -149,6 +149,29 @@ func TestRenderOfAnEmptyLineIsTheHeadlineAlone(t *testing.T) {
 	}
 }
 
+// The severity is rendered, and a warning says so. Nothing in the repo raises
+// one today -- NotYetImplemented is the only Warnf caller and no test renders it
+// -- so Severity.String could return "error" for both and every golden would
+// still pass. The word is the only thing in the line that tells a reader whether
+// the build stopped, and a warning that prints as an error is a build someone
+// goes looking for a reason to have failed.
+func TestRenderSaysWhichSeverityItIs(t *testing.T) {
+	f := source.NewFile("x.protop", "map<string, int64> m = 1;\n")
+	var b Bag
+	b.Warnf(NotYetImplemented, source.Span{Start: 0, End: 3}, "`map` is not read yet")
+
+	want := "x.protop:1:1: warning PROTOP0900: `map` is not read yet\n" +
+		"  |\n" +
+		"1 | map<string, int64> m = 1;\n" +
+		"  | ^^^"
+	if got := Render(f, b.All()[0]); got != want {
+		t.Errorf("Render =\n%s\n\nwant\n%s", got, want)
+	}
+	if Warning.String() == Error.String() {
+		t.Errorf("both severities render as %q", Error)
+	}
+}
+
 // Diagnostics are collected, never thrown: a bag holds every one in the order
 // it was raised, and severity is what decides whether the compile failed.
 func TestBagCollects(t *testing.T) {
