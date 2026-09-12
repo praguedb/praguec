@@ -618,6 +618,45 @@ namespace A;
 			wantLine:  3, wantCol: 1,
 		},
 		{
+			// The duplicate is below a declaration rather than beside the
+			// header, which is where a second one actually gets written --
+			// someone appends to the wrong file, or a merge lands two halves
+			// together. Both of these checks read whether the header line has
+			// been seen and nothing about where the second one is, and every
+			// other case keeps the two adjacent, so a check narrowed to the
+			// header would report nothing here and the second namespace would
+			// be silently ignored.
+			name: "duplicate namespace below a declaration",
+			src: `revision 1;
+namespace A;
+view V of T {
+  a;
+}
+namespace B;
+`,
+			wantCodes: []diag.Code{diag.DuplicateNamespace},
+			wantLine:  6, wantCol: 1,
+			wantSpan: "namespace B;",
+		},
+		{
+			// And the same for `revision`, where narrowing the check does not
+			// silence the diagnostic but DOWNGRADES it: a second stamp below a
+			// declaration is a duplicate first and a misplacement second, and
+			// reporting only that it is not first says the wrong thing about a
+			// file that already has one.
+			name: "duplicate revision below a declaration",
+			src: `revision 1;
+namespace A;
+view V of T {
+  a;
+}
+revision 1;
+`,
+			wantCodes: []diag.Code{diag.DuplicateRevision},
+			wantLine:  6, wantCol: 1,
+			wantSpan: "revision 1;",
+		},
+		{
 			name:      "unknown declaration",
 			src:       "revision 1;\nnamespace A;\nwidget W {\n}\n",
 			wantCodes: []diag.Code{diag.UnknownDeclaration},
@@ -2553,4 +2592,130 @@ func TestLookaheadPastTheEndOfTheFileDoesNotPanic(t *testing.T) {
 	}
 	// The table is in the tree with no members, which is all there was.
 	assertDump(t, file, "revision 1\nnamespace A\ntable T\n")
+}
+
+// A view member is idents and a `;`, and the count of them is what tells the
+// three shapes apart: one name selects, two narrow, and three are a rename only
+// when the middle one is the word `as` with a name after it. Nothing wrote a
+// member with the wrong number of words, so the arithmetic was free -- and
+// getting it wrong does not produce a diagnostic, it produces a DIFFERENT
+// PROGRAM. With the `as` test dropped from the rename lookahead, `event_id ass
+// id;` compiles as a rename and carries the wrong name into every backend;
+// with the narrowing read in a loop, `a b c d;` collapses to a member named `d`
+// and the rest is thrown away in silence.
+func TestAViewMemberIsOneOfThreeShapes(t *testing.T) {
+	// Three names where a rename would have `as` in the middle. The third word
+	// is where the line stops making sense, so that is where it is reported.
+	f, file, bag := parse(t, `revision 1;
+namespace A;
+view V of T {
+  a b c;
+  keep;
+}
+struct S {
+  int64 x = 1;
+}
+`)
+	if bag.Len() != 1 || bag.All()[0].Code != diag.UnexpectedToken {
+		t.Fatalf("got %d diagnostics, want one UnexpectedToken:\n%s", bag.Len(), diag.RenderAll(f, bag))
+	}
+	if got := f.Slice(bag.All()[0].Span); got != "c" {
+		t.Errorf("the diagnostic underlines %q, want the word the line stops at", got)
+	}
+	assertDump(t, file, `revision 1
+namespace A
+view V of T
+  a b
+  c
+  keep
+struct S
+  int64 x = 1
+`)
+
+	// Four, which is what a narrowing read in a loop would swallow whole.
+	f, file, bag = parse(t, `revision 1;
+namespace A;
+view V of T {
+  a b c d;
+  keep;
+}
+`)
+	if bag.Len() != 1 || bag.All()[0].Code != diag.UnexpectedToken {
+		t.Fatalf("got %d diagnostics, want one UnexpectedToken:\n%s", bag.Len(), diag.RenderAll(f, bag))
+	}
+	assertDump(t, file, `revision 1
+namespace A
+view V of T
+  a b
+  c d
+  keep
+`)
+
+	// The typo the rename lookahead exists for. `ass` is not `as`, so this is a
+	// narrowing followed by a word too many -- not a rename that quietly
+	// renames `event_id` to `id` and takes that name downstream.
+	f, file, bag = parse(t, "revision 1;\nnamespace A;\nview V of T {\n  event_id ass id;\n}\n")
+	if bag.Len() != 1 || bag.All()[0].Code != diag.UnexpectedToken {
+		t.Fatalf("got %d diagnostics, want one UnexpectedToken:\n%s", bag.Len(), diag.RenderAll(f, bag))
+	}
+	v := file.Decls[0].(*View)
+	if v.Members[0].As != nil {
+		t.Errorf("`event_id ass id;` was read as a rename to %q", v.Members[0].As.Text)
+	}
+
+	// And the other half of the lookahead: `as` in the middle with no name
+	// after it is not a rename either. Without the name checked, the `;` is
+	// read as the new name and its text goes into the tree.
+	f, file, bag = parse(t, "revision 1;\nnamespace A;\nview V of T {\n  a b as;\n}\n")
+	if bag.Len() != 1 || bag.All()[0].Code != diag.UnexpectedToken {
+		t.Fatalf("got %d diagnostics, want one UnexpectedToken:\n%s", bag.Len(), diag.RenderAll(f, bag))
+	}
+	if got := f.Slice(bag.All()[0].Span); got != "as" {
+		t.Errorf("the diagnostic underlines %q, want the `as` that renames nothing", got)
+	}
+	v = file.Decls[0].(*View)
+	if v.Members[0].As != nil {
+		t.Errorf("`a b as;` renamed to %q; there was no name to rename to", v.Members[0].As.Text)
+	}
+}
+
+// Narrowing and renaming at once. Section 5 writes each on its own and says
+// nothing about the two together, so the parser accepts it: the shapes compose
+// by construction -- a narrowing is two idents, a rename is `as` and a third --
+// and refusing a combination the spec does not forbid would be this file
+// deciding a question that is not its to decide.
+//
+// This test records what the parser does today so that a change to it is a
+// change someone made on purpose. The spec's silence is the reason there is no
+// diagnostic here, not an oversight in the grammar.
+func TestANarrowedViewMemberMayAlsoBeRenamed(t *testing.T) {
+	_, file := parseClean(t, "revision 1;\nnamespace A;\nview V of T {\n  SlimOdd odds as o;\n}\n")
+	assertDump(t, file, "revision 1\nnamespace A\nview V of T\n  SlimOdd odds as o\n")
+}
+
+// A view member's name carries the span of the name itself, on both the plain
+// and the narrowed path. That is the span the next stage underlines for "no
+// such member `odds` on `SportGame`", and a resolver has no other way to point
+// at the word it could not find: the member's own span covers the narrowing and
+// the rename too, so quoting it would underline the whole line for a mistake in
+// one word of it.
+func TestAViewMemberNameCarriesItsOwnSpan(t *testing.T) {
+	f, file := parseClean(t, "revision 1;\nnamespace A;\nview V of T {\n  sport_type_id;\n  SlimOdd odds;\n}\n")
+	v := file.Decls[0].(*View)
+	if len(v.Members) != 2 {
+		t.Fatalf("members = %d, want 2", len(v.Members))
+	}
+	for i, want := range []string{"sport_type_id", "odds"} {
+		if got := f.Slice(v.Members[i].Name.Span); got != want {
+			t.Errorf("member %d's name spans %q, want %q", i, got, want)
+		}
+	}
+	// The narrowing's own span is the narrowing, and the member's span is the
+	// line: three spans, three jobs.
+	if got := f.Slice(v.Members[1].Narrow.Span); got != "SlimOdd" {
+		t.Errorf("the narrowing spans %q, want SlimOdd", got)
+	}
+	if got := f.Slice(v.Members[1].Span); got != "SlimOdd odds;" {
+		t.Errorf("the member spans %q, want the whole line", got)
+	}
 }
