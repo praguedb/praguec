@@ -6,11 +6,12 @@ Two spellings of the same content, written so they can be read side by side.
 |---|---|
 | [`a-strict-protobuf/prague.proto`](a-strict-protobuf/prague.proto) | protop as a strict profile. **Verified: compiles under `protoc` 36.1.** |
 | [`a-strict-protobuf/protop/options.proto`](a-strict-protobuf/protop/options.proto) | the option vocabulary spelling A needs. |
-| [`b-native/prague.protop`](b-native/prague.protop) | protop as its own language. **Verified: `protoc` rejects it at line 43, `revision 1;`.** |
+| [`b-native/prague.protop`](b-native/prague.protop) | protop as its own language. **Verified: `protoc` rejects it at line 89, `revision 1;`.** |
 
 The first pass asked whether **table / record / struct** could be spelled at all.
 This pass cut two constructs *out* of the language — the cache topic and the
-index — and that turned out to be where the findings were.
+index — and then moved a third, relations, from a block onto the members
+themselves. Both moves were subtractions, and both paid.
 
 ---
 
@@ -129,74 +130,189 @@ admits it may be absent; its own snapshot, in the same type, does not. That is
 a nil slot waiting to become a `NullReferenceException`, and the C# compiler
 cannot see it because `= null!` is exactly the syntax for telling it not to.
 
-This is what pays for a relations block: with the pair declared as one thing,
-`home_team` does not get to have an opinion about presence.
+This is what pays for `snapshot_of`: with the pair declared as one thing,
+`home_team` does not get to have an opinion about presence separate from the id
+it accompanies.
 
-## 5. Relations as a block, not a modifier
+### …and the copy exists *because the referent does not*
 
-Field lines stay pure — type, name, tag, presence — which is exactly the wire
-contract and nothing else. Relational structure goes in one place:
+The obvious next question is why the copy is there at all — why not point at a
+`SportType` and fetch it? Because **there is no `SportType`**. Measured across
+every corpus type that carries `[DataCacheKey]`:
 
-```protop
-table SportGame {
-  key int64 event_id = 1;
+| foreign-key-shaped member | n | names a cached type? | carries a `StaticDataRef` copy? |
+|---|---|---|---|
+| `EventId`, `BetTypeId` | 11 | **yes** | **never** |
+| `SportTypeId`, `CountryId`, `LeagueId`, `HomeTeamId`, `AwayTeamId` | 25 | **no** | **always** — all 15 pairs |
+| `StatisticsCenterId`, `PlayerId` | 4 | no | no — opaque ids, nothing attached |
 
-  int64  sport_type_id = 2;
-  int64? home_team_id  = 5;
+The two sets are **exactly complementary**, and that is not a coincidence:
 
-  StaticDataRef  sport_type = 55;
-  StaticDataRef? home_team  = 58;
-
-  relations {
-    sport_type_id -> SportType inline sport_type;
-    home_team_id  -> Team      inline home_team;
-  }
+```csharp
+public class StaticDataRef : BaseProviderObject { }   // empty
+public class BaseProviderObject {
+    [Key(0)] public long Id;   [Key(1)] public virtual string Name;
+    [Key(2)] public string? ProviderSourceKey;   [Key(3)] public long ProviderKey;
 }
 ```
 
-Three things fall out of this shape:
+`StaticDataRef` is an **empty subclass**, and it is the *identical type* for a
+sport, a country and a team. So `long SportTypeId` + `StaticDataRef SportType` is
+not a foreign key beside a cached row that could be fetched instead. **It is the
+whole representation.** The alternative to the copy is not a join — it is nothing.
 
-**`-> SportType` names a table, not a field.** It resolves to that table's
-*declared key*, so arity and type are checked, and a composite-key target needs
-no new syntax at all — the key is already declared, once, at the target.
+Two consequences, and the first cost me four declarations:
 
-**`repeated` vs `relations` is a real line, drawn by the data.** `Runner`, `Odd`
+**The specimens had `table SportType`, `Country`, `League` and `Team` in them.**
+None exists in the corpus. They were invented so `references(SportType)` would
+have somewhere to point — inventing corpus to fit a feature, which is the exact
+failure the "a construct the corpus never exercises is not tested" rule exists to
+catch. Deleted from both spellings.
+
+**`references` and `snapshot_of` are not two flavours of one thing.** They were
+merged in the block form, which let a single `relation` carry `target:` *and*
+`inline:`. The corpus says they never co-occur. `snapshot_of` binds two members
+of the same message and needs no target type to exist — which is why it survives
+this finding intact, and why its presence check still catches the live bug.
+
+**Scope limit, stated plainly:** the corpus is the cache's payload types, not the
+whole system. A `SportType` entity may well exist upstream — in a database, in a
+service. What is measured here is that *nothing in the cache protop generates for*
+is pointable-at. Whether that holds beyond the sample is a question for someone
+who knows the wider system.
+
+**And the one real relation is ambiguous.** `BetType.EventId` does resolve — to
+**six types at once**. `BOSportGameCacheItem`, `BPSportGameCacheItem`,
+`BOLiveObjectCacheItem`, `BPLiveObjectCacheItem`, `LiveObjectCacheItem` and
+`SlimSportGame` all declare `EventId` as their identity, because they are twins
+and projections of one another sharing an identity *and* a key space. So
+`references(SportGame)` does not pick one out, in either spelling. Unanswered.
+
+## 5. An annotation absorbs a unary fact for free; a binary one costs a name
+
+Relations first went in as a block, on the argument that field lines should stay
+pure — type, name, tag, presence, the wire contract and nothing else:
+
+```protop
+relations {
+  sport_type_id -> SportType inline sport_type;
+  home_team_id  -> Team      inline home_team;
+}
+```
+
+That argument does not survive its own file. The previous pass had just
+established `[Attribute]` as *the* way a fact attaches to a member; the block is
+a second declarative form for one kind of fact. And it is the expensive form.
+Measured, in `prague.proto`:
+
+| | member-naming strings |
+|---|---|
+| relations as a block | **11** — `field: "sport_type_id"`, `inline: "sport_type"` |
+| relations on the member | **6** |
+
+Every one of the 11 is a string naming a member of the same message, and protoc
+checks **none** of them (measured — see the scoreboard). Halving them is not the
+finding, though. The finding is *which five went*, because the split is exact:
+
+**`references` is unary** — "this member holds `Team`'s identity" is a fact about
+one member. Written on that member, it has no field name left to get wrong:
+
+```protop
+int64? home_team_id = 5 [references(Team)];
+```
+
+An orphaned `references` is now **unrepresentable**, not merely unchecked. That
+is a strictly better failure mode, and spelling A gets it too. (What it does
+*not* fix is `references` naming a type that does not exist — see finding 4,
+where that turned out to be 25 of the corpus's 36 foreign-key-shaped members.)
+
+**`snapshot_of` is binary** — it pairs a foreign key with its denormalized copy,
+which are two different members at two different tags. One of the two must name
+the other, and no choice of where to write the annotation changes that:
+
+```protop
+StaticDataRef? home_team = 58 [snapshot_of(home_team_id)];
+```
+
+The rule generalises across the whole file. Every member-naming string left in
+`prague.proto` is binary — 6 `snapshot_of`, 4 composite-key components, 1 alias
+target, 2 view renames — and every one that vanished was unary. **A relation
+between two members always costs a name; a property of one member never does.**
+
+Three things survive unchanged from the block form:
+
+**`references(SportType)` names a table, not a field.** It resolves to that
+table's *declared key*, so arity and type are checked, and a composite-key target
+needs no new syntax at all.
+
+**`repeated` vs a relation is a real line, drawn by the data.** `Runner`, `Odd`
 and `SlimOdd` declare no `[DataCacheKey]`, so nothing can point at them and they
-cannot exist apart from their row. `repeated` is composition; `relations` is
+cannot exist apart from their row. `repeated` is composition; a relation is
 reference; the test is whether the child type declares a key.
 
-**A view inherits relations with its fields** and declares none of its own — it
-has no fields of its own to relate.
+**A view inherits relations with its fields**, and now does so by construction.
+Under the block form this had to be a *rule* — "a view may not declare relations
+of its own". On the member it is simply what happens: the annotation travels with
+the member the view lists, or the member is not there.
 
-**Fog, marked as such:** the corpus has **no many-to-many**. The syntax carries
-`many … <-> … through …` because it was asked for, but nothing here grounds it,
-and an ungrounded construct is a guess. *A decision that cannot express the
-corpus is not done* — the inverse also holds: a construct the corpus never
-exercises is not tested.
+**Fog, and now a principled boundary:** the corpus has **no many-to-many**, and
+it is the one relation with *no single owning member* — there is no field that
+holds the other side's identity, which is the whole reason a join table exists.
+So it is the one relation that stays message-level, and that is a consequence of
+the unary/binary rule rather than an exception to it. It remains ungrounded: *a
+decision that cannot express the corpus is not done*, and the inverse holds too —
+a construct the corpus never exercises is not tested.
 
-## 6. Annotations should be spelled the way they are emitted
+## 6. Position tells the two kinds of annotation apart, and a name cannot
 
-The target is a C# attribute. Spelling it as a C# attribute costs the reader
-nothing and costs protopc nothing, because protopc does not read it:
+protop's brackets carry two unrelated things: **protop's own options**, which
+protopc reads and checks, and **verbatim C# attribute text**, which protopc
+copies without reading. Something has to distinguish them.
+
+The first attempt was lexical — `[lowercase(...)]` checked, `[PascalCase(...)]`
+verbatim. It works, and it is wrong: it makes capitalization load-bearing, so a
+typo in a protop annotation silently becomes a passthrough attribute and fails at
+**C# compile time instead of protop compile time**. protop has no warnings; a
+mistyped annotation must be an error.
+
+Position is free, structural, and cannot be mistyped into the other meaning:
 
 ```protop
-[DataCacheTopic("Cache.[v:brandId].BetType")]
-table BetType {
-  [DataCacheFromTimestamp]
-  int64 timestamp = 25;
+[DataCacheTopic("Cache.[v:brandId].SportGame")]     // C#'s slot    → copied
+table SportGame {
+  int64 sport_type_id = 2 [references(SportType)];  // Protobuf's slot → checked
+
+  [DataCacheFromTimestamp]                          // both on one member,
+  int64 timestamp = 25;                             // no collision
 }
 ```
 
-Spelling A cannot have one name for this. Measured:
+Each annotation sits where its **own language** already puts it: C# attributes
+before the declaration, options after the field. Nothing new is invented, and the
+reader never inspects a name to learn whether a bracket is compiled or copied.
+
+**Spelling A cannot have this rule** — it has exactly one slot, so its checked
+options and its verbatim C# text share the bracket:
+
+```proto
+int64 timestamp = 25 [(protop.field_attribute) = "[DataCacheFromTimestamp]"];
+```
+
+Worse, A cannot even have one *name* for passthrough. Measured:
 
 ```
 protop/options.proto:100:19: "attribute" is already defined in "protop".
 ```
 
 Extension field names live in a **flat package namespace**, so one name cannot
-extend both `MessageOptions` and `FieldOptions`. Spelling A needs
-`type_attribute` and `field_attribute`, and every author has to know which
-context they are in. Spelling B has one bracket, wherever it goes.
+extend both `MessageOptions` and `FieldOptions`. A needs `type_attribute` and
+`field_attribute`, and every author must know which context they are in. B has
+one bracket per slot, and the slot says which.
+
+Recorded as a cost of the position rule: protop has **no type-level annotation of
+its own today**, so nothing yet tests the rule above a field. If one is ever
+needed, Protobuf's own answer is a body statement (`option x = y;`), and B should
+borrow that rather than invent a third place.
 
 A related small finding: **retired extension numbers cannot be reserved.**
 `reserved` is a message-level statement and protoc rejects it inside `extend`,
@@ -353,14 +469,16 @@ own parser. Spelling A's problem is not that it cannot carry the information:
 | presence | ✅ feature | ✅ | ✅ |
 | simple key | ✅ option | n/a | ✅ |
 | composite key | ✅ option | ❌ names, tag collision | ✅ |
-| relation target | ✅ option | ❌ exists, is a table, has a key | ✅ |
-| relation FK type | ✅ option | ❌ matches target's key | ✅ |
-| relation `inline` | ✅ option | ❌ exists, type, **presence agrees** | ✅ |
+| relation target | ✅ field option | ❌ exists, is a table, has a key | ✅ |
+| relation FK type | ✅ field option | ❌ matches target's key | ✅ |
+| relation owner | ✅ **by construction** | ✅ **unrepresentable if wrong** | ✅ |
+| snapshot pairing | ✅ field option | ❌ exists, type, **presence agrees** | ✅ |
 | alias | ✅ option | ❌ field name | ✅ |
 | view source | ✅ option | ❌ existence, shape | ✅ |
 | view field/tag/type/presence | ✅ option | ❌ all four | ✅ |
 | decimal scale | ✅ option | ❌ applicability | ✅ |
-| attribute placement | ⚠️ two option names | ❌ | ✅ one spelling |
+| attribute placement | ⚠️ two option names | ❌ | ✅ one slot each |
+| checked vs verbatim | ⚠️ one shared bracket | ❌ | ✅ by position |
 
 Every ❌ is a diagnostic protopc has to implement itself. The strict-profile bet
 — *"lean on protoc so protopc does less"* — pays off for the Protobuf core and
@@ -369,8 +487,16 @@ A only decides whether they run against a descriptor set or against its own AST.
 
 Cutting the topic and the index made spelling A's ledger *worse*, not better:
 both were unchecked strings, and what replaced them — relations — is the most
-check-hungry construct in the language. The `inline` presence check alone would
-have caught a live bug in the corpus.
+check-hungry construct in the language. The `snapshot_of` presence check alone
+would have caught a live bug in the corpus.
+
+One row moved the other way, and it is the only ✅ in A's check column that was
+*earned* rather than inherited from protoc. Putting `references` on the member it
+describes deleted the field name it used to carry, so "this relation names a
+member that does not exist" stopped being a diagnostic anybody has to write. The
+cheapest check is the one made unrepresentable — and it is available in **both**
+spellings, because it is a fact about where an annotation sits, not about which
+parser reads it.
 
 ## What leaving Protobuf would cost
 

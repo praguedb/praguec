@@ -12,13 +12,59 @@
 //   struct / record / table    three declaration keywords in place of `message`
 //   view X of Y                a field-subset at Y's tags
 //   key                        identity: a field, or a tuple over fields
-//   relations { ... }          FK structure: what points at what
+//   = N [references(T)]        this field holds T's identity
+//   = N [snapshot_of(f)]       this field is a denormalized copy of f's target
 //   repeated                   an OWNED child collection, on the wire
 //   ?                          presence
 //   decimal(N)                 scaled money
 //   alias a = b;               get/set passthrough, no wire slot
 //   [Attribute]                verbatim C# attribute, passed through
 //   NO TAG => NO WIRE SLOT     the one structural rule the syntax encodes
+//
+// TWO KINDS OF ANNOTATION, TOLD APART BY POSITION:
+//
+//   after the field, in [ ]   protop's own, a CLOSED set. protopc reads it,
+//                             checks it, and an unknown one is an ERROR.
+//                             This is PROTOBUF'S OWN SLOT for field options,
+//                             and protop's options go where Protobuf's go.
+//   before the declaration    verbatim C# attribute text. protopc copies it
+//                             and does not read it. This is C#'S OWN SLOT,
+//                             and the text is written exactly as emitted.
+//
+// Each annotation sits where its own language puts it. That is the whole rule,
+// and it is structural: the reader never inspects a NAME to learn whether a
+// bracket is compiled or copied — only where it sits.
+//
+// The rule it replaced was lexical — `[lowercase]` checked, `[PascalCase]`
+// verbatim — which made capitalization load-bearing and would have turned a
+// typo in a protop annotation into a silent passthrough that failed at C#
+// compile time instead of protop compile time. Position cannot be mistyped
+// into the other meaning.
+//
+// A field may carry both, and they do not collide:
+//
+//   [DataCacheFromTimestamp]              <- copied into the C# output
+//   int64 timestamp = 25 [range_index];   <- read by protopc      (hypothetical)
+//
+// WHAT THIS COSTS, recorded honestly: protop has no type-level annotation of
+// its own today, so nothing yet tests the rule above a field. If one is ever
+// needed, Protobuf's own answer — a statement inside the body, `option x = y;`
+// — is the slot, and B would borrow that too rather than invent a third place.
+//
+// SPELLING A CANNOT HAVE THIS RULE. A has exactly one slot, the field-option
+// bracket, so its checked options and its verbatim C# text share it:
+//
+//   int64 timestamp = 25 [(protop.field_attribute) = "[DataCacheFromTimestamp]"];
+//
+// One bracket, two worlds, told apart only by which extension name is used.
+//
+// WHAT IS SYNTAX AND WHAT IS AN ANNOTATION:
+//
+//   Syntax carries the wire and identity contract — type, tag, presence, `key`.
+//   `key` stays a keyword because relations RESOLVE AGAINST it:
+//   `references(SportType)` means "SportType's declared key", so identity is
+//   structure other declarations depend on, not decoration.
+//   Everything else that is a fact ABOUT a member is an annotation on it.
 //
 // WHAT IS DELIBERATELY NOT IN IT:
 //
@@ -81,16 +127,6 @@ record Odd {
   int64  timestamp   = 5;
 }
 
-// --- REFERENCE TARGETS ------------------------------------------------------
-// These are tables because things point at them. In the corpus they live behind
-// a denormalized StaticDataRef snapshot and are never themselves cached here —
-// but the relation has to name a keyed type, so writing them down is what makes
-// `sport_type_id -> SportType` mean anything.
-table SportType { key int64 id = 1;  string name = 2; }
-table Country   { key int64 id = 1;  string name = 2; }
-table League    { key int64 id = 1;  string name = 2; }
-table Team      { key int64 id = 1;  string name = 2; }
-
 // --- TABLE, SIMPLE KEY ------------------------------------------------------
 // Identity IS a stored field. `key` is FlatBuffers' `(key)` promoted from an
 // attribute to a modifier, because here it is load-bearing rather than advisory.
@@ -103,6 +139,18 @@ table Team      { key int64 id = 1;  string name = 2; }
 table SportGame {
   key int64 event_id = 1;
 
+  // THESE ARE NOT FOREIGN KEYS, and they used to be annotated as if they were.
+  //
+  // `[references(SportType)]` sat here until SportType was looked for and found
+  // not to exist. Measured: SportTypeId, CountryId, LeagueId, HomeTeamId and
+  // AwayTeamId — 25 members across the corpus — name no cached type, and every
+  // one of the 15 pairs among them carries a StaticDataRef copy. EventId and
+  // BetTypeId (11 members) DO name a cached type, and carry no copy.
+  //
+  // Exactly complementary: the copy exists because the referent does not. So
+  // each of these is the id half of an embedded pair, and `snapshot_of` below
+  // is what binds the halves. The one real relation in this file is
+  // `event_id [references(SportGame)]` in BetType.
   int64 sport_type_id = 2;
   int64 country_id    = 3;
   int64 league_id     = 4;
@@ -131,37 +179,22 @@ table SportGame {
   // reference. That line is drawn by whether the child type declares a key.
   repeated StaticDataRef runners = 47;
 
-  // The denormalized snapshots. They carry their own tags because they are
-  // really on the wire — but they are NOT independent fields, which is what
-  // the relations block below says.
-  StaticDataRef  sport_type = 55;
-  StaticDataRef  country    = 56;
-  StaticDataRef  league     = 57;
-  StaticDataRef? home_team  = 58;
-  StaticDataRef? away_team  = 59;
-
-  // --- RELATIONS ------------------------------------------------------------
-  // One block, at the end, over fields already declared above. Field lines stay
-  // pure — type, name, tag, presence — which is exactly the wire contract, and
-  // nothing else.
+  // The embedded pairs. They carry their own tags because they really are on
+  // the wire — but they are not independent fields, and `snapshot_of` is what
+  // says so. It resolves to a MEMBER of this message, not through it to a
+  // table: there is no table. Two halves of one referent, which must agree.
   //
-  // `-> SportType` names a TABLE, not a field. It resolves to that table's
-  // declared key, so arity and type are checked, and a composite target needs
-  // no new syntax.
-  //
-  // `inline X` says X is a denormalized copy of the target, not a field in its
-  // own right. This is the check that pays for the whole block: the corpus has
-  // 15 of these pairs and THREE of them disagree with their own FK about
-  // presence — SlimSportGame.HomeTeamId is `long?` while its own HomeTeam is
-  // non-nullable `= null!`, where BOSportGameCacheItem has `StaticDataRef?`.
-  // With the relation declared, `home_team` does not get to have an opinion.
-  relations {
-    sport_type_id -> SportType inline sport_type;
-    country_id    -> Country   inline country;
-    league_id     -> League    inline league;
-    home_team_id  -> Team      inline home_team;
-    away_team_id  -> Team      inline away_team;
-  }
+  // This is the check that pays for the whole idea, and it lands on the right
+  // line: the corpus has 15 of these pairs and THREE disagree with their own
+  // foreign key about presence. Below, `home_team` is `?` because
+  // `home_team_id` is. SlimSportGame gets this wrong — `long? HomeTeamId` with
+  // a non-nullable `StaticDataRef HomeTeam = null!` — and the diagnostic would
+  // point here, at the snapshot, which is the line that is actually wrong.
+  StaticDataRef  sport_type = 55 [snapshot_of(sport_type_id)];
+  StaticDataRef  country    = 56 [snapshot_of(country_id)];
+  StaticDataRef  league     = 57 [snapshot_of(league_id)];
+  StaticDataRef? home_team  = 58 [snapshot_of(home_team_id)];
+  StaticDataRef? away_team  = 59 [snapshot_of(away_team_id)];
 }
 
 // --- TABLE, COMPOSITE KEY ---------------------------------------------------
@@ -179,8 +212,14 @@ table BetType {
   // it too, and protoc compiles that without a word (measured).
   key key = 1 (event_id, bet_type_id);
 
-  int64 event_id = 2;
-  int64 id       = 3;
+  // A bare foreign key: no snapshot, because BetType carries no copy of the
+  // SportGame it belongs to. One annotation, one member, nothing else to bind.
+  // THE ONLY REAL RELATION IN THIS FILE — and its target is ambiguous. SIX
+  // corpus types declare EventId as their identity. They are twins and
+  // projections of each other, sharing an identity AND a key space, so naming
+  // SportGame does not pick one out. Unanswered, in both spellings.
+  int64 event_id = 2 [references(SportGame)];
+  int64 id = 3;
 
   // COMPUTED MEMBER, class 2 — alias. No tag, no wire slot, get AND set.
   // It exists so this type's API matches its view, SlimBetType, which names the
@@ -204,10 +243,6 @@ table BetType {
   int64 timestamp = 25;
 
   repeated Odd odds = 26;
-
-  relations {
-    event_id -> SportGame;
-  }
 }
 
 // --- VIEWS ------------------------------------------------------------------
@@ -240,10 +275,11 @@ view SlimSportGame of SportGame {
   venue;
   sport_type;
 
-  // Relations are inherited from SportGame along with the fields: sport_type_id
-  // is still a reference to SportType, and its `inline sport_type` snapshot is
-  // still bound to it. A view may not declare relations of its own — it has no
-  // fields of its own to relate.
+  // Relations need no mention at all. They are annotations ON the members, so
+  // they travel with the members a view lists — `sport_type` is still a
+  // snapshot of `sport_type_id`, which is still a reference to SportType.
+  // With a separate relations block this had to be a RULE ("a view may not
+  // declare relations of its own"); on the property it is just what happens.
 }
 
 [DataCacheTopic("Cache.[v:brandId].BetType")]

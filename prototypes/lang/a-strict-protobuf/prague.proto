@@ -52,6 +52,19 @@ enum BetTypeStatus {
 // RECORD — a plain payload. No identity, no cache, reference type.
 // A record cannot be the target of a relation: a relation resolves to a key,
 // and a record has none.
+//
+// StaticDataRef is the corpus's record, and it is the reason the four tables
+// that used to sit below this comment are GONE. They were SportType, Country,
+// League and Team, and they existed for one purpose: to give
+// `references(SportType)` somewhere to point. MEASURED: no such type exists
+// anywhere in the corpus. StaticDataRef is an empty subclass of
+// BaseProviderObject (Id, Name, ProviderSourceKey, ProviderKey) and is the
+// IDENTICAL type for a sport, a country and a team.
+//
+// So `long SportTypeId` + `StaticDataRef SportType` is not a foreign key and a
+// cached row that could be fetched instead. It is the whole representation.
+// The alternative to the copy is not a join — it is nothing. Inventing those
+// four tables was inventing corpus to fit a feature.
 // ---------------------------------------------------------------------------
 message StaticDataRef {
   option (protop.shape) = SHAPE_RECORD;
@@ -68,30 +81,6 @@ message Odd {
   int64  timestamp = 5;
 }
 
-// ---------------------------------------------------------------------------
-// REFERENCE TARGETS — tables because things point at them.
-// ---------------------------------------------------------------------------
-message SportType {
-  option (protop.shape) = SHAPE_TABLE;
-  int64  id   = 1 [(protop.table_key) = true];
-  string name = 2;
-}
-message Country {
-  option (protop.shape) = SHAPE_TABLE;
-  int64  id   = 1 [(protop.table_key) = true];
-  string name = 2;
-}
-message League {
-  option (protop.shape) = SHAPE_TABLE;
-  int64  id   = 1 [(protop.table_key) = true];
-  string name = 2;
-}
-message Team {
-  option (protop.shape) = SHAPE_TABLE;
-  int64  id   = 1 [(protop.table_key) = true];
-  string name = 2;
-}
-
 // ===========================================================================
 // TABLE, SIMPLE KEY — identity IS a stored field.
 // Modelled on BOSportGameCacheItem (trimmed to the interesting members).
@@ -106,31 +95,37 @@ message SportGame {
   // the language understood it.
   option (protop.type_attribute) = "[DataCacheTopic(\"Cache.[v:brandId].SportGame\")]";
 
-  // RELATIONS. protoc will validate nothing here: not that SportType exists,
-  // not that it is a table, not that it has a key, not that sport_type_id's
-  // type matches that key, not that `sport_type` is a field of this message,
-  // and not that its presence agrees with sport_type_id's. Six checks, zero
-  // performed. See the README scoreboard.
-  option (protop.relation) = {
-    field: "sport_type_id" target: "SportType" inline: "sport_type"
-    cardinality: CARDINALITY_ONE
-  };
-  option (protop.relation) = {
-    field: "country_id" target: "Country" inline: "country"
-    cardinality: CARDINALITY_ONE
-  };
-  option (protop.relation) = {
-    field: "league_id" target: "League" inline: "league"
-    cardinality: CARDINALITY_ONE
-  };
-  option (protop.relation) = {
-    field: "home_team_id" target: "Team" inline: "home_team"
-    cardinality: CARDINALITY_ONE
-  };
-  option (protop.relation) = {
-    field: "away_team_id" target: "Team" inline: "away_team"
-    cardinality: CARDINALITY_ONE
-  };
+  // RELATIONS. There are none in this message, and that is the finding.
+  //
+  // What used to be here was five message-level options, each carrying
+  // `field: "sport_type_id" target: "SportType" inline: "sport_type"`. Two
+  // separate things were wrong with them.
+  //
+  // ONE. The `field:` string named a member of this same message and protoc
+  // never checked it. Moving the annotation ONTO the member it describes
+  // removes the string entirely — see `snapshot_of` below for what survives,
+  // and why. Relation-borne member names across this file went 11 -> 6:
+  //
+  //   GONE  `references` is a UNARY fact — "this member holds T's identity".
+  //         Sat on the member it describes, it has no field name left to get
+  //         wrong. That error became unrepresentable, not merely unchecked.
+  //   STAYS `snapshot_of` is a BINARY fact — it pairs two members. One of the
+  //         two must name the other, wherever the annotation is written.
+  //
+  // That rule holds across the file: composite_key and alias are binary too,
+  // and every member-naming string left here is one of them. An annotation
+  // absorbs a unary fact for free; a binary one always costs a name.
+  //
+  // TWO, and this is the larger one. `target: "SportType"` named a type that
+  // DOES NOT EXIST. Measured across the corpus: SportTypeId, CountryId,
+  // LeagueId, HomeTeamId and AwayTeamId — 25 members — resolve to nothing,
+  // and all 15 of the pairs among them carry a StaticDataRef copy. EventId
+  // and BetTypeId (11 members) resolve to a real cached type, and carry no
+  // copy at all. The two sets are exactly complementary.
+  //
+  // The copy exists BECAUSE the referent does not. So these five fields are
+  // not foreign keys; they are the id half of an embedded pair, and the only
+  // real relation in this file is BetType.event_id -> SportGame, below.
 
   // [Key(0)] + [DataCacheKey] on a real stored field.
   int64 event_id = 1 [(protop.table_key) = true];
@@ -172,14 +167,22 @@ message SportGame {
   // OWNED, not related: StaticDataRef has no key, so nothing can point at it.
   repeated StaticDataRef runners = 47;
 
-  // The denormalized snapshots named by the relations above. Note 58 and 59:
-  // the FK is EXPLICIT (nullable) and so is the snapshot. Nothing in this file
-  // ties those two facts together — in the corpus they have already come apart.
-  StaticDataRef sport_type = 55;
-  StaticDataRef country    = 56;
-  StaticDataRef league     = 57;
-  StaticDataRef home_team  = 58;
-  StaticDataRef away_team  = 59;
+  // The embedded pairs. `snapshot_of` does NOT resolve through a relation to
+  // another table — there is no other table, which is the whole point above.
+  // It says: these two members are two halves of one referent, so they must
+  // agree about presence. That check needs no target type to exist, which is
+  // why it survives the finding that killed `references` on these fields.
+  //
+  // Note 58 and 59: the foreign key is EXPLICIT
+  // (nullable) and so should be the snapshot — but a message field may not
+  // carry IMPLICIT and EXPLICIT is its only legal value, so these four lines
+  // look identical whatever the truth is. protoc ties nothing together here.
+  // In the corpus these two facts have already come apart.
+  StaticDataRef sport_type = 55 [(protop.snapshot_of) = "sport_type_id"];
+  StaticDataRef country    = 56 [(protop.snapshot_of) = "country_id"];
+  StaticDataRef league     = 57 [(protop.snapshot_of) = "league_id"];
+  StaticDataRef home_team  = 58 [(protop.snapshot_of) = "home_team_id"];
+  StaticDataRef away_team  = 59 [(protop.snapshot_of) = "away_team_id"];
 }
 
 // ===========================================================================
@@ -207,11 +210,12 @@ message BetType {
   // Exists so this type's API matches its view, SlimBetType, below.
   option (protop.alias) = { name: "bet_type_id" field: "id" };
 
-  option (protop.relation) = {
-    field: "event_id" target: "SportGame" cardinality: CARDINALITY_ONE
-  };
-
-  int64 event_id = 2;
+  // THE ONLY REAL RELATION IN THIS FILE — and its target is ambiguous. SIX
+  // corpus types declare EventId as their identity (BO/BP SportGame, BO/BP/—
+  // LiveObject, SlimSportGame). They are twins and projections of each other,
+  // sharing an identity AND a key space, so "references SportGame" does not
+  // pick one out. protop needs an answer to that and does not have one.
+  int64 event_id = 2 [(protop.references) = "SportGame"];
   int64 id       = 3;
   string name    = 4;
 
@@ -257,7 +261,7 @@ message SlimSportGame {
   int64 league_id     = 4;
   int64 home_team_id  = 5 [features.field_presence = EXPLICIT];
   Venue venue         = 7;
-  StaticDataRef sport_type = 55;
+  StaticDataRef sport_type = 55 [(protop.snapshot_of) = "sport_type_id"];
 }
 
 // SlimBetType projects BetType tag-for-tag — including the composite key at
@@ -276,7 +280,7 @@ message SlimBetType {
     field: "bet_type_id"
   };
 
-  int64  event_id     = 2;
+  int64  event_id     = 2 [(protop.references) = "SportGame"];
   int64  bet_type_id  = 3 [(protop.view_field) = "id"];
   string name         = 4;
 

@@ -48,21 +48,16 @@ enum Cardinality {
   CARDINALITY_MANY_TO_MANY = 3;  // via a join table. NO CORPUS INSTANCE.
 }
 
-// A reference to another table's identity.
-//
-// `target` names a TABLE, not a field: the relation resolves to that table's
-// declared key, so its arity and type are checkable, and a composite key is
-// handled without new syntax.
-//
-// `inline` names an optional denormalized snapshot member carrying a copy of
-// the target. 15 of these exist in the corpus (SportTypeId + SportType), and
-// three of them disagree with their own FK about presence.
-message Relation {
-  string field  = 1;
-  string target = 2;
-  string inline = 3;
-  Cardinality cardinality = 4;
-  string through = 5;  // join table, many-to-many only
+// Many-to-many, which has NO CORPUS INSTANCE — and after the measurement above,
+// no plausible one either: a join needs two keyed ends, and 25 of the corpus's
+// 36 FK-shaped members have no keyed end to join to. It is the one relation
+// with no single owning field, so it is the one that must stay message-level;
+// that placement is a consequence of the unary/binary rule, not an exception.
+// It remains the fog it was, now with a measurement against it.
+message ManyToMany {
+  string member  = 1;
+  string target  = 2;
+  string through = 3;
 }
 
 // [IgnoreMember] get/set passthrough to another field. No wire slot.
@@ -78,7 +73,7 @@ extend google.protobuf.FileOptions {
 extend google.protobuf.MessageOptions {
   Shape shape = 50010;
   CompositeKey composite_key = 50021;
-  repeated Relation relation = 50022;
+  repeated ManyToMany many_to_many = 50022;
   repeated Alias alias = 50023;
   string view_of = 50024;
 
@@ -102,6 +97,42 @@ extend google.protobuf.MessageOptions {
 
 extend google.protobuf.FieldOptions {
   bool table_key = 50011;
+
+  // RELATIONS, on the field rather than on the message.
+  //
+  // Better than the message-level form it replaces, for a reason worth stating
+  // precisely: that form carried `field: "sport_type_id"`, a STRING naming a
+  // member of the same message, and protoc checked no part of it. On the field
+  // there is no `field:` to get wrong. Relation-borne member names in
+  // prague.proto went 11 -> 6, and the split is the general rule:
+  //
+  //   a UNARY fact (this member holds T's identity) sits on the member and
+  //   costs no name at all;
+  //   a BINARY fact (these two members are halves of one thing) must name one
+  //   member from the other, wherever it is written.
+  //
+  // `references` names a TABLE, not a field: it resolves to that table's
+  // declared key, so arity and type are checkable and a composite-key target
+  // needs no new syntax. Still a bare string to protoc.
+  //
+  // HOW LITTLE THIS IS USED, measured. Of the corpus's 36 foreign-key-shaped
+  // members, 25 name no cached type at all and 4 more are opaque ids; only
+  // EventId and BetTypeId resolve. And EventId resolves to SIX types at once —
+  // twins and projections sharing an identity and a key space — so even the
+  // grounded case does not pick a target out. protop has no answer for that.
+  string references = 50040;
+
+  // This field is a denormalized copy of the referent that `snapshot_of` names
+  // the id of. It resolves to a MEMBER of the same message and stops there: it
+  // does NOT follow that member's `references`, because in every corpus
+  // instance there is nothing to follow. All 15 snapshot pairs sit on ids that
+  // name no type — the copy exists precisely BECAUSE the referent does not.
+  //
+  // The check it buys needs no target type to exist, which is why it survives
+  // that finding: the two halves must agree about presence. Three of the 15
+  // pairs do not, including SlimSportGame's `long? HomeTeamId` beside a
+  // non-nullable `StaticDataRef HomeTeam = null!`.
+  string snapshot_of = 50041;
   int32 decimal_scale = 50012;
   string view_field = 50025;
   repeated string field_attribute = 50031;
