@@ -1,0 +1,356 @@
+edition = "2023";
+
+package prague;
+
+import "protop/options.proto";
+option (protop.revision) = REVISION_1;
+
+option csharp_namespace = "Common.IntegratedEventApi.Cache.Prague.Models";
+
+// 188 of the corpus's 333 members are non-nullable; Editions 2023 defaults to
+// EXPLICIT presence, i.e. nullable. So the file flips the default and the 145
+// nullable members opt back in one at a time. Features inherit (custom options
+// do not), which is the only reason this is 145 annotations and not 188.
+option features.field_presence = IMPLICIT;
+
+// ---------------------------------------------------------------------------
+// STRUCT — a value payload, embedded in another type, emitted as a C# struct.
+// Modelled on corpus/prague/payloads/Venue.cs.
+//
+// NOTE THE TAGS. Venue's members are [Key(1)] and [Key(2)], and Key = tag - 1,
+// so the tags are 2 and 3. The first tag is NOT one. Venue and BOVenue are the
+// only two types in the whole corpus that start above key 0 — see the README.
+//
+// FlatBuffers draws the same table/struct line and draws it in the same place:
+// a FlatBuffers struct has all fields present, no defaults, no field additions
+// ever, scalars only, and is recommended only "for simple objects where you are
+// very sure no changes will ever be made" (flatbuffers.dev/schema). Venue is
+// two `required` scalars that have not changed. That is the loan.
+// ---------------------------------------------------------------------------
+message Venue {
+  option (protop.shape) = SHAPE_STRUCT;
+
+  int64  id   = 2;
+  string name = 3;
+}
+
+enum EventStatus {
+  EVENT_STATUS_UNKNOWN = 0;
+  EVENT_STATUS_NOT_STARTED = 1;
+  EVENT_STATUS_IN_PROGRESS = 2;
+  EVENT_STATUS_FINISHED = 3;
+}
+
+enum BetTypeStatus {
+  BET_TYPE_STATUS_UNKNOWN = 0;
+  BET_TYPE_STATUS_OPEN = 1;
+  BET_TYPE_STATUS_SUSPENDED = 2;
+  BET_TYPE_STATUS_CLOSED = 3;
+}
+
+// ---------------------------------------------------------------------------
+// RECORD — a plain payload. No identity, no cache, reference type.
+// A record cannot be the target of a relation: a relation resolves to a key,
+// and a record has none.
+//
+// StaticDataRef is the corpus's record, and it is the reason the four tables
+// that used to sit below this comment are GONE. They were SportType, Country,
+// League and Team, and they existed for one purpose: to give
+// `references(SportType)` somewhere to point. MEASURED: no such type exists
+// anywhere in the corpus. StaticDataRef is an empty subclass of
+// BaseProviderObject (Id, Name, ProviderSourceKey, ProviderKey) and is the
+// IDENTICAL type for a sport, a country and a team.
+//
+// So `long SportTypeId` + `StaticDataRef SportType` is not a foreign key and a
+// cached row that could be fetched instead. It is the whole representation.
+// The alternative to the copy is not a join — it is nothing. Inventing those
+// four tables was inventing corpus to fit a feature.
+// ---------------------------------------------------------------------------
+message StaticDataRef {
+  option (protop.shape) = SHAPE_RECORD;
+
+  int64  id   = 1;
+  string name = 2;
+}
+
+message Odd {
+  option (protop.shape) = SHAPE_RECORD;
+
+  string name = 1;
+  double odds_actual = 9;
+  int64  timestamp = 5;
+}
+
+// ===========================================================================
+// TABLE, SIMPLE KEY — identity IS a stored field.
+// Modelled on BOSportGameCacheItem (trimmed to the interesting members).
+// ===========================================================================
+message SportGame {
+  option (protop.shape) = SHAPE_TABLE;
+
+  // The topic is no longer a language concept. It is C# attribute text that
+  // protopc copies out without reading — CONTEXT.md's `passthrough`. Note that
+  // this option is a bare string protoc will never look inside, which is the
+  // same deal the old (protop.cache_topic) offered, minus the pretence that
+  // the language understood it.
+  option (protop.type_attribute) = "[DataCacheTopic(\"Cache.[v:brandId].SportGame\")]";
+
+  // RELATIONS. There are none in this message, and that is the finding.
+  //
+  // What used to be here was five message-level options, each carrying
+  // `field: "sport_type_id" target: "SportType" inline: "sport_type"`. Two
+  // separate things were wrong with them.
+  //
+  // ONE. The `field:` string named a member of this same message and protoc
+  // never checked it. Moving the annotation ONTO the member it describes
+  // removes the string entirely:
+  //
+  //   UNARY fact ("this member holds T's identity") — sat on the member it
+  //   describes, `references` has no field name left to get wrong. That error
+  //   became unrepresentable, not merely unchecked.
+  //   BINARY fact ("these two members are halves of one thing") — one of the
+  //   two must name the other, wherever the annotation is written. It cannot
+  //   be absorbed by position.
+  //
+  // Every member-naming string left in this file is binary: the two composite
+  // keys and the alias. An annotation absorbs a unary fact for free; a binary
+  // one always costs a name.
+  //
+  // TWO, and this is the larger one. `target: "SportType"` named a type that
+  // DOES NOT EXIST. Measured across the corpus: SportTypeId, CountryId,
+  // LeagueId, HomeTeamId and AwayTeamId — 25 members — resolve to nothing,
+  // and all 15 of the pairs among them carry a StaticDataRef copy. EventId
+  // and BetTypeId (11 members) resolve to a real cached type, and carry no
+  // copy at all. The two sets are exactly complementary.
+  //
+  // The copy exists BECAUSE the referent does not. So these five fields are
+  // not foreign keys; they are the id half of an embedded pair, and the only
+  // real relation in this file is BetType.event_id -> SportGame, below.
+
+  // [Key(0)] + [DataCacheKey] on a real stored field.
+  int64 event_id = 1 [(protop.table_key) = true];
+
+  // Inherits the file's IMPLICIT -> non-null C# `long`. [Key(1)]
+  int64 sport_type_id = 2;
+  int64 country_id    = 3;
+  int64 league_id     = 4;
+
+  // Opts back into EXPLICIT -> nullable C# `long?`. [Key(4)]
+  int64 home_team_id = 5 [features.field_presence = EXPLICIT];
+  int64 away_team_id = 6 [features.field_presence = EXPLICIT];
+
+  // A struct-valued field. Corpus has `BOVenue? Venue` at [Key(6)] — nullable,
+  // and it has to be: a non-nullable struct member THROWS on a nil slot while
+  // tolerating an absent one (issue #19), and the array is nil-padded.
+  //
+  // protop cannot demand an explicit presence marker here even if it wanted to:
+  // `[features.field_presence = IMPLICIT]` on a message field is a protoc ERROR
+  // ("Message fields can't specify implicit presence"), and EXPLICIT is the only
+  // legal value, so writing it is noise. The file-scope IMPLICIT above inherits
+  // straight past this field, silently and correctly.
+  Venue venue = 7;
+
+  int32 fixture_id = 15 [features.field_presence = EXPLICIT];
+
+  EventStatus event_status = 24;
+
+  int64 event_date         = 28;
+  int64 provider_timestamp = 35;
+
+  // Money. Bare decimal is a MessagePack STRING of invariant text today, so
+  // scaling is a one-way wire door (issue #3).
+  int64 live_limit_manual_single = 36 [
+    features.field_presence = EXPLICIT,
+    (protop.decimal_scale) = 4
+  ];
+
+  // OWNED, not related: StaticDataRef has no key, so nothing can point at it.
+  repeated StaticDataRef runners = 47;
+
+  // THE EMBEDDED PAIRS, now plain fields. `snapshot_of` bound each of these to
+  // the id above that it is the inline copy of, and it is DEFERRED: the pairing
+  // is real, but nothing in phase 1 needs it yet.
+  //
+  // The cost is exact. The one check it bought was that the two halves agree
+  // about presence, and THREE of the corpus's 15 pairs do not — SlimSportGame
+  // has `long? HomeTeamId` beside a non-nullable `StaticDataRef HomeTeam
+  // = null!`. protop now emits that as written and says nothing. Known gap.
+  //
+  // Spelling A could not have checked it well anyway: 58 and 59 pair with
+  // EXPLICIT (nullable) ids and so should themselves be nullable, but a message
+  // field may not carry IMPLICIT and EXPLICIT is its only legal value, so all
+  // five lines look identical whatever the truth is.
+  StaticDataRef sport_type = 55;
+  StaticDataRef country    = 56;
+  StaticDataRef league     = 57;
+  StaticDataRef home_team  = 58;
+  StaticDataRef away_team  = 59;
+}
+
+// ===========================================================================
+// TABLE, COMPOSITE KEY — identity is a get-only ValueTuple over two fields.
+// Modelled on BOBetTypeCacheItem.
+// ===========================================================================
+message BetType {
+  option (protop.shape) = SHAPE_TABLE;
+  option (protop.type_attribute) = "[DataCacheTopic(\"Cache.[v:brandId].BetType\")]";
+
+  // [Key(0)] [DataCacheKey] public (long EventId, long BetTypeId) Key => (EventId, BetTypeId);
+  //
+  // Tag 1 is CONSUMED by this member. It is written to the wire and carries a
+  // copy of what tags 2 and 3 already carry. Nothing else may claim tag 1, and
+  // protoc cannot be told that: `reserved 1;` and a field at 1 are the only two
+  // things it understands, and neither of them is "an option owns this slot".
+  option (protop.composite_key) = {
+    name: "key"
+    tag: 1
+    field: "event_id"
+    field: "bet_type_id"
+  };
+
+  // [IgnoreMember] [JsonIgnore] public long BetTypeId { get => Id; set => Id = value; }
+  // Exists so this type's API matches its view, SlimBetType, below.
+  option (protop.alias) = { name: "bet_type_id" field: "id" };
+
+  // CARDINALITY IS NOT DECLARED, BECAUSE IT IS ALREADY WRITTEN DOWN.
+  //
+  // The question: SportGame has `league_id`, so how does anyone know one League
+  // is in many Games? Compare the foreign key to the DECLARING TYPE'S OWN KEY:
+  //
+  //   FK *is* the whole key       -> one-to-one, enforced by the key itself.
+  //   FK is PART of a composite   -> many-to-one; the rest of the composite is
+  //                                  exactly what distinguishes the many.
+  //   FK is not in the key at all  -> many-to-one, unconstrained.
+  //
+  // One-to-many is that same fact read backwards, so it needs no declaration
+  // either. Checked against the corpus, three for three: BetType's key is
+  // (event_id, bet_type_id) and event_id is part of it -> many BetTypes per
+  // SportGame; LiveObject's key IS event_id -> exactly one; Search's key is
+  // (event_id, channel_id) -> many; SportGame.league_id is in no key -> many
+  // SportGames per League. All correct.
+  //
+  // So four cardinality keywords would be four ways to RESTATE, unchecked, what
+  // the file already says — the same failure that took `topic` out of the
+  // language. Many-to-many falls out too: a type whose key is exactly two
+  // foreign keys IS a join table. The corpus has none.
+  //
+  // THE RULE IS SOUND, NOT COMPLETE, and the difference matters. Every
+  // one-to-one it reports is enforced by a key, so it cannot be wrong. A
+  // many-to-one it reports may be one-to-one in truth with nothing saying so —
+  // an FK outside the key that happens to be unique. It errs by declining to
+  // promise, never by inventing a guarantee; a declared `one_to_one` would err
+  // the other way, asserting uniqueness nothing checks, which is worse because
+  // code will trust it.
+  //
+  // The extension table looks like the counterexample and is not: a type that
+  // exists only to carry more columns for one SportGame has `event_id` as its
+  // whole key, so case one fires and derives one-to-one correctly.
+  //
+  // THE ONLY REAL RELATION IN THIS FILE — and its target is ambiguous. SIX
+  // corpus types declare EventId as their identity (BO/BP SportGame, BO/BP/—
+  // LiveObject, SlimSportGame). They are twins and projections of each other,
+  // sharing an identity AND a key space, so "references SportGame" does not
+  // pick one out. protop needs an answer to that and does not have one.
+  int64 event_id = 2 [(protop.references) = "SportGame"];
+  int64 id       = 3;
+  string name    = 4;
+
+  BetTypeStatus status = 7;
+  BetTypeStatus status_manual    = 8 [features.field_presence = EXPLICIT];
+  BetTypeStatus status_watch_dog = 9 [features.field_presence = EXPLICIT];
+
+  int64 limit_manual_single = 22 [
+    features.field_presence = EXPLICIT,
+    (protop.decimal_scale) = 4
+  ];
+
+  int64 timestamp = 25 [(protop.field_attribute) = "[DataCacheFromTimestamp]"];
+
+  repeated Odd odds = 26;
+}
+
+// ===========================================================================
+// VIEWS
+// ===========================================================================
+
+// SlimSportGame is a field-subset of SportGame at SportGame's tags, and it is
+// ALSO a table in its own right. `view` and `table` are orthogonal axes.
+//
+// Note `id` at tag 1. In the source that field is `event_id`. A view renames.
+// Under int-key MessagePack names are not on the wire, so renaming is free —
+// which is also why `Key`/`Id`/`BetTypeId` drift across the corpus pairs.
+//
+// Every guarantee a view needs is a string here. protoc checks none of:
+//   - that "SportGame" exists, or is a table
+//   - that tag 1 in SportGame is "event_id"
+//   - that the type at tag 1 agrees
+//   - that this message claims no tag SportGame does not have
+//   - that presence at each tag agrees
+message SlimSportGame {
+  option (protop.shape) = SHAPE_TABLE;
+  option (protop.view_of) = "SportGame";
+  option (protop.type_attribute) = "[DataCacheTopic(\"Cache.[v:brandId].SportGame\")]";
+
+  int64 id            = 1 [(protop.table_key) = true, (protop.view_field) = "event_id"];
+  int64 sport_type_id = 2;
+  int64 country_id    = 3;
+  int64 league_id     = 4;
+  int64 home_team_id  = 5 [features.field_presence = EXPLICIT];
+  Venue venue         = 7;
+  StaticDataRef sport_type = 55;
+}
+
+// A VIEW OF A NON-CACHED TYPE. Odd is a record — no key, nothing points at it —
+// and it still has a view, because a view is about tags and members, not about
+// identity.
+message SlimOdd {
+  option (protop.shape) = SHAPE_RECORD;
+  option (protop.view_of) = "Odd";
+
+  string name      = 1;
+  int64  timestamp = 5;
+}
+
+// SlimBetType projects BetType tag-for-tag — including the composite key at
+// tag 1, which it renames from `Key` to `Id`, and the alias at no tag, which it
+// does not carry because in this type the tag-3 field is simply named
+// `bet_type_id` already.
+message SlimBetType {
+  option (protop.shape) = SHAPE_TABLE;
+  option (protop.view_of) = "BetType";
+  option (protop.type_attribute) = "[DataCacheTopic(\"Cache.[v:brandId].BetType\")]";
+
+  option (protop.composite_key) = {
+    name: "id"
+    tag: 1
+    field: "event_id"
+    field: "bet_type_id"
+  };
+
+  int64  event_id     = 2 [(protop.references) = "SportGame"];
+  int64  bet_type_id  = 3 [(protop.view_field) = "id"];
+  string name         = 4;
+
+  BetTypeStatus status = 7;
+  BetTypeStatus status_manual    = 8 [features.field_presence = EXPLICIT];
+  BetTypeStatus status_watch_dog = 9 [features.field_presence = EXPLICIT];
+
+  int64 limit_manual_single = 22 [
+    features.field_presence = EXPLICIT,
+    (protop.decimal_scale) = 4
+  ];
+
+  int64 timestamp = 25 [(protop.field_attribute) = "[DataCacheFromTimestamp]"];
+
+  // A MEMBER NARROWED TO A VIEW. Tag 26 holds `repeated Odd` in BetType and
+  // `repeated SlimOdd` here, and SlimOdd must be a view OF Odd — that is the
+  // whole check, and here nothing performs it. The corpus does exactly this:
+  // BOBetTypeCacheItem.Odds is List<Odd>, SlimBetType.Odds is SlimOdd[].
+  //
+  // In A the narrowing is not written at all. It is INDISTINGUISHABLE from a
+  // type disagreement at a shared tag — which is drift, the thing views exist
+  // to prevent. Spelling B says `SlimOdd odds;` and the source tag stays
+  // pinned; A says `repeated SlimOdd odds = 26;` and protoc reads a wholly
+  // unrelated message with an unrelated field at tag 26.
+  repeated SlimOdd odds = 26;
+}

@@ -1,3 +1,7 @@
 .serena/
 .claude/settings.local.json
 .claude/worktrees/
+
+# Build output
+/protopc
+/dist/

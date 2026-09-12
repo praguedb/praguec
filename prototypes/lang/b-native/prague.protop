@@ -1,0 +1,401 @@
+// SPELLING B — protop as its own language.
+//
+// NOT VALID PROTOBUF. protoc rejects it at the first statement, `revision 1;`
+// ("Expected top-level statement", measured). That is the entire point of the
+// specimen: the same content as ../a-strict-protobuf/prague.proto, written
+// without the constraint, so the two can be read side by side.
+//
+// WHAT THE LANGUAGE IS, in full:
+//
+//   revision 1;                dialect stamp (issue #27)
+//   namespace X;               C# namespace
+//   struct / record / table    three declaration keywords in place of `message`
+//   view X of Y                a field-subset at Y's tags
+//   T member;   (in a view)    take that tag, narrowed to view T
+//   key                        identity: a field, or a tuple over fields
+//   = N [references(T)]        this field holds T's identity
+//   repeated                   an OWNED child collection, on the wire
+//   ?                          presence
+//   decimal(N)                 scaled money
+//   alias a = b;               get/set passthrough, no wire slot
+//   [Attribute]                verbatim C# attribute, passed through
+//   NO TAG => NO WIRE SLOT     the one structural rule the syntax encodes
+//
+// TWO KINDS OF ANNOTATION, TOLD APART BY POSITION:
+//
+//   AFTER the thing, in [ ]   protop's own, a CLOSED set. protopc reads it,
+//                             checks it, and an unknown one is an ERROR.
+//                             On a field that is after the tag, which is
+//                             PROTOBUF'S OWN SLOT for field options. On a
+//                             type it is after the declaration head:
+//
+//                                 table Foo [something] { ... }
+//
+//                             One rule, both levels: the annotation follows
+//                             what it describes.
+//   BEFORE the declaration    verbatim C# attribute text. protopc copies it
+//                             and does not read it. This is C#'S OWN SLOT,
+//                             and the text is written exactly as emitted.
+//
+// WHY THE C# ATTRIBUTE IS BEFORE AND NOT AFTER — the real reason is not "C#
+// does it that way", it is VERBATIM-NESS. The test the passthrough has to pass
+// is: can the text be pasted out of the C# into protop, and back out again,
+// BYTE FOR BYTE. Two measurements say the bracket cannot host it.
+//
+//   The text contains brackets and quotes. The corpus's own topic attribute is
+//   [DataCacheTopic("Cache.[v:brandId].SportGame")] — a `[`, a `]` and two `"`
+//   inside the thing that would be going inside a `[ ]`. Put that in a bracket
+//   that already means something and it must become a STRING, and a string must
+//   be escaped. Spelling A is the proof:
+//
+//       option (protop.type_attribute) =
+//           "[DataCacheTopic(\"Cache.[v:brandId].SportGame\")]";
+//
+//   Attributes stack. 55 of the corpus's 356 attribute-carrying sites carry two
+//   or more, up to four. C# stacks them one per line and so does this; a
+//   bracket list after the tag would have to cram them onto the field line,
+//   next to the wire contract, which is the one line that should stay legible.
+//
+// So the field line keeps type, name, tag, presence and protop's own checked
+// options — everything protopc UNDERSTANDS — and the text it does not
+// understand sits above, quoted by nothing and escaped by nothing.
+//
+// The cost, stated plainly: a reader must learn two positions. That is one
+// sentence, and it is the same sentence in both languages the file mixes.
+//
+// Each annotation sits where its own language puts it. That is the whole rule,
+// and it is structural: the reader never inspects a NAME to learn whether a
+// bracket is compiled or copied — only where it sits.
+//
+// The rule it replaced was lexical — `[lowercase]` checked, `[PascalCase]`
+// verbatim — which made capitalization load-bearing and would have turned a
+// typo in a protop annotation into a silent passthrough that failed at C#
+// compile time instead of protop compile time. Position cannot be mistyped
+// into the other meaning.
+//
+// A field may carry both, and they do not collide:
+//
+//   [DataCacheFromTimestamp]              <- copied into the C# output
+//   int64 timestamp = 25 [range_index];   <- read by protopc      (hypothetical)
+//
+// The type-level slot is DEFINED AND EMPTY. protop has no type-level annotation
+// of its own today — the topic went to C# passthrough, the shape is a keyword,
+// and cardinality turned out to be derivable (see BetType). Defining the slot
+// anyway is deliberate: it is where the next one goes, and settling that now
+// costs nothing, whereas discovering it later invites a third syntax.
+//
+// SPELLING A CANNOT HAVE THIS RULE. A has exactly one slot, the field-option
+// bracket, so its checked options and its verbatim C# text share it:
+//
+//   int64 timestamp = 25 [(protop.field_attribute) = "[DataCacheFromTimestamp]"];
+//
+// One bracket, two worlds, told apart only by which extension name is used.
+//
+// WHAT IS SYNTAX AND WHAT IS AN ANNOTATION:
+//
+//   Syntax carries the wire and identity contract — type, tag, presence, `key`.
+//   `key` stays a keyword because relations RESOLVE AGAINST it:
+//   `references(SportType)` means "SportType's declared key", so identity is
+//   structure other declarations depend on, not decoration.
+//   Everything else that is a fact ABOUT a member is an annotation on it.
+//
+// WHAT IS DELIBERATELY NOT IN IT:
+//
+//   no topic       A topic is one more C# attribute. It was on every table and
+//                  every view, and the corpus has 12 topic-carrying types with
+//                  4 distinct topics — so as syntax it was three-quarters
+//                  restatement. It is now `[DataCacheTopic("...")]`, which is
+//                  shorter than the keyword form was AND says where it goes.
+//   no index       An index is a decision about queries, not a fact about data.
+//                  Measured: the corpus has 30 member-level indexes, and EventId
+//                  is an FK in 10 types but indexed in only 5. FK and index are
+//                  ALREADY independent here. The schema declares the relation;
+//                  the application builds whatever indexes it wants over it.
+//   no derived index member  It existed only to be indexed. It goes with index.
+//
+// Loans, marked in place:
+//   FlatBuffers  struct/table  — the value/evolving split, drawn where FB draws it
+//   FlatBuffers  `(key)`       — a field nominated as the identity of its type
+//   Cap'n Proto  `group`       — a name over fields that keep their own ordinals
+//   C#           `[Attribute]` — because the target IS a C# attribute
+
+revision 1;
+
+namespace Common.IntegratedEventApi.Cache.Prague.Models;
+
+// --- STRUCT -----------------------------------------------------------------
+// Value payload, embedded, emitted as a C# struct. FlatBuffers' struct rule —
+// all fields present, no defaults, scalars only, never changes — is exactly the
+// rule Venue already obeys, so the keyword is borrowed along with the rule.
+struct Venue {
+  int64  id   = 2;
+  string name = 3;
+}
+
+enum EventStatus {
+  UNKNOWN     = 0;
+  NOT_STARTED = 1;
+  IN_PROGRESS = 2;
+  FINISHED    = 3;
+}
+
+enum BetTypeStatus {
+  UNKNOWN   = 0;
+  OPEN      = 1;
+  SUSPENDED = 2;
+  CLOSED    = 3;
+}
+
+// --- RECORD -----------------------------------------------------------------
+// Plain payload. No identity, reference type. A record cannot be the target of
+// a relation, because a relation resolves to a key and a record has none.
+record StaticDataRef {
+  int64  id   = 1;
+  string name = 2;
+}
+
+record Odd {
+  string name        = 1;
+  double odds_actual = 9;
+  int64  timestamp   = 5;
+}
+
+// --- TABLE, SIMPLE KEY ------------------------------------------------------
+// Identity IS a stored field. `key` is FlatBuffers' `(key)` promoted from an
+// attribute to a modifier, because here it is load-bearing rather than advisory.
+//
+// ANNOTATIONS. Written exactly as C# attributes, because that is what they
+// become: protopc copies the text out and does not read it. Everything that was
+// a keyword and did not earn it now lives here — and the list is honest about
+// how much of the old syntax was decoration.
+[DataCacheTopic("Cache.[v:brandId].SportGame")]
+table SportGame {
+  key int64 event_id = 1;
+
+  // THESE ARE NOT FOREIGN KEYS, and they used to be annotated as if they were.
+  //
+  // `[references(SportType)]` sat here until SportType was looked for and found
+  // not to exist. Measured: SportTypeId, CountryId, LeagueId, HomeTeamId and
+  // AwayTeamId — 25 members across the corpus — name no cached type, and every
+  // one of the 15 pairs among them carries a StaticDataRef copy. EventId and
+  // BetTypeId (11 members) DO name a cached type, and carry no copy.
+  //
+  // Exactly complementary: the copy exists because the referent does not. So
+  // each of these is the id half of an embedded pair whose other half is the
+  // StaticDataRef below. Binding the two was `snapshot_of`, now deferred. The
+  // one real relation in this file is `event_id [references(SportGame)]` in
+  // BetType.
+  int64 sport_type_id = 2;
+  int64 country_id    = 3;
+  int64 league_id     = 4;
+
+  int64? home_team_id = 5;
+  int64? away_team_id = 6;
+
+  // A struct field is nullable because the wire slot can be nil. protop can
+  // enforce that directly here; in spelling A it is a rule protop has to
+  // invent, because protoc will not let the file say it.
+  Venue? venue = 7;
+
+  int32? fixture_id = 15;
+
+  // Was `index EventStatus event_status = 24;`. The index was never a property
+  // of the field — three sibling types index this and two do not.
+  EventStatus event_status = 24;
+
+  int64 event_date         = 28;
+  int64 provider_timestamp = 35;
+
+  decimal(4)? live_limit_manual_single = 36;
+
+  // OWNED, not related: Runner has no key, so nothing can point at it and it
+  // cannot exist apart from this row. `repeated` is composition; `relations` is
+  // reference. That line is drawn by whether the child type declares a key.
+  repeated StaticDataRef runners = 47;
+
+  // THE EMBEDDED PAIRS, now written as plain fields. `snapshot_of` bound each
+  // of these to the id above that it is the inline copy of, and it is DEFERRED
+  // — the pairing is real, but nothing in phase 1 needs it yet.
+  //
+  // The cost is exact and should not be soft-pedalled: the one check it bought
+  // was that the two halves agree about presence, and THREE of the corpus's 15
+  // pairs do not. SlimSportGame has `long? HomeTeamId` beside a non-nullable
+  // `StaticDataRef HomeTeam = null!`. Deferring `snapshot_of` means protop
+  // emits that as written and says nothing. That is a known, accepted gap, not
+  // an oversight.
+  StaticDataRef  sport_type = 55;
+  StaticDataRef  country    = 56;
+  StaticDataRef  league     = 57;
+  StaticDataRef? home_team  = 58;
+  StaticDataRef? away_team  = 59;
+}
+
+// --- TABLE, COMPOSITE KEY ---------------------------------------------------
+[DataCacheTopic("Cache.[v:brandId].BetType")]
+table BetType {
+  // COMPUTED MEMBER, class 1 — composite identity.
+  //
+  // Borrowed from Cap'n Proto's `group`: a name over fields that keep their own
+  // ordinals. Cap'n Proto's group consumes no ordinal of its own. This one does
+  // — `= 1` — because the corpus wire format already says so: the tuple is
+  // [Key(0)] and duplicates on the wire what tags 2 and 3 already carry.
+  //
+  // Writing the tag makes the duplication visible and the collision checkable.
+  // In spelling A both are invisible: the option claims tag 1, a field may claim
+  // it too, and protoc compiles that without a word (measured).
+  key key = 1 (event_id, bet_type_id);
+
+  // CARDINALITY IS NOT DECLARED, BECAUSE IT IS ALREADY WRITTEN DOWN.
+  //
+  // The question this answers: SportGame has `league_id`, so how does anyone
+  // know one League is in many Games? Compare the foreign key to the DECLARING
+  // TYPE'S OWN KEY, and there are only three cases:
+  //
+  //   FK *is* the whole key        -> one-to-one. At most one row of this type
+  //                                   per target row, enforced by the key.
+  //   FK is PART of a composite    -> many-to-one. The rest of the composite is
+  //                                   exactly what distinguishes the many.
+  //   FK is not in the key at all  -> many-to-one, unconstrained.
+  //
+  // And the inverse — one-to-many — is the same fact read backwards. It needs
+  // no declaration because it adds nothing.
+  //
+  // Checked against every cached corpus type, three for three:
+  //   BetType      key (event_id, bet_type_id), event_id is FK, PART of it
+  //                -> many BetTypes per SportGame.               correct
+  //   LiveObject   key event_id, which IS the FK
+  //                -> exactly one LiveObject per SportGame.      correct
+  //   Search       key (event_id, channel_id), FK is part
+  //                -> many Searches per SportGame.               correct
+  //   SportGame.league_id  not in SportGame's key at all
+  //                -> many SportGames per League.                correct
+  //
+  // WHAT THE RULE ACTUALLY GUARANTEES — it is SOUND, NOT COMPLETE, and the two
+  // are not the same promise. Every one-to-one it reports is real, because the
+  // key enforces it; there is no way to have a duplicate. But a many-to-one it
+  // reports may be one-to-one in truth, with nothing in the schema saying so.
+  //
+  // The extension table is the case that tests this and PASSES: a type that
+  // exists only to carry more columns for one SportGame declares `key event_id`
+  // and case one fires — one-to-one, derived, correct, no keyword needed. It
+  // looks like a counterexample and is not.
+  //
+  // The case that genuinely escapes is the third one: an FK OUTSIDE the key
+  // that happens to be unique anyway. The rule reports many-to-one and is not
+  // wrong about anything it can see — it simply cannot see a uniqueness nobody
+  // wrote down. Note which way that errs: it never invents a guarantee, only
+  // declines to promise one. A declared `one_to_one` would err the other way,
+  // asserting uniqueness that nothing checks — and an unchecked assertion of
+  // uniqueness is worse than a missing one, because code will trust it.
+  //
+  // So: derived, not declared, and no `unique` keyword until the corpus shows
+  // one. It has no instance of the escaping case.
+  //
+  // MANY-TO-MANY falls out of the same rule and needs no syntax either: a type
+  // whose key is exactly two foreign keys IS a join table. BetType is not one,
+  // because bet_type_id references nothing. The corpus has no join table.
+  // THE ONLY REAL RELATION IN THIS FILE — and its target is ambiguous. SIX
+  // corpus types declare EventId as their identity. They are twins and
+  // projections of each other, sharing an identity AND a key space, so naming
+  // SportGame does not pick one out. Unanswered, in both spellings.
+  int64 event_id = 2 [references(SportGame)];
+  int64 id = 3;
+
+  // COMPUTED MEMBER, class 2 — alias. No tag, no wire slot, get AND set.
+  // It exists so this type's API matches its view, SlimBetType, which names the
+  // tag-3 field `bet_type_id` directly.
+  //
+  // There used to be a third class of computed member here, the derived index
+  // (`fixture_id_index = fixture_id else 0`). It was a member that existed for
+  // no reason except to be indexed, so dropping `index` deleted it outright.
+  // Two classes left, and neither is an expression.
+  alias bet_type_id = id;
+
+  string name = 4;
+
+  BetTypeStatus  status           = 7;
+  BetTypeStatus? status_manual    = 8;
+  BetTypeStatus? status_watch_dog = 9;
+
+  decimal(4)? limit_manual_single = 22;
+
+  [DataCacheFromTimestamp]
+  int64 timestamp = 25;
+
+  repeated Odd odds = 26;
+}
+
+// --- VIEWS ------------------------------------------------------------------
+// A view is a field-subset of another type AT THAT TYPE'S TAGS. Tag, type and
+// presence come from the source; the view line carries the name and an optional
+// rename. A view is ALSO a table in its own right, with its own annotations, so
+// `view` and `table` are orthogonal axes rather than alternatives.
+//
+// Everything the compiler checks here — source exists, is a table, field
+// exists, tags are a subset, types agree, presence agrees, no tag invented — is
+// an unchecked string inside an option in spelling A. protoc accepts `view_of`
+// naming a message that does not exist, on a field that does not exist, at a
+// tag whose type disagrees. Measured; see the README.
+//
+// This declaration used to have to restate the cache topic. It no longer does,
+// and it no longer restates the index set either — which was the other half of
+// what made a view read like a second copy of its source.
+[DataCacheTopic("Cache.[v:brandId].SportGame")]
+view SlimSportGame of SportGame {
+  // Only the name changes — and under int-key MessagePack names are not on the
+  // wire, so a rename is free. That freeness is why EventId/Id and Key/Id drift
+  // across the corpus pairs with nobody noticing.
+  event_id as id;
+
+  sport_type_id;
+  country_id;
+  league_id;
+  home_team_id;
+
+  venue;
+  sport_type;
+
+  // Relations need no mention at all. They are annotations ON the members, so
+  // they travel with the members a view lists. With a separate relations block
+  // this had to be a RULE ("a view may not declare relations of its own"); on
+  // the member it is just what happens.
+}
+
+// A VIEW OF A NON-CACHED TYPE. `Odd` is a record — no key, nothing points at
+// it — and it still has a view, because a view is about tags and members, not
+// about identity. SlimOdd is what SlimBetType carries in place of Odd.
+view SlimOdd of Odd {
+  name;
+  timestamp;
+}
+
+[DataCacheTopic("Cache.[v:brandId].BetType")]
+view SlimBetType of BetType {
+  key as id;
+
+  event_id;
+  id as bet_type_id;
+
+  name;
+
+  status;
+  status_manual;
+  status_watch_dog;
+
+  limit_manual_single;
+  timestamp;
+
+  // A MEMBER NARROWED TO A VIEW. Tag 26 in BetType holds `repeated Odd`; here
+  // it holds `repeated SlimOdd`, and SlimOdd must be a view OF Odd — which is
+  // the whole check. Writing a type before the member name is what asks for the
+  // narrowing; a bare member name takes the source's type unchanged.
+  //
+  // This is not a hypothetical. The corpus does exactly this and nothing in the
+  // language could say so until now:
+  //     BOBetTypeCacheItem.Odds  is  List<Odd>
+  //     SlimBetType.Odds         is  SlimOdd[]     <- same tag, narrower type
+  //
+  // Note what it makes checkable: a view of a view is still pinned to the
+  // original tags, so SlimOdd cannot quietly renumber and desync tag 26.
+  SlimOdd odds;
+}
