@@ -6,14 +6,12 @@ and its tickets; hard-to-reverse ones get an ADR under `docs/adr/`.
 
 ## protop
 
-The language. A strict profile of Protobuf: everything protop accepts is valid
-Protobuf, but protop rejects a great deal that Protobuf permits. Named by
-analogy to a dialect, not a superset — protop adds no syntax that `protoc`
-would refuse.
-
-> **Under review.** The second sentence is the premise being re-examined by
-> [Does protop stay parseable by protoc?](https://github.com/nanov/protobuf-to-messagepack-sharp/issues/29).
-> If that ticket answers *no*, this entry changes.
+The language. Its own grammar, parsed by protopc alone — `protoc` cannot read a
+`.protop` file and is not in the pipeline at all. The name is inherited from the
+period when protop was a strict profile of Protobuf, and so is the vocabulary:
+*tag*, *field*, *reserved*, *repeated* all keep their Protobuf meanings
+deliberately. See [ADR-0001](docs/adr/0001-protop-is-its-own-language.md); the
+language itself is specified in [`docs/spec/protop.md`](docs/spec/protop.md).
 
 ## protopc
 
@@ -22,9 +20,10 @@ not invoke `protoc`; it parses protop itself.
 
 ## oracle
 
-`protoc`, used only to check protopc. Compiling the same file with both and
-comparing the results is how protopc is known to be right. The oracle is a test
-dependency, never a build dependency.
+The source of truth a protopc output is checked against. It is **the corpus** —
+`corpus/prague/`, real payload types already on the wire — compared as golden
+files. It was `protoc` until ADR-0001; that oracle could only ever check syntax
+acceptance, and was measured blind on both presence and feature resolution.
 
 ## tag
 
@@ -78,6 +77,9 @@ not renumber them. It *may* rename a member — names are not on the wire under
 int-key MessagePack — and the corpus does: `BOSportGameCacheItem.EventId` is
 `SlimSportGame.Id` at the same key.
 
+In protop a projection is declared rather than hand-maintained; the construct is
+a **view**, below.
+
 ## twin
 
 A payload type duplicated across two projects with identical keys, names and
@@ -100,3 +102,20 @@ writes. In the corpus, the cache shells are empty by design.
 Carrying an annotation from protop into the generated C# verbatim, without
 protopc understanding what it means. The mechanism by which protop-generated
 types reach generators protopc knows nothing about.
+
+## table
+
+A protop declaration carrying identity and owning a tag space. One table is the
+wire contract for one topic, held whole by a single producer.
+
+## view
+
+A protop declaration naming a subset of a table's or record's members, pinned to
+that source's tags. The declared form of a **projection**. Read-only by
+construction: a producer holds the table, so nothing narrow is ever written.
+
+## annotation
+
+A bracketed clause following what it describes — `[cs: DataCacheTopic("...")]`.
+An unprefixed annotation is protop's own and is checked; a prefixed one names a
+backend and its contents are **passthrough**, copied out unparsed.
