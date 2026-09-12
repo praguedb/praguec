@@ -11,6 +11,10 @@ Protobuf, but protop rejects a great deal that Protobuf permits. Named by
 analogy to a dialect, not a superset — protop adds no syntax that `protoc`
 would refuse.
 
+> **Under review.** The second sentence is the premise being re-examined by
+> [Does protop stay parseable by protoc?](https://github.com/nanov/protobuf-to-messagepack-sharp/issues/29).
+> If that ticket answers *no*, this entry changes.
+
 ## protopc
 
 The compiler. Reads protop and writes C#. It is not a `protoc` plugin and does
@@ -32,6 +36,19 @@ kept deliberately.
 A member's `[Key(N)]` index in MessagePack. Distinct from a tag: tags and keys
 are different number spaces with a fixed offset between them, and confusing the
 two breaks wire compatibility silently.
+
+Never used in this repo to mean a type's *identity* — the corpus's
+`[DataCacheKey]` sense. That is **identity**, below.
+
+## identity
+
+The member of a payload type that names the instance for the cache — what
+`B2Tech.Feed.Cache` marks `[DataCacheKey]`. Distinct from **key**, which is a
+position in the MessagePack array and says nothing about what a value means.
+
+Identity takes two forms in the corpus: a stored field *is* the identity, or a
+get-only tuple *over* stored fields is, in which case it occupies a position of
+its own and duplicates what its components already carry.
 
 ## presence
 
@@ -57,7 +74,9 @@ generates is a payload type.
 A payload type that carries a subset of another's fields **at the same keys**,
 so the two are wire-compatible without conversion. The corpus's `Slim*` types
 are projections of their full counterparts. A projection may drop fields; it may
-not renumber them.
+not renumber them. It *may* rename a member — names are not on the wire under
+int-key MessagePack — and the corpus does: `BOSportGameCacheItem.EventId` is
+`SlimSportGame.Id` at the same key.
 
 ## twin
 
