@@ -4,66 +4,70 @@ package protop;
 
 import "google/protobuf/descriptor.proto";
 
-// The dialect revision. See issue #27 — this enum's value list IS protopc's
-// supported-revision table, which is why it ships inside the compiler.
+option csharp_namespace = "Protop.Options";
+
+// ---------------------------------------------------------------------------
+// The option vocabulary spelling A needs.
+//
+// RETIRED, and the reason, because a language prototype that quietly drops
+// things is not a prototype:
+//   cache_topic    the topic is not a language concept. It is one more C#
+//                  attribute, and attributes now have a passthrough spelling.
+//   IndexKind      an index is an application decision, not a schema fact.
+//   index          "  "
+//   DerivedIndex   a member that exists ONLY to be indexed. Dies with index.
+//   from_timestamp [DataCacheFromTimestamp] is an attribute like any other.
+// Their extension numbers are reserved below, never reused.
+// ---------------------------------------------------------------------------
+
 enum Revision {
   REVISION_UNKNOWN = 0;
   REVISION_1 = 1;
 }
 
-// The shape axis. Protobuf has exactly one declaration form — `message` — so a
-// strict-profile protop has to spell the distinction as an option.
 enum Shape {
   SHAPE_UNKNOWN = 0;
-  SHAPE_RECORD = 1;  // payload, reference type, no identity
-  SHAPE_TABLE  = 2;  // payload with identity: a cache entity
-  SHAPE_STRUCT = 3;  // value payload, embedded, C# struct
+  SHAPE_STRUCT  = 1;  // value payload, embedded, C# struct
+  SHAPE_RECORD  = 2;  // payload, no identity, C# sealed class
+  SHAPE_TABLE   = 3;  // payload WITH identity, C# sealed class + cache attrs
 }
 
-// The three [DataCacheIndexType] values the corpus actually uses.
-enum IndexKind {
-  INDEX_KIND_NONE  = 0;
-  INDEX_KIND_ONE   = 1;  // [DataCacheIndex]
-  INDEX_KIND_RANGE = 2;  // [DataCacheIndex(DataCacheIndexType.Range)]
-  INDEX_KIND_MANY  = 3;  // [DataCacheIndex(DataCacheIndexType.Many)]
-}
-
-// ---------------------------------------------------------------------------
-// Computed members. The corpus has seven of them and they fall into three
-// classes, not one — see prototypes/lang/README.md. None of the three needs an
-// expression; all three are declarations. That is the single most useful thing
-// writing this file taught us, because issue #6 had "computed-member escape
-// hatch" down as the hardest requirement on the board.
-// ---------------------------------------------------------------------------
-
-// Class 1 — composite identity. Five corpus types have one. It is a get-only
-// ValueTuple over two fields that each keep their own tag, and it OCCUPIES A
-// WIRE SLOT of its own (always [Key(0)], i.e. tag 1), so it duplicates on the
-// wire what the component fields already carry.
+// Identity that is a tuple over stored fields rather than a stored field.
+// Occupies a tag of its own: in the corpus the tuple is [Key(0)] and duplicates
+// on the wire what its component tags already carry.
 message CompositeKey {
   string name = 1;            // emitted member name
   int32  tag  = 2;            // the slot it occupies
   repeated string field = 3;  // component fields, in tuple order
 }
 
-// Class 2 — derived index. One corpus instance:
-//   [DataCacheIndex(nameof(FixtureIdIndex), nameof(FixtureId), Many)]  (class-level)
-//   [DataCacheIndex] [IgnoreMember] public int FixtureIdIndex => FixtureId ?? 0;
-// [IgnoreMember], so NO wire slot. `?? 0` is not an expression: it is the
-// declared substitute for absent, and `absent_as` is the whole of it.
-message DerivedIndex {
-  string name = 1;
-  string field = 2;
-  int64  absent_as = 3;
-  IndexKind kind = 4;
+enum Cardinality {
+  CARDINALITY_UNKNOWN = 0;
+  CARDINALITY_ONE     = 1;  // local FK field -> one row of target
+  CARDINALITY_MANY    = 2;  // far side holds the FK
+  CARDINALITY_MANY_TO_MANY = 3;  // via a join table. NO CORPUS INSTANCE.
 }
 
-// Class 3 — alias. One corpus instance, on BOBetTypeCacheItem:
-//   [IgnoreMember] [JsonIgnore] public long BetTypeId { get => Id; set => Id = value; }
-// get AND set, no wire slot. It exists so BOBetTypeCacheItem's API matches its
-// projection SlimBetType, which names the same tag-3 field `BetTypeId`.
+// A reference to another table's identity.
+//
+// `target` names a TABLE, not a field: the relation resolves to that table's
+// declared key, so its arity and type are checkable, and a composite key is
+// handled without new syntax.
+//
+// `inline` names an optional denormalized snapshot member carrying a copy of
+// the target. 15 of these exist in the corpus (SportTypeId + SportType), and
+// three of them disagree with their own FK about presence.
+message Relation {
+  string field  = 1;
+  string target = 2;
+  string inline = 3;
+  Cardinality cardinality = 4;
+  string through = 5;  // join table, many-to-many only
+}
+
+// [IgnoreMember] get/set passthrough to another field. No wire slot.
 message Alias {
-  string name = 1;
+  string name  = 1;
   string field = 2;
 }
 
@@ -73,36 +77,34 @@ extend google.protobuf.FileOptions {
 
 extend google.protobuf.MessageOptions {
   Shape shape = 50010;
-
-  // [DataCacheTopic("...")]. Present on every SHAPE_TABLE in the corpus.
-  string cache_topic = 50020;
-
   CompositeKey composite_key = 50021;
-  repeated DerivedIndex derived_index = 50022;
+  repeated Relation relation = 50022;
   repeated Alias alias = 50023;
-
-  // "This message is a field-subset of that one, at that one's tags."
-  //
-  // A STRING. protoc will not check that the message exists, that it is a
-  // table, that this message's tags are a subset of its tags, or that the
-  // types at those tags agree. Everything that makes a view safe is outside
-  // what the strict profile can say. See prototypes/lang/README.md.
   string view_of = 50024;
+
+  // Verbatim C# attribute text, emitted onto the generated type without
+  // protopc understanding it. This is the `passthrough` of CONTEXT.md, and it
+  // is where cache_topic and DataCacheIndex went.
+  //
+  // It has to be called `type_attribute` rather than `attribute` because
+  // extension names live in a FLAT package namespace: one name cannot extend
+  // both MessageOptions and FieldOptions. Measured —
+  //   protop/options.proto:100:19: "attribute" is already defined in "protop".
+  // So spelling A needs two names for one concept, and every author has to know
+  // which is which. Spelling B has one: `[Attribute]`, wherever it goes.
+  repeated string type_attribute = 50030;
+
+  // RETIRED, never reused: 50020 was cache_topic.
+  // (`reserved` is a message-level statement; protoc rejects it inside
+  //  `extend`, so retired extension numbers can only be a comment. One more
+  //  thing the strict profile cannot enforce — measured, see the README.)
 }
 
 extend google.protobuf.FieldOptions {
-  // Marks the identity field of a SHAPE_TABLE, when identity IS a stored
-  // field. Emits [DataCacheKey]. Mutually exclusive with composite_key.
   bool table_key = 50011;
-  // Money: emit ScaledDecimalFormatter<S> rather than MessagePack's
-  // decimal-as-string. See issue #13.
   int32 decimal_scale = 50012;
-
-  IndexKind index = 50013;
-
-  // [DataCacheFromTimestamp]. One corpus instance: SlimBetType.Timestamp.
-  bool from_timestamp = 50014;
-
-  // Which field of view_of this field projects. Another unchecked string.
   string view_field = 50025;
+  repeated string field_attribute = 50031;
+
+  // RETIRED, never reused: 50013 was index, 50014 was from_timestamp.
 }

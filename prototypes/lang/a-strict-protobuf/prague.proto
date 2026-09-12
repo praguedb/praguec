@@ -50,7 +50,8 @@ enum BetTypeStatus {
 
 // ---------------------------------------------------------------------------
 // RECORD — a plain payload. No identity, no cache, reference type.
-// Modelled on corpus/prague/deps/StaticDataRef.cs.
+// A record cannot be the target of a relation: a relation resolves to a key,
+// and a record has none.
 // ---------------------------------------------------------------------------
 message StaticDataRef {
   option (protop.shape) = SHAPE_RECORD;
@@ -67,22 +68,68 @@ message Odd {
   int64  timestamp = 5;
 }
 
+// ---------------------------------------------------------------------------
+// REFERENCE TARGETS — tables because things point at them.
+// ---------------------------------------------------------------------------
+message SportType {
+  option (protop.shape) = SHAPE_TABLE;
+  int64  id   = 1 [(protop.table_key) = true];
+  string name = 2;
+}
+message Country {
+  option (protop.shape) = SHAPE_TABLE;
+  int64  id   = 1 [(protop.table_key) = true];
+  string name = 2;
+}
+message League {
+  option (protop.shape) = SHAPE_TABLE;
+  int64  id   = 1 [(protop.table_key) = true];
+  string name = 2;
+}
+message Team {
+  option (protop.shape) = SHAPE_TABLE;
+  int64  id   = 1 [(protop.table_key) = true];
+  string name = 2;
+}
+
 // ===========================================================================
 // TABLE, SIMPLE KEY — identity IS a stored field.
 // Modelled on BOSportGameCacheItem (trimmed to the interesting members).
 // ===========================================================================
 message SportGame {
   option (protop.shape) = SHAPE_TABLE;
-  option (protop.cache_topic) = "Cache.[v:brandId].SportGame";
 
-  // The class-level [DataCacheIndex(nameof(FixtureIdIndex), nameof(FixtureId),
-  // DataCacheIndexType.Many)] plus the [IgnoreMember] member it names. One
-  // declaration here; two emitted artifacts.
-  option (protop.derived_index) = {
-    name: "fixture_id_index"
-    field: "fixture_id"
-    absent_as: 0
-    kind: INDEX_KIND_MANY
+  // The topic is no longer a language concept. It is C# attribute text that
+  // protopc copies out without reading — CONTEXT.md's `passthrough`. Note that
+  // this option is a bare string protoc will never look inside, which is the
+  // same deal the old (protop.cache_topic) offered, minus the pretence that
+  // the language understood it.
+  option (protop.type_attribute) = "[DataCacheTopic(\"Cache.[v:brandId].SportGame\")]";
+
+  // RELATIONS. protoc will validate nothing here: not that SportType exists,
+  // not that it is a table, not that it has a key, not that sport_type_id's
+  // type matches that key, not that `sport_type` is a field of this message,
+  // and not that its presence agrees with sport_type_id's. Six checks, zero
+  // performed. See the README scoreboard.
+  option (protop.relation) = {
+    field: "sport_type_id" target: "SportType" inline: "sport_type"
+    cardinality: CARDINALITY_ONE
+  };
+  option (protop.relation) = {
+    field: "country_id" target: "Country" inline: "country"
+    cardinality: CARDINALITY_ONE
+  };
+  option (protop.relation) = {
+    field: "league_id" target: "League" inline: "league"
+    cardinality: CARDINALITY_ONE
+  };
+  option (protop.relation) = {
+    field: "home_team_id" target: "Team" inline: "home_team"
+    cardinality: CARDINALITY_ONE
+  };
+  option (protop.relation) = {
+    field: "away_team_id" target: "Team" inline: "away_team"
+    cardinality: CARDINALITY_ONE
   };
 
   // [Key(0)] + [DataCacheKey] on a real stored field.
@@ -95,6 +142,7 @@ message SportGame {
 
   // Opts back into EXPLICIT -> nullable C# `long?`. [Key(4)]
   int64 home_team_id = 5 [features.field_presence = EXPLICIT];
+  int64 away_team_id = 6 [features.field_presence = EXPLICIT];
 
   // A struct-valued field. Corpus has `BOVenue? Venue` at [Key(6)] — nullable,
   // and it has to be: a non-nullable struct member THROWS on a nil slot while
@@ -107,14 +155,12 @@ message SportGame {
   // straight past this field, silently and correctly.
   Venue venue = 7;
 
-  // The source of fixture_id_index above.
   int32 fixture_id = 15 [features.field_presence = EXPLICIT];
 
-  EventStatus event_status = 24 [(protop.index) = INDEX_KIND_ONE];
+  EventStatus event_status = 24;
 
-  // [DataCacheIndex(DataCacheIndexType.Range)] on DateTime / long members.
-  int64 event_date         = 28 [(protop.index) = INDEX_KIND_RANGE];
-  int64 provider_timestamp = 35 [(protop.index) = INDEX_KIND_RANGE];
+  int64 event_date         = 28;
+  int64 provider_timestamp = 35;
 
   // Money. Bare decimal is a MessagePack STRING of invariant text today, so
   // scaling is a one-way wire door (issue #3).
@@ -123,12 +169,17 @@ message SportGame {
     (protop.decimal_scale) = 4
   ];
 
+  // OWNED, not related: StaticDataRef has no key, so nothing can point at it.
   repeated StaticDataRef runners = 47;
 
-  // The presence disagreement found by tools/keymap.py: 54-56 are non-nullable
-  // in C# (`= null!`), 57-58 are nullable. Same type, same shape, four keys apart.
+  // The denormalized snapshots named by the relations above. Note 58 and 59:
+  // the FK is EXPLICIT (nullable) and so is the snapshot. Nothing in this file
+  // ties those two facts together — in the corpus they have already come apart.
   StaticDataRef sport_type = 55;
-  StaticDataRef home_team  = 58;  // nullable in C#, but indistinguishable here
+  StaticDataRef country    = 56;
+  StaticDataRef league     = 57;
+  StaticDataRef home_team  = 58;
+  StaticDataRef away_team  = 59;
 }
 
 // ===========================================================================
@@ -137,7 +188,7 @@ message SportGame {
 // ===========================================================================
 message BetType {
   option (protop.shape) = SHAPE_TABLE;
-  option (protop.cache_topic) = "Cache.[v:brandId].BetType";
+  option (protop.type_attribute) = "[DataCacheTopic(\"Cache.[v:brandId].BetType\")]";
 
   // [Key(0)] [DataCacheKey] public (long EventId, long BetTypeId) Key => (EventId, BetTypeId);
   //
@@ -145,10 +196,6 @@ message BetType {
   // copy of what tags 2 and 3 already carry. Nothing else may claim tag 1, and
   // protoc cannot be told that: `reserved 1;` and a field at 1 are the only two
   // things it understands, and neither of them is "an option owns this slot".
-  //
-  // Borrowed from Cap'n Proto's `group`: a name over fields that keep their own
-  // ordinals. Cap'n Proto's group does NOT consume an ordinal of its own; this
-  // one does, because the corpus wire format already says so.
   option (protop.composite_key) = {
     name: "key"
     tag: 1
@@ -160,7 +207,11 @@ message BetType {
   // Exists so this type's API matches its view, SlimBetType, below.
   option (protop.alias) = { name: "bet_type_id" field: "id" };
 
-  int64 event_id = 2 [(protop.index) = INDEX_KIND_ONE];
+  option (protop.relation) = {
+    field: "event_id" target: "SportGame" cardinality: CARDINALITY_ONE
+  };
+
+  int64 event_id = 2;
   int64 id       = 3;
   string name    = 4;
 
@@ -173,7 +224,7 @@ message BetType {
     (protop.decimal_scale) = 4
   ];
 
-  int64 timestamp = 25;
+  int64 timestamp = 25 [(protop.field_attribute) = "[DataCacheFromTimestamp]"];
 
   repeated Odd odds = 26;
 }
@@ -183,8 +234,7 @@ message BetType {
 // ===========================================================================
 
 // SlimSportGame is a field-subset of SportGame at SportGame's tags, and it is
-// ALSO a table in its own right: its own [DataCache], its own topic, its own
-// index set. `view` and `table` are orthogonal axes, not alternatives.
+// ALSO a table in its own right. `view` and `table` are orthogonal axes.
 //
 // Note `id` at tag 1. In the source that field is `event_id`. A view renames.
 // Under int-key MessagePack names are not on the wire, so renaming is free —
@@ -199,12 +249,12 @@ message BetType {
 message SlimSportGame {
   option (protop.shape) = SHAPE_TABLE;
   option (protop.view_of) = "SportGame";
-  option (protop.cache_topic) = "Cache.[v:brandId].SportGame";
+  option (protop.type_attribute) = "[DataCacheTopic(\"Cache.[v:brandId].SportGame\")]";
 
   int64 id            = 1 [(protop.table_key) = true, (protop.view_field) = "event_id"];
-  int64 sport_type_id = 2 [(protop.index) = INDEX_KIND_ONE];
-  int64 country_id    = 3 [(protop.index) = INDEX_KIND_ONE];
-  int64 league_id     = 4 [(protop.index) = INDEX_KIND_ONE];
+  int64 sport_type_id = 2;
+  int64 country_id    = 3;
+  int64 league_id     = 4;
   int64 home_team_id  = 5 [features.field_presence = EXPLICIT];
   Venue venue         = 7;
   StaticDataRef sport_type = 55;
@@ -217,7 +267,7 @@ message SlimSportGame {
 message SlimBetType {
   option (protop.shape) = SHAPE_TABLE;
   option (protop.view_of) = "BetType";
-  option (protop.cache_topic) = "Cache.[v:brandId].BetType";
+  option (protop.type_attribute) = "[DataCacheTopic(\"Cache.[v:brandId].BetType\")]";
 
   option (protop.composite_key) = {
     name: "id"
@@ -226,11 +276,11 @@ message SlimBetType {
     field: "bet_type_id"
   };
 
-  int64  event_id     = 2 [(protop.index) = INDEX_KIND_ONE];
-  int64  bet_type_id  = 3 [(protop.index) = INDEX_KIND_ONE, (protop.view_field) = "id"];
+  int64  event_id     = 2;
+  int64  bet_type_id  = 3 [(protop.view_field) = "id"];
   string name         = 4;
 
-  BetTypeStatus status = 7 [(protop.index) = INDEX_KIND_ONE];
+  BetTypeStatus status = 7;
   BetTypeStatus status_manual    = 8 [features.field_presence = EXPLICIT];
   BetTypeStatus status_watch_dog = 9 [features.field_presence = EXPLICIT];
 
@@ -239,10 +289,7 @@ message SlimBetType {
     (protop.decimal_scale) = 4
   ];
 
-  int64 timestamp = 25 [
-    (protop.index) = INDEX_KIND_RANGE,
-    (protop.from_timestamp) = true
-  ];
+  int64 timestamp = 25 [(protop.field_attribute) = "[DataCacheFromTimestamp]"];
 
   repeated Odd odds = 26;
 }

@@ -1,30 +1,44 @@
 // SPELLING B — protop as its own language.
 //
 // NOT VALID PROTOBUF. protoc rejects it at the first statement, `revision 1;`
-// ("Expected top-level statement", measured). That is the entire point
-// of the specimen: it is the same content as ../a-strict-protobuf/prague.proto,
-// written without the constraint, so the two can be read side by side.
+// ("Expected top-level statement", measured). That is the entire point of the
+// specimen: the same content as ../a-strict-protobuf/prague.proto, written
+// without the constraint, so the two can be read side by side.
 //
-// Divergence is deliberately minimal. Field syntax, tag syntax, scalar type
-// names and the package/namespace idea are unchanged from Protobuf. Everything
-// new is here in one list:
+// WHAT THE LANGUAGE IS, in full:
 //
-//   revision 1;                  the dialect stamp (issue #27)
-//   struct / record / table      three declaration keywords in place of `message`
-//   view X of Y                  a field-subset at Y's tags
-//   key                          identity, simple or composite
-//   index / index(range|many)    cache index kind
-//   alias a = b;                 get/set passthrough
-//   ?                            presence marker
-//   decimal(N)                   scaled money
-//   $annotation                  open-ended attribute, borrowed from Cap'n Proto
-//   NO TAG => NO WIRE SLOT       the one structural rule the syntax encodes
+//   revision 1;                dialect stamp (issue #27)
+//   namespace X;               C# namespace
+//   struct / record / table    three declaration keywords in place of `message`
+//   view X of Y                a field-subset at Y's tags
+//   key                        identity: a field, or a tuple over fields
+//   relations { ... }          FK structure: what points at what
+//   repeated                   an OWNED child collection, on the wire
+//   ?                          presence
+//   decimal(N)                 scaled money
+//   alias a = b;               get/set passthrough, no wire slot
+//   [Attribute]                verbatim C# attribute, passed through
+//   NO TAG => NO WIRE SLOT     the one structural rule the syntax encodes
+//
+// WHAT IS DELIBERATELY NOT IN IT:
+//
+//   no topic       A topic is one more C# attribute. It was on every table and
+//                  every view, and the corpus has 12 topic-carrying types with
+//                  4 distinct topics — so as syntax it was three-quarters
+//                  restatement. It is now `[DataCacheTopic("...")]`, which is
+//                  shorter than the keyword form was AND says where it goes.
+//   no index       An index is a decision about queries, not a fact about data.
+//                  Measured: the corpus has 30 member-level indexes, and EventId
+//                  is an FK in 10 types but indexed in only 5. FK and index are
+//                  ALREADY independent here. The schema declares the relation;
+//                  the application builds whatever indexes it wants over it.
+//   no derived index member  It existed only to be indexed. It goes with index.
 //
 // Loans, marked in place:
-//   Cap'n Proto  `group`     — a name over fields that keep their own ordinals
-//   FlatBuffers  struct/table — the value/evolving split, drawn where FB draws it
-//   FlatBuffers  `(key)`      — a field nominated as the identity of its type
-//   Cap'n Proto  `$name`     — annotation application, for the attribute tail
+//   FlatBuffers  struct/table  — the value/evolving split, drawn where FB draws it
+//   FlatBuffers  `(key)`       — a field nominated as the identity of its type
+//   Cap'n Proto  `group`       — a name over fields that keep their own ordinals
+//   C#           `[Attribute]` — because the target IS a C# attribute
 
 revision 1;
 
@@ -54,7 +68,8 @@ enum BetTypeStatus {
 }
 
 // --- RECORD -----------------------------------------------------------------
-// Plain payload. No identity, reference type.
+// Plain payload. No identity, reference type. A record cannot be the target of
+// a relation, because a relation resolves to a key and a record has none.
 record StaticDataRef {
   int64  id   = 1;
   string name = 2;
@@ -66,17 +81,34 @@ record Odd {
   int64  timestamp   = 5;
 }
 
+// --- REFERENCE TARGETS ------------------------------------------------------
+// These are tables because things point at them. In the corpus they live behind
+// a denormalized StaticDataRef snapshot and are never themselves cached here —
+// but the relation has to name a keyed type, so writing them down is what makes
+// `sport_type_id -> SportType` mean anything.
+table SportType { key int64 id = 1;  string name = 2; }
+table Country   { key int64 id = 1;  string name = 2; }
+table League    { key int64 id = 1;  string name = 2; }
+table Team      { key int64 id = 1;  string name = 2; }
+
 // --- TABLE, SIMPLE KEY ------------------------------------------------------
 // Identity IS a stored field. `key` is FlatBuffers' `(key)` promoted from an
 // attribute to a modifier, because here it is load-bearing rather than advisory.
-table SportGame "Cache.[v:brandId].SportGame" {
+//
+// ANNOTATIONS. Written exactly as C# attributes, because that is what they
+// become: protopc copies the text out and does not read it. Everything that was
+// a keyword and did not earn it now lives here — and the list is honest about
+// how much of the old syntax was decoration.
+[DataCacheTopic("Cache.[v:brandId].SportGame")]
+table SportGame {
   key int64 event_id = 1;
 
-  index int64 sport_type_id = 2;
-  index int64 country_id    = 3;
-  index int64 league_id     = 4;
+  int64 sport_type_id = 2;
+  int64 country_id    = 3;
+  int64 league_id     = 4;
 
   int64? home_team_id = 5;
+  int64? away_team_id = 6;
 
   // A struct field is nullable because the wire slot can be nil. protop can
   // enforce that directly here; in spelling A it is a rule protop has to
@@ -85,27 +117,56 @@ table SportGame "Cache.[v:brandId].SportGame" {
 
   int32? fixture_id = 15;
 
-  // COMPUTED MEMBER, class 2 — derived index. No tag, therefore no wire slot:
-  // the syntax carries what spelling A has to spell as [IgnoreMember].
-  // `else 0` is not an expression, it is the declared substitute for absent —
-  // which is the whole of `FixtureId ?? 0`.
-  index(many) int32 fixture_id_index = fixture_id else 0;
+  // Was `index EventStatus event_status = 24;`. The index was never a property
+  // of the field — three sibling types index this and two do not.
+  EventStatus event_status = 24;
 
-  index EventStatus event_status = 24;
-
-  index(range) int64 event_date         = 28;
-  index(range) int64 provider_timestamp = 35;
+  int64 event_date         = 28;
+  int64 provider_timestamp = 35;
 
   decimal(4)? live_limit_manual_single = 36;
 
+  // OWNED, not related: Runner has no key, so nothing can point at it and it
+  // cannot exist apart from this row. `repeated` is composition; `relations` is
+  // reference. That line is drawn by whether the child type declares a key.
   repeated StaticDataRef runners = 47;
 
+  // The denormalized snapshots. They carry their own tags because they are
+  // really on the wire — but they are NOT independent fields, which is what
+  // the relations block below says.
   StaticDataRef  sport_type = 55;
+  StaticDataRef  country    = 56;
+  StaticDataRef  league     = 57;
   StaticDataRef? home_team  = 58;
+  StaticDataRef? away_team  = 59;
+
+  // --- RELATIONS ------------------------------------------------------------
+  // One block, at the end, over fields already declared above. Field lines stay
+  // pure — type, name, tag, presence — which is exactly the wire contract, and
+  // nothing else.
+  //
+  // `-> SportType` names a TABLE, not a field. It resolves to that table's
+  // declared key, so arity and type are checked, and a composite target needs
+  // no new syntax.
+  //
+  // `inline X` says X is a denormalized copy of the target, not a field in its
+  // own right. This is the check that pays for the whole block: the corpus has
+  // 15 of these pairs and THREE of them disagree with their own FK about
+  // presence — SlimSportGame.HomeTeamId is `long?` while its own HomeTeam is
+  // non-nullable `= null!`, where BOSportGameCacheItem has `StaticDataRef?`.
+  // With the relation declared, `home_team` does not get to have an opinion.
+  relations {
+    sport_type_id -> SportType inline sport_type;
+    country_id    -> Country   inline country;
+    league_id     -> League    inline league;
+    home_team_id  -> Team      inline home_team;
+    away_team_id  -> Team      inline away_team;
+  }
 }
 
 // --- TABLE, COMPOSITE KEY ---------------------------------------------------
-table BetType "Cache.[v:brandId].BetType" {
+[DataCacheTopic("Cache.[v:brandId].BetType")]
+table BetType {
   // COMPUTED MEMBER, class 1 — composite identity.
   //
   // Borrowed from Cap'n Proto's `group`: a name over fields that keep their own
@@ -113,82 +174,92 @@ table BetType "Cache.[v:brandId].BetType" {
   // — `= 1` — because the corpus wire format already says so: the tuple is
   // [Key(0)] and duplicates on the wire what tags 2 and 3 already carry.
   //
-  // Writing the tag makes the duplication visible and makes the collision
-  // checkable. In spelling A both are invisible: the option claims tag 1 and a
-  // field may claim it too, and protoc compiles that without a word (measured).
+  // Writing the tag makes the duplication visible and the collision checkable.
+  // In spelling A both are invisible: the option claims tag 1, a field may claim
+  // it too, and protoc compiles that without a word (measured).
   key key = 1 (event_id, bet_type_id);
 
-  index int64 event_id = 2;
-  int64 id             = 3;
+  int64 event_id = 2;
+  int64 id       = 3;
 
-  // COMPUTED MEMBER, class 3 — alias. No tag, no wire slot, get AND set.
+  // COMPUTED MEMBER, class 2 — alias. No tag, no wire slot, get AND set.
   // It exists so this type's API matches its view, SlimBetType, which names the
   // tag-3 field `bet_type_id` directly.
+  //
+  // There used to be a third class of computed member here, the derived index
+  // (`fixture_id_index = fixture_id else 0`). It was a member that existed for
+  // no reason except to be indexed, so dropping `index` deleted it outright.
+  // Two classes left, and neither is an expression.
   alias bet_type_id = id;
 
   string name = 4;
 
-  BetTypeStatus  status            = 7;
-  BetTypeStatus? status_manual     = 8;
-  BetTypeStatus? status_watch_dog  = 9;
+  BetTypeStatus  status           = 7;
+  BetTypeStatus? status_manual    = 8;
+  BetTypeStatus? status_watch_dog = 9;
 
   decimal(4)? limit_manual_single = 22;
 
+  [DataCacheFromTimestamp]
   int64 timestamp = 25;
 
   repeated Odd odds = 26;
+
+  relations {
+    event_id -> SportGame;
+  }
 }
 
 // --- VIEWS ------------------------------------------------------------------
 // A view is a field-subset of another type AT THAT TYPE'S TAGS. Tag, type and
-// presence come from the source; the view line carries only the name, an
-// optional rename, and its own index kind — because the corpus's index sets
-// genuinely differ between a type and its view.
-//
-// A view is ALSO a table in its own right, with its own cache and topic, so
+// presence come from the source; the view line carries the name and an optional
+// rename. A view is ALSO a table in its own right, with its own annotations, so
 // `view` and `table` are orthogonal axes rather than alternatives.
 //
-// Everything the compiler checks here — source exists, field exists, tags are a
-// subset, types agree, presence agrees, no tag invented — is, in spelling A,
-// an unchecked string inside an option. protoc accepts `view_of` naming a
-// message that does not exist, on a field that does not exist, at a tag whose
-// type disagrees. Measured; see the README.
-view SlimSportGame of SportGame "Cache.[v:brandId].SportGame" {
-  // The key is inherited from SportGame. Only the name changes — and under
-  // int-key MessagePack, names are not on the wire, so a rename is free.
-  // That freeness is why `EventId`/`Id` and `Key`/`Id` drift across the corpus.
+// Everything the compiler checks here — source exists, is a table, field
+// exists, tags are a subset, types agree, presence agrees, no tag invented — is
+// an unchecked string inside an option in spelling A. protoc accepts `view_of`
+// naming a message that does not exist, on a field that does not exist, at a
+// tag whose type disagrees. Measured; see the README.
+//
+// This declaration used to have to restate the cache topic. It no longer does,
+// and it no longer restates the index set either — which was the other half of
+// what made a view read like a second copy of its source.
+[DataCacheTopic("Cache.[v:brandId].SportGame")]
+view SlimSportGame of SportGame {
+  // Only the name changes — and under int-key MessagePack names are not on the
+  // wire, so a rename is free. That freeness is why EventId/Id and Key/Id drift
+  // across the corpus pairs with nobody noticing.
   event_id as id;
 
-  index sport_type_id;
-  index country_id;
-  index league_id;
-
+  sport_type_id;
+  country_id;
+  league_id;
   home_team_id;
+
   venue;
   sport_type;
+
+  // Relations are inherited from SportGame along with the fields: sport_type_id
+  // is still a reference to SportType, and its `inline sport_type` snapshot is
+  // still bound to it. A view may not declare relations of its own — it has no
+  // fields of its own to relate.
 }
 
-view SlimBetType of BetType "Cache.[v:brandId].BetType" {
-  // Inherits the composite key from BetType at tag 1, renamed.
+[DataCacheTopic("Cache.[v:brandId].BetType")]
+view SlimBetType of BetType {
   key as id;
 
-  index event_id;
-  index id as bet_type_id;
+  event_id;
+  id as bet_type_id;
 
   name;
 
-  index status;
+  status;
   status_manual;
   status_watch_dog;
 
   limit_manual_single;
-
-  // [DataCacheFromTimestamp], the one corpus instance. There is a long tail of
-  // B2Tech.Feed.Cache attributes protop has not met yet; rather than invent a
-  // keyword per attribute, Cap'n Proto's `$annotation` application syntax gives
-  // the tail one spelling. A keyword is what an attribute earns by being
-  // load-bearing — `key` and `index` earned it; this has not.
-  index(range) timestamp $from_timestamp;
-
+  timestamp;
   odds;
 }
