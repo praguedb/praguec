@@ -191,6 +191,41 @@ table BetTypeBrandSettings
 
 That is the pressure valve. The shared repo gates only what is actually shared.
 
+### Where an import resolves from
+
+`import "prague.protop";` names a file, not a location — and the two files in
+this document live in two different repositories. Resolution *is* the
+distribution model, so it has to be stated rather than assumed.
+
+**Direction: git, by tag, the way Go does it.** A dependency is a git repository
+pinned to an immutable tag, fetched and cached by the toolchain. Not a package
+registry, not a vendored copy, not a submodule. The shared schema is already a
+repo owned by one team; a tag on it is already how that team says *this is
+published*. Nothing new has to be stood up for a consumer to depend on a version
+of it.
+
+This is the piece the strict-Protobuf spelling could never have had cheaply.
+Under that model the import path problem was `protoc`'s to solve and protop was
+a guest in it — which is exactly what the retired options-distribution question
+was about. Owning the language means owning resolution, and owning resolution
+means it can be the one thing Protobuf never shipped.
+
+**Decided:** git, immutable tag, toolchain-fetched, lock file. **Open:** whether
+the module path lives in the import line (`import "github.com/org/schemas@v1/prague.protop"`)
+or in a manifest beside it; what the manifest is called; how the cache is keyed;
+whether the tag is verified by content hash the way `go.sum` does it.
+
+**One name collision to settle before it ships.** A git tag is a third thing in
+this project called a version, beside `revision 1;` (the dialect) and the
+per-table major/minor of the versioning sketch below. The sketch already flags
+two as one too many.
+
+**And one connection.** The versioning sketch below proposes `protop.lock`
+holding `{major, minor, wire_hash, source_hash}` per table. Dependency pinning
+wants a lock file too. Whether those are one file or two is open, but they are
+the same kind of fact — *what I last published* and *what I last resolved* —
+and deciding them together is cheaper than reconciling them later.
+
 ---
 
 ## 3. Annotations — one position, one form
@@ -329,6 +364,14 @@ This is the value of the whole design. Today six field lists drift independently
 
 - **Read-modify-write is closed.** MessagePack-CSharp drops unknown array slots rather than preserving them the way Protobuf preserves unknown fields, so a narrow type read and written back would truncate. Producers cannot use views, so nothing narrow is ever serialized. The hazard was conditional on a case the model forbids.
 - **Descriptor as IR.** Emitting a machine-readable descriptor from protopc, rather than only C#, is what lets service repos consume the shared schema without consuming its source, and what leaves the door open for a non-C# backend.
+- **The tool is buf-shaped, eventually.** `protopc` compiling schemas to C# is
+  the phase-1 deliverable, not the destination. The destination is what `buf` is
+  for Protobuf: `lint` against a rule ladder, `breaking` against a checked-in
+  baseline, module resolution over git tags, formatting. Three of those four are
+  already sketched in this document — the lint rules as structural consequences,
+  the breaking check as the versioning section's diff-against-baseline, and
+  resolution just above. Naming the shape now keeps phase 1 from painting into a
+  corner it would have to be cut out of.
 - **Diagnostics.** `revision 1;` means owning the parser and its error messages forever. Good diagnostics are most of what makes a small language tolerable and the part that always gets deferred.
 
 ---
