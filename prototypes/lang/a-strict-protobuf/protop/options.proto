@@ -1,0 +1,37 @@
+edition = "2023";
+
+package protop;
+
+import "google/protobuf/descriptor.proto";
+
+// The dialect revision. See issue #27 — this enum's value list IS protopc's
+// supported-revision table, which is why it ships inside the compiler.
+enum Revision {
+  REVISION_UNKNOWN = 0;
+  REVISION_1 = 1;
+}
+
+// The shape axis. Protobuf has exactly one declaration form — `message` — so a
+// strict-profile protop has to spell the distinction as an option.
+enum Shape {
+  SHAPE_UNKNOWN = 0;
+  SHAPE_RECORD = 1;  // payload, reference type, no identity
+  SHAPE_TABLE  = 2;  // payload with identity: a cache entity
+  SHAPE_STRUCT = 3;  // value payload, embedded, C# struct
+}
+
+extend google.protobuf.FileOptions {
+  Revision revision = 50001;
+}
+
+extend google.protobuf.MessageOptions {
+  Shape shape = 50010;
+}
+
+extend google.protobuf.FieldOptions {
+  // Marks the identity field of a SHAPE_TABLE. Emits [DataCacheKey].
+  bool table_key = 50011;
+  // Money: emit ScaledDecimalFormatter<S> rather than MessagePack's
+  // decimal-as-string. See issue #13.
+  int32 decimal_scale = 50012;
+}

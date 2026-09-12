@@ -1,0 +1,105 @@
+edition = "2023";
+
+package prague;
+
+import "protop/options.proto";
+option (protop.revision) = REVISION_1;
+
+option csharp_namespace = "Common.IntegratedEventApi.Cache.Prague.Models";
+
+// 188 of the corpus's 333 members are non-nullable; Editions 2023 defaults to
+// EXPLICIT presence, i.e. nullable. So the file flips the default and the 145
+// nullable members opt back in one at a time. Features inherit (custom options
+// do not), which is the only reason this is 145 annotations and not 188.
+option features.field_presence = IMPLICIT;
+
+// ---------------------------------------------------------------------------
+// STRUCT — a value payload, embedded in another type, emitted as a C# struct.
+// Modelled on corpus/prague/payloads/Venue.cs.
+//
+// NOTE THE TAGS. Venue's members are [Key(1)] and [Key(2)], and Key = tag - 1,
+// so the tags are 2 and 3. The first tag is NOT one. Venue and BOVenue are the
+// only two types in the whole corpus that start above key 0 — see the README.
+// ---------------------------------------------------------------------------
+message Venue {
+  option (protop.shape) = SHAPE_STRUCT;
+
+  int64  id   = 2;
+  string name = 3;
+}
+
+enum EventStatus {
+  EVENT_STATUS_UNKNOWN = 0;
+  EVENT_STATUS_NOT_STARTED = 1;
+  EVENT_STATUS_IN_PROGRESS = 2;
+  EVENT_STATUS_FINISHED = 3;
+}
+
+// ---------------------------------------------------------------------------
+// RECORD — a plain payload. No identity, no cache, reference type.
+// Modelled on corpus/prague/deps/StaticDataRef.cs.
+// ---------------------------------------------------------------------------
+message StaticDataRef {
+  option (protop.shape) = SHAPE_RECORD;
+
+  int64  id   = 1;
+  string name = 2;
+}
+
+// ---------------------------------------------------------------------------
+// TABLE — a payload WITH identity. Emits the cache attributes.
+// Modelled on corpus/prague/payloads/BOSportGameCacheItem.cs (trimmed to the
+// members that exercise something interesting).
+// ---------------------------------------------------------------------------
+message SportGame {
+  option (protop.shape) = SHAPE_TABLE;
+
+  // [Key(0)] + [DataCacheKey]
+  int64 event_id = 1 [(protop.table_key) = true];
+
+  // Inherits the file's IMPLICIT -> non-null C# `long`. [Key(1)]
+  int64 sport_type_id = 2;
+
+  // Opts back into EXPLICIT -> nullable C# `long?`. [Key(4)]
+  int64 home_team_id = 5 [features.field_presence = EXPLICIT];
+
+  // A struct-valued field. Corpus has `BOVenue? Venue` at [Key(6)] — nullable,
+  // and it has to be: a non-nullable struct member THROWS on a nil slot while
+  // tolerating an absent one (issue #19), and the array is nil-padded.
+  //
+  // protop cannot demand an explicit presence marker here even if it wanted to:
+  // `[features.field_presence = IMPLICIT]` on a message field is a protoc ERROR
+  // ("Message fields can't specify implicit presence"), and EXPLICIT is the only
+  // legal value, so writing it is noise. The file-scope IMPLICIT above inherits
+  // straight past this field, silently and correctly.
+  Venue venue = 7;
+
+  // Money. Bare decimal is a MessagePack STRING of invariant text today, so
+  // scaling is a one-way wire door (issue #3).
+  int64 live_limit_manual_single = 36 [
+    features.field_presence = EXPLICIT,
+    (protop.decimal_scale) = 4
+  ];
+
+  EventStatus event_status = 24;
+
+  // The presence disagreement found by tools/keymap.py: 54-56 are non-nullable
+  // in C# (`= null!`), 57-58 are nullable. Same type, same shape, four keys apart.
+  StaticDataRef sport_type = 55;
+  StaticDataRef home_team  = 58;  // nullable in C#, but indistinguishable here
+
+  repeated StaticDataRef runners = 47;
+}
+
+// ---------------------------------------------------------------------------
+// PROJECTION — a record that carries a subset of SportGame's fields AT THE
+// SAME TAGS. Modelled on SlimOdd/SlimSportGame.
+// ---------------------------------------------------------------------------
+message SlimSportGame {
+  option (protop.shape) = SHAPE_RECORD;
+
+  int64 event_id      = 1;
+  int64 sport_type_id = 2;
+  Venue venue         = 7;
+  StaticDataRef sport_type = 55;
+}

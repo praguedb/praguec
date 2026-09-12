@@ -1,0 +1,68 @@
+// SPELLING B — protop as its own language.
+//
+// NOT VALID PROTOBUF. protoc rejects this at line 1. That is the entire point
+// of the specimen: it is the same content as ../a-strict-protobuf/prague.proto,
+// written without the constraint, so the two can be read side by side.
+//
+// Divergence is deliberately minimal. Field syntax, tag syntax, scalar type
+// names and the package/namespace idea are unchanged from Protobuf. The only
+// new things are: a `revision` statement, three declaration keywords in place
+// of `message`, `key` as a field modifier, and `?` as the presence marker.
+
+revision 1;
+
+namespace Common.IntegratedEventApi.Cache.Prague.Models;
+
+// --- STRUCT -----------------------------------------------------------------
+// Value payload, embedded, emitted as a C# struct.
+struct Venue {
+  int64  id   = 2;
+  string name = 3;
+}
+
+enum EventStatus {
+  UNKNOWN     = 0;
+  NOT_STARTED = 1;
+  IN_PROGRESS = 2;
+  FINISHED    = 3;
+}
+
+// --- RECORD -----------------------------------------------------------------
+// Plain payload. No identity, reference type.
+record StaticDataRef {
+  int64  id   = 1;
+  string name = 2;
+}
+
+// --- TABLE ------------------------------------------------------------------
+// Payload WITH identity. Emits the cache attributes.
+table SportGame {
+  key int64 event_id = 1;
+
+  int64  sport_type_id = 2;
+  int64? home_team_id  = 5;
+
+  // A struct field is nullable because the wire slot can be nil. protop can
+  // enforce that directly here; in spelling A it is a rule protop has to
+  // invent, because protoc will not let the file say it.
+  Venue? venue = 7;
+
+  decimal(4)? live_limit_manual_single = 36;
+
+  EventStatus event_status = 24;
+
+  StaticDataRef  sport_type = 55;
+  StaticDataRef? home_team  = 58;
+
+  repeated StaticDataRef runners = 47;
+}
+
+// --- PROJECTION -------------------------------------------------------------
+// The one construct spelling A cannot express AT ALL. In A this is an
+// unrelated message that happens to reuse tags, and nothing checks it.
+projection SlimSportGame of SportGame {
+  event_id;
+  sport_type_id;
+  venue;
+  sport_type;
+}
