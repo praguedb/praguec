@@ -159,7 +159,17 @@ which fails to compile with `CS1001: Identifier expected` pointing into a genera
 
 ### 3.4 Why the divergence is dangerous rather than merely annoying
 
-Both paths are reachable in the same process. `MessagePackSerializerOptions.Standard` resolves through `StandardResolver`, which on a JIT platform includes `DynamicObjectResolver`; an AOT/trimmed deployment, or an explicit `GeneratedMessagePackResolver`, takes the generated path. A payload written by one and read by the other is **silently misinterpreted**: same schema, same types, no exception, wrong number. For a wallet/betting domain that is a corruption bug, not a serialization bug.
+Both paths are reachable in the same process. A payload written by one and read by the other is **silently misinterpreted**: same schema, same types, no exception, wrong number. For a wallet/betting domain that is a corruption bug, not a serialization bug.
+
+> **Correction (2026-09-12).** An earlier revision of this paragraph said `MessagePackSerializerOptions.Standard` reaches `DynamicObjectResolver` on a JIT platform, implying the reflection path is what a consumer gets by default. **That is wrong, and it inverts the risk.** Measured on 3.1.8 with a plain `[MessagePackObject]` type in the same compilation as the generator:
+>
+> ```
+> Standard resolver type    : MessagePack.Resolvers.StandardResolver
+> Poco formatter (Standard) : MessagePack.GeneratedMessagePackResolver+PocoFormatter
+> Poco formatter (reflect)  : MessagePack.Formatters.PocoFormatter1
+> ```
+>
+> `DynamicObjectResolver` *is* in `StandardResolver`'s chain, but the source-generated resolver precedes it, so whenever the generator ran for a type the **generated** formatter wins — on JIT, under the default options, with no opt-in. Note also that no `[GeneratedMessagePackResolver] partial class` declaration was needed: referencing the `MessagePack` package is enough for the generator to emit `MessagePack.GeneratedMessagePackResolver`. The reflection path is reached only by explicitly building a composite that puts `DynamicObjectResolver` first — which is what every probe in this document does — or for a type the generator never saw. The divergence and the corruption hazard both stand; what changes is which side is the default and which is the deliberate act.
 
 protop must not emit anything whose correctness depends on which resolver is in play.
 
