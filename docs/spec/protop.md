@@ -11,10 +11,13 @@
 > cardinality, annotation passthrough, tag ownership via `reserved`.
 >
 > **Deliberately not covered.** Four things the corpus contains and this document
-> does not spell. Each is a tracker ticket, not an oversight:
-> unions (`IBaseLiveData`'s 19 arms), maps, a temporal type (the corpus and this
-> document both carry instants as `int64`), and the closed set of scalar type
-> keywords.
+> does not settle. Each is a tracker ticket, not an oversight:
+> unions (`IBaseLiveData`'s 19 arms), a temporal type (the corpus and this
+> document both carry instants as `int64`), the closed set of scalar type
+> keywords, and what a `map` means. §1 spells the map syntax and reserves it —
+> protopc parses one in full and reports `PROTOP0900` against it — but its key
+> types, its wire form, and whether an absent map and an empty one are the same
+> thing are all open.
 
 **The rule everything else falls out of: tables are written, views are read.**
 
