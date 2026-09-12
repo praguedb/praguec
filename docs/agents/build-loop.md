@@ -10,7 +10,21 @@ operations and `triage-labels.md` for which tickets an agent may rule on at all.
 An issue labelled `wayfinder:task`, a sub-issue of map #1, titled `M<n>: ...`.
 It names the spec sections in scope, lists its done-when, and states what is out
 of scope. The milestones are strictly ordered and each one is blocked by the
-last, so the frontier query returns exactly one.
+last, so the frontier query returns exactly one:
+
+```sh
+repo=nanov/protobuf-to-messagepack-sharp
+for n in $(gh issue list --repo "$repo" --label wayfinder:task --state open \
+             --json number --jq '.[].number' | sort -n); do
+  open_blockers=$(gh api "repos/$repo/issues/$n/dependencies/blocked_by" \
+                    --jq '[.[] | select(.state == "open")] | length')
+  if [ "$open_blockers" = "0" ]; then echo "$n"; fi
+done
+```
+
+If it returns more than one, the dependencies were not wired; say so on the map
+rather than picking. If it returns none, every milestone is done or claimed —
+which is a thing to report, not a thing to work around by inventing a ticket.
 
 **The ticket's scope is the deliverable.** A build ticket that reads a construct
 the next milestone owns has not gone faster; it has moved the boundary, and the
@@ -39,7 +53,23 @@ boundary is what makes the next ticket claimable by someone who was not here.
    ```
 6. **Close** — comment the outcome on the ticket (what was built, what was
    pinned, what is deliberately still out), close it, and append one line to map
-   #1's *Decisions so far*.
+   #1's *Decisions so far*. The line is for someone who will never read the
+   ticket: say what the milestone decided, not what it did.
+
+Writing the next milestone's ticket is part of closing, when the ticket you
+closed names one. Three writes make it claimable, and all three are easy to
+forget:
+
+```sh
+repo=nanov/protobuf-to-messagepack-sharp
+gh issue create --repo "$repo" --label wayfinder:task --title "M<n>: ..." --body ...
+id=$(gh api "repos/$repo/issues/<new>" --jq .id)
+prev_id=$(gh api "repos/$repo/issues/<prev>" --jq .id)
+gh api --method POST "repos/$repo/issues/1/sub_issues"     -F sub_issue_id="$id"
+gh api --method POST "repos/$repo/issues/<new>/dependencies/blocked_by" -F issue_id="$prev_id"
+```
+
+The dependency takes the blocker's **database id**, not its number.
 
 ## Conventions the frontend already committed to
 
