@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -774,6 +775,30 @@ table U {
 	}
 }
 
+// A key part may be an alias, which is how section 1 writes its own: the part
+// is `bet_type_id` and the field is `id`. Deriving cardinality against the
+// alias rather than against what it passes through to would call a whole key
+// something else, so the rule follows it.
+func TestAKeyPartThatIsAnAliasIsTheMemberItPassesThroughTo(t *testing.T) {
+	schema := checkClean(t, map[string]string{
+		"a.protop": `revision 1;
+namespace A;
+table T {
+  key int64 id = 1;
+}
+table U {
+  key key = 1 (event);
+  int64 event_id = 2 [references(T)];
+  alias event = event_id;
+}
+`,
+	})
+	rels := schema.File("a.protop").Decl("U").Member("event_id").Relations
+	if len(rels) != 1 || rels[0].Cardinality != OneToOne {
+		t.Errorf("cardinality is %v, want one-to-one: the one part of the key is an alias of this member", rels)
+	}
+}
+
 // A view inherits the relations of the members it lists; section 6 says so, and
 // says that is why no rule is needed forbidding a view from declaring its own.
 // The relation is on the member the view selected, which is what `From` is for.
@@ -788,6 +813,29 @@ func TestAViewInheritsItsSourcesRelations(t *testing.T) {
 	}
 	if len(m.From.Relations) != 1 || m.From.Relations[0].Target.Name != "SportGame" {
 		t.Errorf("the member it selects carries %v, want one relation to SportGame", m.From.Relations)
+	}
+}
+
+// The checker is handed a map, and a map has no order. A compiler whose output
+// moved between runs could not be diffed in a build log, so the files come out
+// sorted by the import string they are known by. Checked over and over because
+// the thing being ruled out is Go's randomized map iteration: one run agreeing
+// with sorted order proves nothing.
+func TestFilesComeOutInAStableOrder(t *testing.T) {
+	files := map[string]string{}
+	for _, name := range []string{"e.protop", "c.protop", "a.protop", "d.protop", "b.protop"} {
+		files[name] = "revision 1;\nnamespace N;\n"
+	}
+	set, _ := parseSet(t, files)
+	for i := 0; i < 20; i++ {
+		var bag diag.Bag
+		var got []string
+		for _, f := range Check(set, &bag).Files {
+			got = append(got, f.Path)
+		}
+		if !slices.IsSorted(got) {
+			t.Fatalf("files came out %v, want them sorted", got)
+		}
 	}
 }
 
