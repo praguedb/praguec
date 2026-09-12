@@ -50,6 +50,28 @@ Identity takes two forms in the corpus: a stored field *is* the identity, or a
 get-only tuple *over* stored fields is, in which case it occupies a position of
 its own and duplicates what its components already carry.
 
+## relation
+
+A declared reference from one payload type to another's identity. The referring
+type holds a **foreign key** — a field whose value is the other type's identity.
+Distinct from containment: a related type exists independently and is referred
+to, a contained one has no identity and cannot.
+
+## snapshot
+
+A denormalized copy of a related type carried inline by the referring type, at
+its own key, alongside the foreign key. The corpus's `SportType` beside
+`SportTypeId`. A snapshot is not a pointer and not a join — it is duplicated
+data, and it can disagree with the foreign key it accompanies, which is a
+species of drift.
+
+## index
+
+A lookup structure built over a payload type's members so the application can
+find rows by something other than identity. Not a property of the data: the
+same type is indexed differently by different consumers, and the choice changes
+with read patterns rather than with the payload.
+
 ## presence
 
 Whether a field distinguishes "absent" from "set to the zero value". Explicit
@@ -99,4 +121,5 @@ writes. In the corpus, the cache shells are empty by design.
 
 Carrying an annotation from protop into the generated C# verbatim, without
 protopc understanding what it means. The mechanism by which protop-generated
-types reach generators protopc knows nothing about.
+types reach generators protopc knows nothing about — and the reason a concept
+can be expressible without being part of the language.
