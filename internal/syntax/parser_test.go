@@ -2236,3 +2236,223 @@ import "prague.protop";
 		t.Errorf("imports are %+v, want the one that was written", file.Imports)
 	}
 }
+
+// A view member ends with its `;` like every other line in the language, and
+// the parser requires one rather than merely accepting one. Nothing wrote a
+// view member without its semicolon, so the `;` could be made optional with the
+// suite green -- and an optional terminator is not a small thing here, because
+// a view body is idents in a row and the semicolons are the only boundary
+// between one member and the next.
+func TestAViewMemberNeedsItsSemicolon(t *testing.T) {
+	f, file, bag := parse(t, `revision 1;
+namespace A;
+view V of T {
+  name
+}
+`)
+	if bag.Len() != 1 || bag.All()[0].Code != diag.UnexpectedToken {
+		t.Fatalf("got %d diagnostics, want one UnexpectedToken:\n%s", bag.Len(), diag.RenderAll(f, bag))
+	}
+	// Reported where the `;` should have been, which is the token that is not
+	// one -- here the brace that ends the body.
+	if got := f.Slice(bag.All()[0].Span); got != "}" {
+		t.Errorf("reported at %q, want the token that should have been a `;`", got)
+	}
+	// And the member is still in the tree: it is missing its terminator, not
+	// unreadable.
+	assertDump(t, file, "revision 1\nnamespace A\nview V of T\n  name\n")
+}
+
+// A view body that is never closed is reported. parseTypeDecl and parseEnum
+// have the same shape and the struct one is covered by the recovery tests; the
+// view one was covered by nothing, so the closing brace could be made optional
+// and a file that trails off mid-view would have compiled.
+func TestAnUnterminatedViewBodyIsReported(t *testing.T) {
+	f, file, bag := parse(t, "revision 1;\nnamespace A;\nview V of T {\n  name;\n")
+	if bag.Len() != 1 || bag.All()[0].Code != diag.UnexpectedToken {
+		t.Fatalf("got %d diagnostics, want one UnexpectedToken:\n%s", bag.Len(), diag.RenderAll(f, bag))
+	}
+	if got := diag.Render(f, bag.All()[0]); !strings.Contains(got, "expected `}`, found end of file") {
+		t.Errorf("rendered:\n%s\nwant a message about the missing `}`", got)
+	}
+	// What was read before the file ran out is kept, which is what lets an
+	// editor outline a view that is still being typed.
+	assertDump(t, file, "revision 1\nnamespace A\nview V of T\n  name\n")
+}
+
+// A view body line that is not a name at all -- the case every other view
+// diagnostic misses, because all of them enter parseViewMember with an ident in
+// hand. Three separate things are pinned here, each of which could be broken on
+// its own with the rest of the suite green:
+//
+// the offending token is CONSUMED before recovery, without which the parser
+// would sit on it; the member is NOT appended, so a nil never reaches the tree
+// for a later stage to dereference; and recovery is recoverStmt, so the `}` is
+// left for the body loop and the declaration after the view still parses.
+func TestAViewBodyLineThatIsNotAName(t *testing.T) {
+	f, file, bag := parse(t, `revision 1;
+namespace A;
+view V of T {
+  5;
+  name;
+}
+struct S {
+  int64 x = 1;
+}
+`)
+	var got []diag.Code
+	for _, d := range bag.All() {
+		got = append(got, d.Code)
+	}
+	if !slices.Equal(got, []diag.Code{diag.UnexpectedToken}) {
+		t.Fatalf("codes = %v, want one UnexpectedToken:\n%s", got, diag.RenderAll(f, bag))
+	}
+	if s := f.Slice(bag.All()[0].Span); s != "5" {
+		t.Errorf("the diagnostic underlines %q, want the token that is not a name", s)
+	}
+
+	// The members are exactly the ones that were well formed -- one, not two
+	// with a nil in it.
+	v := file.Decls[0].(*View)
+	if len(v.Members) != 1 || v.Members[0] == nil || v.Members[0].Name.Text != "name" {
+		t.Errorf("members are %v, want only the line that parsed", v.Members)
+	}
+	assertDump(t, file, `revision 1
+namespace A
+view V of T
+  name
+struct S
+  int64 x = 1
+`)
+}
+
+// A tag in a view member ends the member and not the view. Recovery here is
+// recoverStmt, which leaves the `}` for the body loop; recoverDecl would
+// consume the balanced brace, so the view body would run on into the next
+// declaration and swallow it -- one mistake would cost three diagnostics and a
+// struct.
+//
+// The partial member is kept for the same reason a field with a failed tag is:
+// the tree is best-effort, and a member that wrote a tag it may not write is
+// still a member that was selected.
+func TestATagInAViewMemberEndsTheMemberAndNotTheView(t *testing.T) {
+	f, file, bag := parse(t, `revision 1;
+namespace A;
+view V of T {
+  a = 1;
+  b;
+}
+struct S {
+  int64 x = 1;
+}
+`)
+	if bag.Len() != 1 || bag.All()[0].Code != diag.TagInViewMember {
+		t.Fatalf("got %d diagnostics, want one TagInViewMember:\n%s", bag.Len(), diag.RenderAll(f, bag))
+	}
+	assertDump(t, file, `revision 1
+namespace A
+view V of T
+  a
+  b
+struct S
+  int64 x = 1
+`)
+	v := file.Decls[0].(*View)
+	if len(v.Members) != 2 || v.Members[0].Name.Text != "a" {
+		t.Errorf("members are %v, want the member that wrote the tag and the one after it", v.Members)
+	}
+}
+
+// A view whose head is unreadable is still a declaration in the tree. The
+// parser appends what it read and returns -- ast.go and the parser's own
+// preamble both rest on that -- so an editor outlining a file gets the view's
+// name even though the view names no source, and bag.HasErrors is what stops
+// anything downstream trusting it.
+func TestParseKeepsASourcelessViewInTheTree(t *testing.T) {
+	f, file, bag := parse(t, "revision 1;\nnamespace A;\nview V {\n  name;\n}\n")
+	if !bag.HasErrors() {
+		t.Fatal("a view with no source was accepted")
+	}
+	if bag.Len() != 1 || bag.All()[0].Code != diag.ViewSourceMissing {
+		t.Fatalf("got %d diagnostics, want one ViewSourceMissing:\n%s", bag.Len(), diag.RenderAll(f, bag))
+	}
+	if len(file.Decls) != 1 {
+		t.Fatalf("decls = %d, want the view that was written", len(file.Decls))
+	}
+	v, ok := file.Decls[0].(*View)
+	if !ok {
+		t.Fatalf("declaration is %T, want *View", file.Decls[0])
+	}
+	if v.Name.Text != "V" {
+		t.Errorf("the view is named %q, want V", v.Name.Text)
+	}
+	if v.Source.Text != "" {
+		t.Errorf("the source is %q, want nothing; there was none to read", v.Source.Text)
+	}
+}
+
+// The narrowing position takes a view, and the six scalars are the one set the
+// parser can rule out by itself. The boundary is tested from both sides,
+// because it was untested in both: a check that knew only `int64` passed, a
+// check that exempted `decimal` passed, and a check that ALSO rejected `list`
+// and `map` passed -- and that last one would have made `list<Odd>` narrowings
+// unwritable the day M4 decides what they mean.
+//
+// The six come from the literal oracle, not from scalarTypes. Reading the map
+// under test would make widening it weaken the check, which is precisely the
+// tautology M2 had to unpick.
+func TestEveryScalarIsRejectedInANarrowingPosition(t *testing.T) {
+	for _, scalar := range wantScalarTypes {
+		t.Run(scalar, func(t *testing.T) {
+			f, file, bag := parse(t, "revision 1;\nnamespace A;\nview V of T {\n  "+scalar+" x;\n}\n")
+			var got []diag.Code
+			for _, d := range bag.All() {
+				got = append(got, d.Code)
+			}
+			if !slices.Equal(got, []diag.Code{diag.ScalarInViewMember}) {
+				t.Fatalf("codes = %v, want one ScalarInViewMember:\n%s", got, diag.RenderAll(f, bag))
+			}
+			if s := f.Slice(bag.All()[0].Span); s != scalar {
+				t.Errorf("the diagnostic underlines %q, want %q", s, scalar)
+			}
+			// The line is still read: what is wrong is the narrowing, not the
+			// member it narrows.
+			v := file.Decls[0].(*View)
+			if len(v.Members) != 1 || v.Members[0].Name.Text != "x" {
+				t.Errorf("members are %v, want the member that was written", v.Members)
+			}
+		})
+	}
+
+	// A collection is not a scalar and is not rejected here. Whether `list` can
+	// be narrowed to is a question about what `list` resolves to, which is not
+	// a question this file is allowed to ask.
+	_, file := parseClean(t, "revision 1;\nnamespace A;\nview V of T {\n  list odds;\n  map m;\n}\n")
+	assertDump(t, file, "revision 1\nnamespace A\nview V of T\n  list odds\n  map m\n")
+}
+
+// peekAt clamps to the EOF token the lexer always emits, and the suite never
+// put a two-token lookahead within two tokens of the end of the file. The
+// composite-key lookahead is the one that reaches furthest -- `key` decides
+// which spelling it is by looking at the token after next -- so a file that
+// stops on the word `key` is what walks off the end.
+//
+// Without the clamp this input panics with an index out of range, which is a
+// crash rather than a diagnostic and is the one failure mode a compiler may not
+// have on malformed input. It is also exactly what a file looks like halfway
+// through being typed.
+func TestLookaheadPastTheEndOfTheFileDoesNotPanic(t *testing.T) {
+	f, file, bag := parse(t, "revision 1;\nnamespace A;\ntable T {\n  key")
+	if !bag.HasErrors() {
+		t.Fatal("a file that stops mid-member was accepted")
+	}
+	var got []diag.Code
+	for _, d := range bag.All() {
+		got = append(got, d.Code)
+	}
+	if !slices.Equal(got, []diag.Code{diag.UnexpectedToken, diag.UnexpectedToken}) {
+		t.Fatalf("codes = %v, want the member and the body each reporting what ran out:\n%s", got, diag.RenderAll(f, bag))
+	}
+	// The table is in the tree with no members, which is all there was.
+	assertDump(t, file, "revision 1\nnamespace A\ntable T\n")
+}
