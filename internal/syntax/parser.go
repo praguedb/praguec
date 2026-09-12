@@ -354,7 +354,13 @@ func (p *parser) parseViewMember() *ViewMember {
 	tok := p.peek()
 	if tok.Kind != KindIdent {
 		p.bag.Errorf(diag.UnexpectedToken, tok.Span, "expected a view member's name, found %s", tok.Kind)
-		p.next()
+		// The offending token is left for recovery rather than consumed
+		// first. recoverStmt consumes everything that is not a boundary, so
+		// skipping the token here would only matter when it IS one -- and a
+		// stray `;` is the end of the line that went wrong, not the start of
+		// it. Consuming it would send recovery hunting for the NEXT `;`, and
+		// the member after the stray one would vanish from the tree without a
+		// word said about it.
 		p.recoverStmt()
 		return nil
 	}

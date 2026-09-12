@@ -2330,6 +2330,46 @@ view V of T
 struct S
   int64 x = 1
 `)
+
+	// Without the `;` there is no semicolon for recovery to stop at, which is
+	// the input that tells recoverStmt from recoverDecl: the body's `}` has to
+	// be left for the body loop. recoverDecl would eat it, and the struct below
+	// would be read as more of the view.
+	f, file, bag = parse(t, `revision 1;
+namespace A;
+view V of T {
+  5
+}
+struct S {
+  int64 x = 1;
+}
+`)
+	if bag.Len() != 1 || bag.All()[0].Code != diag.UnexpectedToken {
+		t.Fatalf("got %d diagnostics, want one UnexpectedToken:\n%s", bag.Len(), diag.RenderAll(f, bag))
+	}
+	assertDump(t, file, `revision 1
+namespace A
+view V of T
+struct S
+  int64 x = 1
+`)
+}
+
+// A stray `;` is the one token where it matters that the offending token is
+// left for recovery rather than consumed first. Everywhere else the two are the
+// same, because recoverStmt consumes anything that is not a boundary -- but a
+// `;` IS the boundary, so consuming it sends recovery hunting for the next one
+// and the member after the stray semicolon disappears from the tree with
+// nothing said about it. One mistake costs one diagnostic and one line.
+func TestAStrayTerminatorDoesNotEatTheMemberAfterIt(t *testing.T) {
+	f, file, bag := parse(t, "revision 1;\nnamespace A;\nview V of T {\n  ;\n  name;\n}\n")
+	if bag.Len() != 1 || bag.All()[0].Code != diag.UnexpectedToken {
+		t.Fatalf("got %d diagnostics, want one UnexpectedToken:\n%s", bag.Len(), diag.RenderAll(f, bag))
+	}
+	if got := f.Slice(bag.All()[0].Span); got != ";" {
+		t.Errorf("the diagnostic underlines %q, want the stray terminator", got)
+	}
+	assertDump(t, file, "revision 1\nnamespace A\nview V of T\n  name\n")
 }
 
 // A tag in a view member ends the member and not the view. Recovery here is
@@ -2367,6 +2407,31 @@ struct S
 	if len(v.Members) != 2 || v.Members[0].Name.Text != "a" {
 		t.Errorf("members are %v, want the member that wrote the tag and the one after it", v.Members)
 	}
+
+	// The same mistake without its `;`, which is the input that tells the two
+	// recoveries apart: with no semicolon to stop at, recovery runs up to the
+	// body's `}` and must LEAVE it for the body loop. recoverDecl consumes the
+	// balanced brace, so the view would run on into the struct below and take
+	// it with it.
+	f, file, bag = parse(t, `revision 1;
+namespace A;
+view V of T {
+  a = 1
+}
+struct S {
+  int64 x = 1;
+}
+`)
+	if bag.Len() != 1 || bag.All()[0].Code != diag.TagInViewMember {
+		t.Fatalf("got %d diagnostics, want one TagInViewMember:\n%s", bag.Len(), diag.RenderAll(f, bag))
+	}
+	assertDump(t, file, `revision 1
+namespace A
+view V of T
+  a
+struct S
+  int64 x = 1
+`)
 }
 
 // A view whose head is unreadable is still a declaration in the tree. The
