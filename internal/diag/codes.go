@@ -55,6 +55,9 @@ const (
 	UnexpectedToken Code = 200
 	// UnknownDeclaration is a top-level word that names no declaration keyword.
 	UnknownDeclaration Code = 201
+	// KeyNotAllowed is a `key` on a declaration that has no identity. Only a
+	// table has one, and only a table can be the target of a relation.
+	KeyNotAllowed Code = 202
 
 	// TagOutOfRange is a field tag outside the legal range. A tag is 1-based
 	// because a MessagePack key is tag - 1, so tag 0 names no slot.
@@ -63,6 +66,17 @@ const (
 	PrecisionNotAllowed Code = 301
 	// PrecisionRequired is a decimal written without its precision.
 	PrecisionRequired Code = 302
+	// DuplicateTag is one tag on two members of the same declaration. A tag is a
+	// position in a MessagePack array, and two members cannot hold one position.
+	DuplicateTag Code = 303
+	// TagIsReserved is a tag the declaration's own `reserved` list has retired.
+	// Catching the reuse is the whole point of writing the reservation down: a
+	// reader built against the old schema would decode the new field into the
+	// old one and be quietly wrong.
+	TagIsReserved Code = 304
+	// ReservedRangeReversed is a range whose upper bound is below its lower one,
+	// which retires nothing. `14..8` is `8..14` written backwards.
+	ReservedRangeReversed Code = 305
 
 	// AnnotationNotAllowed is an annotation written where the grammar has no
 	// slot for one. An annotation follows what it describes, and there is no

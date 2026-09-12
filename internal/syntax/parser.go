@@ -222,6 +222,9 @@ type declHead struct {
 func (p *parser) parseTypeDecl() declHead {
 	kw := p.next()
 	h := declHead{span: kw.Span}
+	// The keyword goes down into the body, because one member is legal in one
+	// declaration and not in the others: only a table has identity.
+	keyword := p.text(kw)
 
 	name, ok := p.expectIdent()
 	if !ok {
@@ -240,13 +243,14 @@ func (p *parser) parseTypeDecl() declHead {
 		return h
 	}
 	for !p.at(KindRBrace) && !p.at(KindEOF) {
-		if m := p.parseMember(); m != nil {
+		if m := p.parseMember(keyword); m != nil {
 			h.members = append(h.members, m)
 		}
 	}
 	if closing, ok := p.expect(KindRBrace); ok {
 		h.span = h.span.To(closing.Span)
 	}
+	p.checkTags(h.members)
 	return h
 }
 
@@ -262,7 +266,7 @@ func (p *parser) parseTypeDecl() declHead {
 // decision to have no keyword token kinds costs, and `key key = 1 (event_id,
 // bet_type_id);` -- a member named `key`, of a kind named `key` -- is what it
 // buys.
-func (p *parser) parseMember() Member {
+func (p *parser) parseMember(keyword string) Member {
 	p.rejectAnnotations("the member's tag")
 
 	tok := p.peek()
@@ -280,6 +284,7 @@ func (p *parser) parseMember() Member {
 	case word == "alias":
 		return p.parseAlias()
 	case word == "key" && p.peekAt(2).Kind == KindAssign:
+		p.checkKeyAllowed(keyword, tok.Span)
 		return p.parseCompositeKey()
 	}
 
@@ -287,6 +292,9 @@ func (p *parser) parseMember() Member {
 	key, repeated := word == "key", word == "repeated"
 	if key || repeated {
 		lead = p.next()
+	}
+	if key {
+		p.checkKeyAllowed(keyword, lead.Span)
 	}
 	f := p.parseField()
 	if f == nil {
@@ -427,6 +435,10 @@ func (p *parser) parseReserved() *Reserved {
 			}
 			entry.Hi = hi
 			entry.Span = entry.Span.To(hi.Span)
+			if hi.Value < lo.Value {
+				p.bag.Errorf(diag.ReservedRangeReversed, entry.Span,
+					"reserved range %d..%d ends before it begins and retires nothing", lo.Value, hi.Value)
+			}
 		}
 		r.Ranges = append(r.Ranges, entry)
 		r.Span = r.Span.To(entry.Span)
@@ -490,6 +502,70 @@ func (p *parser) parseField() *Field {
 		f.Span = f.Span.To(semi.Span)
 	}
 	return f
+}
+
+// checkKeyAllowed reports a `key` on a declaration that has none to give. A
+// struct and a record are values: they are compared by what they hold, they are
+// stored inside whatever holds them, and nothing can point at one. A key on
+// either is a promise the language has no way to keep.
+func (p *parser) checkKeyAllowed(keyword string, span source.Span) {
+	if keyword != "table" {
+		p.bag.Errorf(diag.KeyNotAllowed, span,
+			"only a `table` carries identity; a `%s` cannot declare a `key`", keyword)
+	}
+}
+
+// checkTags runs the two checks a declaration can answer on its own: a tag
+// written twice, and a tag the declaration's own `reserved` list has retired.
+// Both need the whole body, so they run once it has been read rather than as
+// each member arrives -- `reserved` is written above the members in section 1,
+// but nothing says it has to be.
+//
+// Tag 0 is skipped. It has already been reported, and a member whose tag failed
+// to parse carries a zero it never wrote; calling those duplicates of each
+// other would bury the mistake that made them.
+func (p *parser) checkTags(members []Member) {
+	var reserved []ReservedRange
+	for _, m := range members {
+		if r, ok := m.(*Reserved); ok {
+			reserved = append(reserved, r.Ranges...)
+		}
+	}
+
+	seen := map[uint64]source.Span{}
+	for _, m := range members {
+		var tag IntLit
+		switch m := m.(type) {
+		case *Field:
+			tag = m.Tag
+		case *CompositeKey:
+			// A composite key spends an ordinal, so it collides like any other
+			// member -- which is the reason the spelling writes one down.
+			tag = m.Tag
+		default:
+			continue
+		}
+		if tag.Value == 0 {
+			continue
+		}
+
+		if first, dup := seen[tag.Value]; dup {
+			p.bag.Errorf(diag.DuplicateTag, tag.Span,
+				"tag %d is already used at %s; a tag is a position in the MessagePack array and two members cannot hold one position",
+				tag.Value, p.src.Position(first.Start))
+			continue
+		}
+		seen[tag.Value] = tag.Span
+
+		for _, r := range reserved {
+			if r.Contains(tag.Value) {
+				p.bag.Errorf(diag.TagIsReserved, tag.Span,
+					"tag %d is reserved at %s; a retired tag is never reused, because a reader built against the old schema would decode this field into the old one",
+					tag.Value, p.src.Position(r.Span.Start))
+				break
+			}
+		}
+	}
 }
 
 // checkTag reports a tag outside the legal range. Every tagged member is held

@@ -486,6 +486,92 @@ table T {
 			wantLine:  4, wantCol: 13,
 		},
 		{
+			// Two members cannot hold one position in the array. The second one
+			// is reported, and the message points back at the first.
+			name: `tag used twice`,
+			src: `revision 1;
+namespace A;
+struct S {
+  int64 a = 1;
+  int64 b = 1;
+}
+`,
+			wantCodes: []diag.Code{diag.DuplicateTag},
+			wantLine:  5, wantCol: 13,
+		},
+		{
+			// The reservation is checked against the whole declaration however it
+			// is ordered, so a `reserved` written below the field it retires
+			// still catches it.
+			name: `tag retired by a reserved range written below it`,
+			src: `revision 1;
+namespace A;
+table T {
+  int64 a = 10;
+  reserved 8..14;
+}
+`,
+			wantCodes: []diag.Code{diag.TagIsReserved},
+			wantLine:  4, wantCol: 13,
+		},
+		{
+			// A range that ends before it begins retires nothing, so it is a
+			// reservation that silently does not hold.
+			name: `reversed reserved range`,
+			src: `revision 1;
+namespace A;
+table T {
+  reserved 14..8;
+}
+`,
+			wantCodes: []diag.Code{diag.ReservedRangeReversed},
+			wantLine:  4, wantCol: 12,
+		},
+		{
+			// Identity is what a table has and the value declarations do not: a
+			// relation resolves against a key, and nothing can point at a struct.
+			name: `key on a struct`,
+			src: `revision 1;
+namespace A;
+struct S {
+  key int64 id = 1;
+}
+`,
+			wantCodes: []diag.Code{diag.KeyNotAllowed},
+			wantLine:  4, wantCol: 3,
+		},
+		{
+			// The composite spelling is held to the same rule, and is told so
+			// before its own contents are read.
+			name: `composite key on a record`,
+			src: `revision 1;
+namespace A;
+record R {
+  key key = 1 (a, b);
+  int64 a = 2;
+  int64 b = 3;
+}
+`,
+			wantCodes: []diag.Code{diag.KeyNotAllowed},
+			wantLine:  4, wantCol: 3,
+		},
+		{
+			// A composite key spends an ordinal, so it collides with a field
+			// that spends the same one -- which is the reason the spelling
+			// writes the ordinal down instead of inferring it.
+			name: `composite key colliding with a field`,
+			src: `revision 1;
+namespace A;
+table T {
+  key key = 1 (a, b);
+  int64 a = 1;
+  int64 b = 2;
+}
+`,
+			wantCodes: []diag.Code{diag.DuplicateTag},
+			wantLine:  5, wantCol: 13,
+		},
+		{
 			// A precision belongs to `decimal` alone, and a declared type is
 			// told it so in the same words a scalar is: neither is resolved
 			// here, and the fix is the same.
@@ -951,5 +1037,39 @@ table T
 	}
 	if !k.Key || k.Name.Text != "key" {
 		t.Errorf("member is %+v, want a Key field named key", k)
+	}
+}
+
+// The tag census skips 0, and that is not an oversight. A tag that failed to
+// parse leaves behind a zero the member never wrote, and two of those are not
+// two members fighting over one position -- calling them duplicates would bury
+// the mistake that made them.
+func TestFailedAndZeroTagsAreNotDuplicates(t *testing.T) {
+	for _, tt := range []struct {
+		name      string
+		src       string
+		wantCodes []diag.Code
+	}{
+		{
+			name:      "tags that failed to parse",
+			src:       "revision 1;\nnamespace A;\nstruct S {\n  int64 a = ;\n  int64 b = ;\n}\n",
+			wantCodes: []diag.Code{diag.UnexpectedToken, diag.UnexpectedToken},
+		},
+		{
+			name:      "tags written as 0",
+			src:       "revision 1;\nnamespace A;\nstruct S {\n  int64 a = 0;\n  int64 b = 0;\n}\n",
+			wantCodes: []diag.Code{diag.TagOutOfRange, diag.TagOutOfRange},
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			f, _, bag := parse(t, tt.src)
+			var got []diag.Code
+			for _, d := range bag.All() {
+				got = append(got, d.Code)
+			}
+			if !slices.Equal(got, tt.wantCodes) {
+				t.Errorf("codes = %v, want %v:\n%s", got, tt.wantCodes, diag.RenderAll(f, bag))
+			}
+		})
 	}
 }
