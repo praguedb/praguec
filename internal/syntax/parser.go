@@ -68,14 +68,6 @@ var protopAnnotations = map[string]bool{
 	"references": true,
 }
 
-// notYetDecls are declaration keywords the spec defines and this milestone
-// does not read. They are diagnosed as not-yet-implemented rather than as
-// syntax errors: a user who writes valid protop deserves to be told the
-// compiler is behind, not that they are wrong.
-var notYetDecls = map[string]bool{
-	"import": true,
-}
-
 // ofWord and asWord are the two words that read as keywords inside a view and
 // are idents everywhere else -- `view X of Y` and `event_id as id`. Neither is
 // a token kind, and neither is reserved: `key as id;` selects a member named
@@ -150,13 +142,11 @@ func (p *parser) parseDecl(file *File) {
 		file.Decls = append(file.Decls, p.parseEnum())
 	case "view":
 		file.Decls = append(file.Decls, p.parseView())
+	case "import":
+		p.parseImport(file)
 	default:
-		if notYetDecls[word] {
-			p.bag.Errorf(diag.NotYetImplemented, tok.Span, "`%s` is not yet implemented", word)
-		} else {
-			p.bag.Errorf(diag.UnknownDeclaration, tok.Span,
-				"unknown declaration `%s`; expected `struct`, `enum`, `record`, `table`, `view` or `import`", word)
-		}
+		p.bag.Errorf(diag.UnknownDeclaration, tok.Span,
+			"unknown declaration `%s`; expected `struct`, `enum`, `record`, `table`, `view` or `import`", word)
 		p.recoverDecl()
 	}
 }
@@ -186,7 +176,7 @@ func (p *parser) parseRevision(file *File) {
 		p.bag.Errorf(diag.DuplicateRevision, rev.Span, "`revision` is already declared at %s",
 			p.src.Position(file.Revision.Span.Start))
 		return // the first stamp wins
-	case len(file.Decls) > 0 || file.Namespace != nil:
+	case len(file.Decls) > 0 || len(file.Imports) > 0 || file.Namespace != nil:
 		p.bag.Errorf(diag.RevisionNotFirst, rev.Span, "`revision` must be the first declaration in the file")
 	}
 	file.Revision = rev
@@ -219,6 +209,43 @@ func (p *parser) parseNamespace(file *File) {
 		return // the first declaration wins
 	}
 	file.Namespace = ns
+}
+
+// parseImport reads `import "prague.protop";`.
+//
+// Imports are grouped under the file header, and an import written below a
+// declaration is diagnosed. The reason: what a file depends on is a property of
+// the whole file rather than of the lines that follow it. Nothing in protop is
+// scoped by position, so an import half way down would come into force at the
+// top of the file anyway, and a grammar that allowed it would be saying the
+// order mattered when it does not. Grouped, a reader learns a file's
+// dependencies from its head without reading it entire -- the same reason
+// `revision` and `namespace` are pinned where they are, and the order section 2
+// writes. An import above the namespace is still in the header and is not
+// diagnosed: the rule is about declarations, not about the two header lines.
+//
+// Nothing is resolved. The string names a file; where that file is found is the
+// distribution model -- git, by immutable tag, toolchain-fetched -- and every
+// particular of it is open. No file is opened and no path is looked at.
+func (p *parser) parseImport(file *File) {
+	kw := p.next()
+	im := &Import{Span: kw.Span}
+
+	if path, ok := p.expectString(); !ok {
+		p.recoverDecl()
+	} else {
+		im.Path = path
+		im.Span = im.Span.To(path.Span)
+		if semi, ok := p.expect(KindSemi); ok {
+			im.Span = im.Span.To(semi.Span)
+		}
+	}
+
+	if len(file.Decls) > 0 {
+		p.bag.Errorf(diag.ImportNotInHeader, im.Span,
+			"an `import` belongs with the file's other imports, above the first declaration; what a file depends on is a property of the whole file and not of the lines below it")
+	}
+	file.Imports = append(file.Imports, im)
 }
 
 func (p *parser) parseStruct() *Struct {
@@ -1144,6 +1171,17 @@ func (p *parser) expectIdent() (Ident, bool) {
 		return Ident{Span: tok.Span}, false
 	}
 	return p.identOf(tok), true
+}
+
+// expectString consumes a string literal, whose text is carried as written --
+// quotes and all. See StringLit: nothing in the frontend decodes a string, and
+// half-decoding one would be worse than not decoding it.
+func (p *parser) expectString() (StringLit, bool) {
+	tok, ok := p.expect(KindString)
+	if !ok {
+		return StringLit{Span: tok.Span}, false
+	}
+	return StringLit{Text: p.text(tok), Span: tok.Span}, true
 }
 
 func (p *parser) expectInt() (IntLit, bool) {

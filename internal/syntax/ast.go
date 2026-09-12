@@ -24,9 +24,14 @@ import (
 // reaches for them by name. Either may be nil: the parser reports the omission
 // and returns what it has, so an editor still gets an outline of a file whose
 // header is missing.
+// Imports are a field of their own for the same reason: they are a property of
+// the file rather than one of its declarations, and the parser holds them to
+// the header, so a reader learns what a file depends on without reading it
+// entire. There may be any number of them, in source order.
 type File struct {
 	Revision  *Revision
 	Namespace *Namespace
+	Imports   []*Import
 	Decls     []Decl
 	Span      source.Span
 }
@@ -41,6 +46,20 @@ type Ident struct {
 type IntLit struct {
 	Value uint64
 	Span  source.Span
+}
+
+// StringLit is a double-quoted literal, and there is exactly one place the
+// grammar has for one: an import path.
+//
+// Text is the literal as written, quotes and all. Nothing in the frontend
+// decodes a string -- the lexer recognises `\"` only well enough to keep it
+// from closing the literal -- so stripping the quotes while leaving `\n` a
+// backslash and an `n` would hand a later stage a half-cooked string it could
+// not tell from a raw one. Verbatim is one rule, and the stage that resolves a
+// path is the stage that gets to decide what an escape in it means.
+type StringLit struct {
+	Text string
+	Span source.Span
 }
 
 // Revision is the dialect stamp, `revision 1;`.
@@ -63,6 +82,19 @@ func (n *Namespace) String() string {
 		parts[i] = p.Text
 	}
 	return strings.Join(parts, ".")
+}
+
+// Import is `import "prague.protop";`.
+//
+// It names a file and nothing more. Where that file is found is the
+// distribution model -- git, by immutable tag, toolchain-fetched -- and every
+// particular of it is open: whether the module path lives in the import line or
+// in a manifest beside it, what that manifest is called, how the cache is
+// keyed. The frontend parses the string and stops. No file is opened, no path
+// is resolved, nothing is fetched.
+type Import struct {
+	Path StringLit
+	Span source.Span
 }
 
 // Decl is a top-level type declaration. The interface is a marker: callers

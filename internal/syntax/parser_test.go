@@ -49,6 +49,9 @@ func dump(file *File) string {
 	if file.Namespace != nil {
 		fmt.Fprintf(&b, "namespace %s\n", file.Namespace)
 	}
+	for _, im := range file.Imports {
+		fmt.Fprintf(&b, "import %s\n", im.Path.Text)
+	}
 	for _, d := range file.Decls {
 		switch d := d.(type) {
 		case *Struct:
@@ -397,17 +400,6 @@ struct S {
 			name:      "unterminated block comment",
 			src:       "revision 1;\nnamespace A;\n/* and then nothing\n",
 			wantCodes: []diag.Code{diag.UnterminatedBlockComment},
-			wantLine:  3, wantCol: 1,
-		},
-		{
-			// A construct the spec defines and this milestone does not read is
-			// the compiler's fault, not the user's, and says so.
-			name: "import declaration",
-			src: `revision 1;
-namespace A;
-import "prague.protop";
-`,
-			wantCodes: []diag.Code{diag.NotYetImplemented},
 			wantLine:  3, wantCol: 1,
 		},
 		{
@@ -894,6 +886,42 @@ view V of T {
 `,
 			wantCodes: []diag.Code{diag.AnnotationNotAllowed},
 			wantLine:  4, wantCol: 3,
+		},
+		{
+			// Imports are grouped under the header. What a file depends on is a
+			// property of the whole file, and nothing in protop is scoped by
+			// where it is written, so an import below a declaration would come
+			// into force above it anyway.
+			name: "an import below a declaration",
+			src: `revision 1;
+namespace A;
+struct S {
+  int64 a = 1;
+}
+import "prague.protop";
+`,
+			wantCodes: []diag.Code{diag.ImportNotInHeader},
+			wantLine:  6, wantCol: 1,
+		},
+		{
+			// An import names a file with a string literal. A bare word is not
+			// one, and the path is never a name the parser resolves.
+			name: "an import with no string literal",
+			src: `revision 1;
+namespace A;
+import prague;
+`,
+			wantCodes: []diag.Code{diag.UnexpectedToken},
+			wantLine:  3, wantCol: 8,
+		},
+		{
+			// `revision` is first in the file, and an import is something it
+			// has to be first of -- otherwise a file could stamp its dialect
+			// after depending on another one.
+			name:      "revision after an import",
+			src:       "import \"prague.protop\";\nrevision 1;\nnamespace A;\n",
+			wantCodes: []diag.Code{diag.RevisionNotFirst},
+			wantLine:  2, wantCol: 1,
 		},
 		{
 			// Overlapping reservations are one reservation as far as a tag is
@@ -1829,9 +1857,11 @@ view V of of
 // Spans for the nodes this milestone adds, written as the text each one must
 // slice back to -- a hand-computed offset would be a second implementation of
 // the same arithmetic and would agree with a mistake.
-func TestViewSpansCoverWhatWasWritten(t *testing.T) {
+func TestViewAndImportSpansCoverWhatWasWritten(t *testing.T) {
 	src := `revision 1;
 namespace A;
+
+import "prague.protop";
 
 view SlimBetType of BetType
   [cs: DataCache]
@@ -1848,6 +1878,18 @@ view SlimBetType of BetType
 		if got := f.Slice(span); got != want {
 			t.Errorf("%s spans %q, want %q", what, got, want)
 		}
+	}
+
+	im := file.Imports[0]
+	check("an import", im.Span, `import "prague.protop";`)
+	// The path's span is the literal and its quotes, which is what the lexer
+	// emits and what a message about an unresolvable path has to underline.
+	check("an import path", im.Path.Span, `"prague.protop"`)
+	// And the text is that literal as written. Nothing in the frontend decodes
+	// a string, so half-decoding one -- quotes off, escapes untouched -- would
+	// hand a later stage something it could not tell from a raw literal.
+	if got := im.Path.Text; got != `"prague.protop"` {
+		t.Errorf("the path is %s, want %s", got, `"prague.protop"`)
 	}
 
 	v, ok := file.Decls[0].(*View)
@@ -1867,4 +1909,42 @@ view SlimBetType of BetType
 	// written there underlines that word and not the member.
 	check("a narrowing", v.Members[2].Narrow.Span, "SlimOdd")
 	check("a view member's annotation", v.Members[2].Annotations[0].Span, "[cs: Z]")
+}
+
+// Imports are a file property and are held in source order, which is the order
+// a lock file and a diagnostic quoting two of them both want.
+func TestImportsAreGroupedAndOrdered(t *testing.T) {
+	_, file := parseClean(t, `revision 1;
+namespace A;
+import "prague.protop";
+import "brand.protop";
+`)
+	assertDump(t, file, `revision 1
+namespace A
+import "prague.protop"
+import "brand.protop"
+`)
+	if len(file.Decls) != 0 {
+		t.Errorf("an import landed in Decls; it is a property of the file, not a declaration")
+	}
+}
+
+// An import below a declaration is reported and still recorded. The tree is
+// best-effort and a later stage reads Imports whatever their position: a file
+// that is wrong about where it wrote its dependency is not a file with no
+// dependency.
+func TestAMisplacedImportIsStillRecorded(t *testing.T) {
+	f, file, bag := parse(t, `revision 1;
+namespace A;
+struct S {
+  int64 a = 1;
+}
+import "prague.protop";
+`)
+	if bag.Len() != 1 || bag.All()[0].Code != diag.ImportNotInHeader {
+		t.Fatalf("got %d diagnostics, want one ImportNotInHeader:\n%s", bag.Len(), diag.RenderAll(f, bag))
+	}
+	if len(file.Imports) != 1 || file.Imports[0].Path.Text != `"prague.protop"` {
+		t.Errorf("imports are %+v, want the one that was written", file.Imports)
+	}
 }

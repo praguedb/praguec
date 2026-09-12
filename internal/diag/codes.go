@@ -49,6 +49,11 @@ const (
 	MissingNamespace Code = 104
 	// DuplicateNamespace is a second namespace declaration in one file.
 	DuplicateNamespace Code = 105
+	// ImportNotInHeader is an import written below a declaration. What a file
+	// depends on is a property of the whole file, not of the lines after it, so
+	// the imports are grouped under the header where a reader finds them
+	// without reading the file entire.
+	ImportNotInHeader Code = 106
 
 	// UnexpectedToken is the generic shape error: the parser wanted one thing
 	// and found another.
