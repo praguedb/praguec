@@ -1,10 +1,105 @@
 package diag
 
 import (
+	"os"
+	"regexp"
 	"testing"
 
 	"github.com/nanov/protobuf-to-messagepack-sharp/internal/source"
 )
+
+// Every code and the number it has shipped with, written out. codes.go opens
+// with the promise that a code keeps its number forever and that a retired one
+// is never reused, and until now nothing held it: the suite compared codes to
+// each other, so renumbering the whole file -- or giving a new code a number an
+// old one already had -- changed nothing a test could see.
+//
+// The numbers are literals rather than `Code.String()` of the constant beside
+// them, because reading the constant would only ask it whether it agrees with
+// itself. This table is the oracle; codes.go is what is under test.
+var wantCodeNumbers = []struct {
+	name string
+	code Code
+	want string
+}{
+	{"UnterminatedBlockComment", UnterminatedBlockComment, "PROTOP0001"},
+	{"UnterminatedString", UnterminatedString, "PROTOP0002"},
+	{"UnexpectedCharacter", UnexpectedCharacter, "PROTOP0003"},
+	{"IntegerOutOfRange", IntegerOutOfRange, "PROTOP0004"},
+
+	{"MissingRevision", MissingRevision, "PROTOP0100"},
+	{"RevisionNotFirst", RevisionNotFirst, "PROTOP0101"},
+	{"UnsupportedRevision", UnsupportedRevision, "PROTOP0102"},
+	{"DuplicateRevision", DuplicateRevision, "PROTOP0103"},
+	{"MissingNamespace", MissingNamespace, "PROTOP0104"},
+	{"DuplicateNamespace", DuplicateNamespace, "PROTOP0105"},
+	{"ImportNotInHeader", ImportNotInHeader, "PROTOP0106"},
+
+	{"UnexpectedToken", UnexpectedToken, "PROTOP0200"},
+	{"UnknownDeclaration", UnknownDeclaration, "PROTOP0201"},
+	{"KeyNotAllowed", KeyNotAllowed, "PROTOP0202"},
+	{"ViewSourceMissing", ViewSourceMissing, "PROTOP0203"},
+
+	{"TagOutOfRange", TagOutOfRange, "PROTOP0300"},
+	{"PrecisionNotAllowed", PrecisionNotAllowed, "PROTOP0301"},
+	{"PrecisionRequired", PrecisionRequired, "PROTOP0302"},
+	{"DuplicateTag", DuplicateTag, "PROTOP0303"},
+	{"TagIsReserved", TagIsReserved, "PROTOP0304"},
+	{"ReservedRangeReversed", ReservedRangeReversed, "PROTOP0305"},
+	{"TypeArgumentCountWrong", TypeArgumentCountWrong, "PROTOP0306"},
+	{"TypeArgumentsNotAllowed", TypeArgumentsNotAllowed, "PROTOP0307"},
+	{"TagInViewMember", TagInViewMember, "PROTOP0308"},
+	{"ScalarInViewMember", ScalarInViewMember, "PROTOP0309"},
+
+	{"AnnotationNotAllowed", AnnotationNotAllowed, "PROTOP0400"},
+	{"UnknownAnnotationPrefix", UnknownAnnotationPrefix, "PROTOP0401"},
+	{"UnknownAnnotation", UnknownAnnotation, "PROTOP0402"},
+	{"UnterminatedAnnotation", UnterminatedAnnotation, "PROTOP0403"},
+
+	{"NotYetImplemented", NotYetImplemented, "PROTOP0900"},
+}
+
+// A code keeps its number, and a number names one fact. Both halves matter: a
+// renumbering breaks every changelog entry and editor filter that cites the old
+// one, and a collision is worse still, because two different mistakes would
+// render as the same code and no message could tell a user which had happened.
+func TestEveryCodeKeepsItsNumber(t *testing.T) {
+	byNumber := make(map[string]string, len(wantCodeNumbers))
+	for _, c := range wantCodeNumbers {
+		if got := c.code.String(); got != c.want {
+			t.Errorf("%s is %s, want %s; a code that has shipped keeps its number", c.name, got, c.want)
+		}
+		if prev, taken := byNumber[c.code.String()]; taken {
+			t.Errorf("%s and %s are both %s; a number names one fact", prev, c.name, c.code)
+		}
+		byNumber[c.code.String()] = c.name
+	}
+}
+
+// The table above is only an oracle if it is complete, so the names -- and only
+// the names -- are read back out of codes.go. A code added without a line here
+// fails, which is the point at which someone has to decide what group it is in
+// and what number is free in it. The numbers stay literals in the table; taking
+// those from the source too would be the tautology this test exists to avoid.
+func TestEveryCodeIsInTheTable(t *testing.T) {
+	src, err := os.ReadFile("codes.go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	listed := make(map[string]bool, len(wantCodeNumbers))
+	for _, c := range wantCodeNumbers {
+		listed[c.name] = true
+	}
+	declared := regexp.MustCompile(`(?m)^\t(\w+) Code = \d+$`).FindAllStringSubmatch(string(src), -1)
+	if len(declared) != len(wantCodeNumbers) {
+		t.Errorf("codes.go declares %d codes, the table lists %d", len(declared), len(wantCodeNumbers))
+	}
+	for _, m := range declared {
+		if !listed[m[1]] {
+			t.Errorf("%s is declared in codes.go and is in no test that says what number it has", m[1])
+		}
+	}
+}
 
 func TestCodeString(t *testing.T) {
 	if got := UnterminatedBlockComment.String(); got != "PROTOP0001" {
