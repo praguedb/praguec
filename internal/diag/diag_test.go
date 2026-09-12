@@ -34,11 +34,15 @@ var wantCodeNumbers = []struct {
 	{"MissingNamespace", MissingNamespace, "PROTOP0104"},
 	{"DuplicateNamespace", DuplicateNamespace, "PROTOP0105"},
 	{"ImportNotInHeader", ImportNotInHeader, "PROTOP0106"},
+	{"ImportNotFound", ImportNotFound, "PROTOP0107"},
 
 	{"UnexpectedToken", UnexpectedToken, "PROTOP0200"},
 	{"UnknownDeclaration", UnknownDeclaration, "PROTOP0201"},
 	{"KeyNotAllowed", KeyNotAllowed, "PROTOP0202"},
 	{"ViewSourceMissing", ViewSourceMissing, "PROTOP0203"},
+	{"DuplicateDeclaration", DuplicateDeclaration, "PROTOP0204"},
+	{"ViewSourceNotFound", ViewSourceNotFound, "PROTOP0205"},
+	{"ViewSourceNotSelectable", ViewSourceNotSelectable, "PROTOP0206"},
 
 	{"TagOutOfRange", TagOutOfRange, "PROTOP0300"},
 	{"PrecisionNotAllowed", PrecisionNotAllowed, "PROTOP0301"},
@@ -50,11 +54,21 @@ var wantCodeNumbers = []struct {
 	{"TypeArgumentsNotAllowed", TypeArgumentsNotAllowed, "PROTOP0307"},
 	{"TagInViewMember", TagInViewMember, "PROTOP0308"},
 	{"ScalarInViewMember", ScalarInViewMember, "PROTOP0309"},
+	{"DuplicateMember", DuplicateMember, "PROTOP0310"},
+	{"UnknownType", UnknownType, "PROTOP0311"},
+	{"NoSuchMember", NoSuchMember, "PROTOP0312"},
+	{"NarrowingNotAView", NarrowingNotAView, "PROTOP0313"},
+	{"NarrowingSourceMismatch", NarrowingSourceMismatch, "PROTOP0314"},
+	{"AliasTargetNotFound", AliasTargetNotFound, "PROTOP0315"},
+	{"CompositeKeyPartNotFound", CompositeKeyPartNotFound, "PROTOP0316"},
+	{"RelationTargetNotFound", RelationTargetNotFound, "PROTOP0317"},
+	{"RelationTargetNotATable", RelationTargetNotATable, "PROTOP0318"},
 
 	{"AnnotationNotAllowed", AnnotationNotAllowed, "PROTOP0400"},
 	{"UnknownAnnotationPrefix", UnknownAnnotationPrefix, "PROTOP0401"},
 	{"UnknownAnnotation", UnknownAnnotation, "PROTOP0402"},
 	{"UnterminatedAnnotation", UnterminatedAnnotation, "PROTOP0403"},
+	{"MalformedRelation", MalformedRelation, "PROTOP0404"},
 
 	{"NotYetImplemented", NotYetImplemented, "PROTOP0900"},
 }
@@ -189,5 +203,40 @@ func TestBagCollects(t *testing.T) {
 	}
 	if all := b.All(); all[0].Message != "first" || all[1].Message != "second" {
 		t.Errorf("diagnostics out of order: %q, %q", all[0].Message, all[1].Message)
+	}
+}
+
+// A span is a pair of byte offsets and says nothing about which file it indexes
+// into, so a stage that sees several files at once -- the checking stage is the
+// first -- reports through a sink that stamps the file on. Render then prefers
+// the diagnostic's own file over whatever the caller had to hand, which is what
+// makes one bag over a whole program renderable at all.
+func TestADiagnosticCanNameTheFileItsSpanIsIn(t *testing.T) {
+	prague := source.NewFile("prague.protop", "revision 1;\n")
+	consumer := source.NewFile("consumer.protop", "import \"nope.protop\";\n")
+
+	var b Bag
+	b.In(consumer).Errorf(ImportNotFound, source.Span{Start: 7, End: 20}, "no file %q in the set", "nope.protop")
+
+	got := Render(prague, b.All()[0])
+	want := "consumer.protop:1:8: error PROTOP0107: no file \"nope.protop\" in the set\n" +
+		"  |\n" +
+		"1 | import \"nope.protop\";\n" +
+		"  |        ^^^^^^^^^^^^^"
+	if got != want {
+		t.Errorf("Render =\n%s\n\nwant\n%s", got, want)
+	}
+	if b.All()[0].File != consumer {
+		t.Error("the sink did not stamp its file on the diagnostic")
+	}
+}
+
+// A stage that sees one file at a time leaves the file off, and the frontend is
+// such a stage: the caller handed Parse a file and knows which one it got back.
+func TestADiagnosticRaisedOnTheBagNamesNoFile(t *testing.T) {
+	var b Bag
+	b.Errorf(TagOutOfRange, source.SpanAt(0), "field tag must be greater than 0")
+	if b.All()[0].File != nil {
+		t.Error("a diagnostic raised on the bag itself must not name a file")
 	}
 }

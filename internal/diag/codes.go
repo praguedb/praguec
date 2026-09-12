@@ -55,6 +55,12 @@ const (
 	// without reading the file entire.
 	ImportNotInHeader Code = 106
 
+	// ImportNotFound is an import naming no file in the set the checker was
+	// handed. Which files exist and where they came from is the distribution
+	// model's question, not this one's: the checker is given a set and reports
+	// an import that is not in it.
+	ImportNotFound Code = 107
+
 	// UnexpectedToken is the generic shape error: the parser wanted one thing
 	// and found another.
 	UnexpectedToken Code = 200
@@ -68,6 +74,18 @@ const (
 	// subset of one source and carries none of its own tags, so a view without
 	// a source describes nothing.
 	ViewSourceMissing Code = 203
+
+	// DuplicateDeclaration is two declarations of one name in one file. Which
+	// of them a reference meant is not a question the language answers.
+	DuplicateDeclaration Code = 204
+	// ViewSourceNotFound is a view whose source names no declaration in scope
+	// -- in its own file, or in one it imports.
+	ViewSourceNotFound Code = 205
+	// ViewSourceNotSelectable is a view of something that has no members to
+	// select at that thing's own tags: a struct, an enum, or another view. A
+	// view is a subset of a table or a record, which is section 5 in one
+	// sentence.
+	ViewSourceNotSelectable Code = 206
 
 	// TagOutOfRange is a field tag outside the legal range. A tag is 1-based
 	// because a MessagePack key is tag - 1, so tag 0 names no slot.
@@ -106,6 +124,48 @@ const (
 	// keeps its source's type is written with no leading name at all.
 	ScalarInViewMember Code = 309
 
+	// DuplicateMember is two members of one declaration under one name. Held
+	// apart from DuplicateTag on purpose: two members may collide by name
+	// without colliding by tag -- an alias carries no tag at all -- and the two
+	// facts have different fixes.
+	DuplicateMember Code = 310
+	// UnknownType is a type naming neither one of protop's scalars nor a
+	// declaration in scope. A file sees its own declarations and those of the
+	// files it imports, and nothing else, so the fix is a declaration or an
+	// import.
+	UnknownType Code = 311
+	// NoSuchMember is a view member naming nothing its source declares. This is
+	// the diagnostic the whole design exists to produce: when the shared repo
+	// renames or retires a field, every view that still selects the old name
+	// fails to compile, in the repo that drifted, instead of decoding to nil at
+	// runtime.
+	NoSuchMember Code = 312
+	// NarrowingNotAView is a view member narrowed to a declaration that is not
+	// a view. The leading name of `SlimOdd odds;` asks for the member's type to
+	// be narrowed, and only a view narrows one; a member that keeps its
+	// source's type is written as its name alone.
+	NarrowingNotAView Code = 313
+	// NarrowingSourceMismatch is a narrowing to a view of some other type than
+	// the member's own. It is the check the construct exists for: a narrowing
+	// that points elsewhere would hand the member a set of tags belonging to a
+	// different declaration.
+	NarrowingSourceMismatch Code = 314
+	// AliasTargetNotFound is an `alias x = y;` whose y names no other member of
+	// the same declaration. An alias is a get and set passthrough and has
+	// nothing to pass through to.
+	AliasTargetNotFound Code = 315
+	// CompositeKeyPartNotFound is a part of `key key = 1 (a, b);` naming no
+	// member of the declaration the key belongs to.
+	CompositeKeyPartNotFound Code = 316
+	// RelationTargetNotFound is a `[references(T)]` whose T names no
+	// declaration in scope.
+	RelationTargetNotFound Code = 317
+	// RelationTargetNotATable is a relation pointing at something that carries
+	// no identity. A relation resolves against a key, and only a table has one:
+	// a record or a struct is stored inside whatever holds it and there is
+	// nothing to point at.
+	RelationTargetNotATable Code = 318
+
 	// AnnotationNotAllowed is an annotation written where the grammar has no
 	// slot for one. An annotation follows what it describes, and there is no
 	// before-slot.
@@ -119,6 +179,13 @@ const (
 	UnknownAnnotation Code = 402
 	// UnterminatedAnnotation is a `[` with no matching `]`.
 	UnterminatedAnnotation Code = 403
+
+	// MalformedRelation is protop's own `references` written in some shape
+	// other than `references(T)`. The parser checks an annotation's position
+	// and its prefix and nothing else -- a prefixed annotation is a backend's
+	// language -- so protop's own closed set is read here, where a name can be
+	// looked up.
+	MalformedRelation Code = 404
 
 	// NotYetImplemented is a construct the spec defines and this milestone does
 	// not read. Reporting it as its own code, rather than as a syntax error, is
