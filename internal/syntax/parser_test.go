@@ -52,9 +52,9 @@ func dump(file *File) string {
 	for _, d := range file.Decls {
 		switch d := d.(type) {
 		case *Struct:
-			dumpDecl(&b, "struct", d.Name, d.Members)
+			dumpDecl(&b, "struct", d.Name, d.Annotations, d.Members)
 		case *Record:
-			dumpDecl(&b, "record", d.Name, d.Members)
+			dumpDecl(&b, "record", d.Name, d.Annotations, d.Members)
 		case *Enum:
 			fmt.Fprintf(&b, "enum %s\n", d.Name.Text)
 			for _, m := range d.Members {
@@ -69,8 +69,13 @@ func dump(file *File) string {
 
 // dumpDecl writes one declaration and its members, which is where struct and
 // record differ by their keyword and by nothing else.
-func dumpDecl(b *strings.Builder, keyword string, name Ident, members []Member) {
+func dumpDecl(b *strings.Builder, keyword string, name Ident, anns []*Annotation, members []Member) {
 	fmt.Fprintf(b, "%s %s\n", keyword, name.Text)
+	// A head's annotations get a line each; a member's trail the member, which
+	// is where the source writes them both.
+	for _, a := range anns {
+		fmt.Fprintf(b, "  %s\n", annString(a))
+	}
 	for _, m := range members {
 		switch m := m.(type) {
 		case *Field:
@@ -78,11 +83,28 @@ func dumpDecl(b *strings.Builder, keyword string, name Ident, members []Member) 
 			if m.Repeated {
 				lead = "repeated "
 			}
-			fmt.Fprintf(b, "  %s%s %s = %d\n", lead, typeString(m.Type), m.Name.Text, m.Tag.Value)
+			fmt.Fprintf(b, "  %s%s %s = %d%s\n", lead, typeString(m.Type), m.Name.Text, m.Tag.Value, annSuffix(m.Annotations))
 		default:
 			fmt.Fprintf(b, "  <unhandled member %T>\n", m)
 		}
 	}
+}
+
+// annString writes an annotation back the way the source spelled it, which for
+// its contents is verbatim.
+func annString(a *Annotation) string {
+	if a.Prefix != nil {
+		return fmt.Sprintf("[%s: %s]", a.Prefix.Text, a.Text)
+	}
+	return fmt.Sprintf("[%s]", a.Text)
+}
+
+func annSuffix(anns []*Annotation) string {
+	var b strings.Builder
+	for _, a := range anns {
+		fmt.Fprintf(&b, " %s", annString(a))
+	}
+	return b.String()
 }
 
 // typeString writes a TypeRef back the way the source spelled it.
@@ -312,6 +334,85 @@ view SlimVenue of Venue {
 			src:       "revision 1;\nnamespace A;\nwidget W {\n}\n",
 			wantCodes: []diag.Code{diag.UnknownDeclaration},
 			wantLine:  3, wantCol: 1,
+		},
+		{
+			// Section 3 has one position and no before-slot. The annotation is
+			// skipped and the declaration behind it still parses, so the
+			// mistake costs one diagnostic rather than a lost declaration.
+			name: "annotation before a declaration head",
+			src: `revision 1;
+namespace A;
+[cs: DataCacheTopic("t")]
+struct S {
+  int64 a = 1;
+}
+`,
+			wantCodes: []diag.Code{diag.AnnotationNotAllowed},
+			wantLine:  3, wantCol: 1,
+		},
+		{
+			name: "annotation before a tag",
+			src: `revision 1;
+namespace A;
+struct S {
+  int64 a [cs: X] = 1;
+}
+`,
+			wantCodes: []diag.Code{diag.AnnotationNotAllowed},
+			wantLine:  4, wantCol: 11,
+		},
+		{
+			// A backend protopc does not have. An unknown prefix is an error
+			// rather than a silent drop: a typo that vanishes from the output is
+			// worse than the rule this replaced.
+			name: "unknown annotation prefix",
+			src: `revision 1;
+namespace A;
+struct S {
+  int64 a = 1 [go: json:"a"];
+}
+`,
+			wantCodes: []diag.Code{diag.UnknownAnnotationPrefix},
+			wantLine:  4, wantCol: 16,
+		},
+		{
+			// protop's own set is closed, so an unprefixed name outside it is a
+			// typo rather than passthrough -- passthrough carries a prefix.
+			name: "unknown unprefixed annotation",
+			src: `revision 1;
+namespace A;
+struct S {
+  int64 a = 1 [refrences(T)];
+}
+`,
+			wantCodes: []diag.Code{diag.UnknownAnnotation},
+			wantLine:  4, wantCol: 16,
+		},
+		{
+			name: "unterminated annotation",
+			src: `revision 1;
+namespace A;
+struct S {
+  int64 a = 1 [cs: Foo;
+}
+`,
+			wantCodes: []diag.Code{diag.UnterminatedAnnotation},
+			wantLine:  4, wantCol: 15,
+		},
+		{
+			// Unterminated only if the scan were a search for the next `]`: the
+			// one inside the string literal belongs to the literal, so the
+			// annotation closes at the bracket after it and this file is clean
+			// apart from the tag it is here to carry.
+			name: "a `]` inside a string does not end the annotation",
+			src: `revision 1;
+namespace A;
+struct S {
+  int64 a = 0 [cs: Foo("]")];
+}
+`,
+			wantCodes: []diag.Code{diag.TagOutOfRange},
+			wantLine:  4, wantCol: 13,
 		},
 		{
 			// A precision belongs to `decimal` alone, and a declared type is
@@ -550,4 +651,76 @@ func declMembers(d Decl) []Member {
 		return d.Members
 	}
 	return nil
+}
+
+// Annotations, in the three positions section 1 uses them: after a declaration
+// head, after a tag, and stacked by juxtaposition. Contents are carried
+// verbatim and in source order -- the two on `timestamp` are not sorted and the
+// two identical ones on `x` are both kept, because protopc does not know what
+// either would mean to the backend that reads them.
+func TestParseAnnotations(t *testing.T) {
+	_, file := parseClean(t, `revision 1;
+namespace A;
+record R
+  [cs: DataCache(CacheClassName = nameof(BPSportGameCache))]
+  [cs: DataCacheContract(typeof(SportGameCacheContract), Role = ContractRole.Producer)]
+{
+  int64 event_id  = 1 [references(SportGame)];
+  int64 timestamp = 2 [cs: DataCacheFromTimestamp] [cs: DataCacheIgnoreEquality];
+  int64 x         = 3 [cs: A] [cs: A];
+}
+`)
+	assertDump(t, file, `revision 1
+namespace A
+record R
+  [cs: DataCache(CacheClassName = nameof(BPSportGameCache))]
+  [cs: DataCacheContract(typeof(SportGameCacheContract), Role = ContractRole.Producer)]
+  int64 event_id = 1 [references(SportGame)]
+  int64 timestamp = 2 [cs: DataCacheFromTimestamp] [cs: DataCacheIgnoreEquality]
+  int64 x = 3 [cs: A] [cs: A]
+`)
+
+	// A prefix is a name the parser keeps; protop's own annotations carry none,
+	// and that is the difference between text that is checked and text that is
+	// copied out untouched.
+	r := file.Decls[0].(*Record)
+	if p := r.Annotations[0].Prefix; p == nil || p.Text != "cs" {
+		t.Errorf("head annotation prefix is %v, want cs", p)
+	}
+	if p := r.Members[0].(*Field).Annotations[0].Prefix; p != nil {
+		t.Errorf("`references` carries prefix %q, want none", p.Text)
+	}
+}
+
+// The case that says the scan is not a search for the next `]`. The bracket
+// inside the string literal is part of that literal's token, so it cannot close
+// the annotation -- which is what tokenising the whole file before parsing any
+// of it buys.
+func TestAnnotationTextKeepsBracketsInsideStringsAndNesting(t *testing.T) {
+	_, file := parseClean(t, `revision 1;
+namespace A;
+struct S {
+  int64 a = 1 [cs: Foo("]")];
+  int64 b = 2 [cs: Bar(new[] { 1 })] [cs: Baz];
+}
+`)
+	s := file.Decls[0].(*Struct)
+
+	a := s.Members[0].(*Field).Annotations
+	if len(a) != 1 {
+		t.Fatalf("`[cs: Foo(\"]\")]` read as %d annotations, want 1: %s", len(a), annSuffix(a))
+	}
+	if got := a[0].Text; got != `Foo("]")` {
+		t.Errorf("text = %s, want %s", got, `Foo("]")`)
+	}
+
+	// A `]` that closes a `[` inside the annotation does not close the
+	// annotation either: the scan counts brackets.
+	b := s.Members[1].(*Field).Annotations
+	if len(b) != 2 {
+		t.Fatalf("nested brackets read as %d annotations, want 2: %s", len(b), annSuffix(b))
+	}
+	if got := b[0].Text; got != "Bar(new[] { 1 })" {
+		t.Errorf("text = %q, want %q", got, "Bar(new[] { 1 })")
+	}
 }

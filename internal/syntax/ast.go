@@ -75,9 +75,10 @@ type Decl interface {
 // Struct is `struct Venue { ... }`: value semantics, no identity, embedded in
 // whatever holds it.
 type Struct struct {
-	Name    Ident
-	Members []Member
-	Span    source.Span
+	Name        Ident
+	Annotations []*Annotation
+	Members     []Member
+	Span        source.Span
 }
 
 func (*Struct) isDecl() {}
@@ -90,9 +91,10 @@ func (*Struct) isDecl() {}
 // means -- and that a record cannot be a relation target, because a relation
 // resolves against a key and a record has none.
 type Record struct {
-	Name    Ident
-	Members []Member
-	Span    source.Span
+	Name        Ident
+	Annotations []*Annotation
+	Members     []Member
+	Span        source.Span
 }
 
 func (*Record) isDecl() {}
@@ -126,13 +128,36 @@ type Field struct {
 	// the stage that resolves names.
 	Repeated bool
 
-	Type TypeRef
-	Name Ident
-	Tag  IntLit
-	Span source.Span
+	Type        TypeRef
+	Name        Ident
+	Tag         IntLit
+	Annotations []*Annotation
+	Span        source.Span
 }
 
 func (*Field) isMember() {}
+
+// Annotation is one bracket: `[cs: DataCacheTopic("...")]` or
+// `[references(SportGame)]`. An annotation follows what it describes; there is
+// no second position and no before-slot, and annotations stack by juxtaposition
+// with no comma, because their contents already contain commas.
+//
+// Text is raw, and that is the one place protopc carries something it does not
+// understand. An annotation aimed at a backend is written in that backend's
+// language, so the check that matters happens when the generated code compiles;
+// protopc checks position and prefix and nothing else. Annotations are held in
+// source order and are neither sorted nor deduplicated.
+type Annotation struct {
+	// Prefix names the target backend -- the `cs` of `[cs: X]` -- and is nil
+	// when the annotation is protop's own closed set, which is read and checked.
+	Prefix *Ident
+
+	// Text is everything after the prefix, verbatim, from the first character
+	// of the contents to the last. Empty when the brackets hold nothing.
+	Text string
+
+	Span source.Span
+}
 
 // TypeRef is a field's type as written. The name is not resolved here, so a
 // scalar keyword and a reference to a declared type are the same node -- only

@@ -1,6 +1,9 @@
 package syntax
 
 import (
+	"slices"
+	"strings"
+
 	"github.com/nanov/protobuf-to-messagepack-sharp/internal/diag"
 	"github.com/nanov/protobuf-to-messagepack-sharp/internal/source"
 )
@@ -26,6 +29,20 @@ var scalarTypes = map[string]bool{
 	"double":     true,
 	"bool":       true,
 	scaledScalar: true,
+}
+
+// backends is the legal set of annotation prefixes, which is exactly the
+// backends protopc has. `[go: json:"sportGame"]` becomes legal by a Go backend
+// being written, not by a word being added here.
+var backends = map[string]bool{
+	"cs": true,
+}
+
+// protopAnnotations is protop's own set, the annotations written with no
+// prefix. It is closed and read -- an unknown one is an error -- which is the
+// whole difference between it and the text protopc passes through untouched.
+var protopAnnotations = map[string]bool{
+	"references": true,
 }
 
 // notYetDecls are declaration keywords the spec defines and this milestone
@@ -84,6 +101,11 @@ func (p *parser) parseFile() *File {
 }
 
 func (p *parser) parseDecl(file *File) {
+	// An annotation at the top level describes the declaration it precedes, and
+	// the grammar has no slot there. Skipping it leaves that declaration to be
+	// read on the next pass of the loop, with one diagnostic against it.
+	p.rejectAnnotations("the declaration's name")
+
 	tok := p.peek()
 	if tok.Kind != KindIdent {
 		p.bag.Errorf(diag.UnknownDeclaration, tok.Span, "expected a declaration, found %s", tok.Kind)
@@ -175,7 +197,7 @@ func (p *parser) parseNamespace(file *File) {
 
 func (p *parser) parseStruct() *Struct {
 	h := p.parseTypeDecl()
-	return &Struct{Name: h.name, Members: h.members, Span: h.span}
+	return &Struct{Name: h.name, Annotations: h.anns, Members: h.members, Span: h.span}
 }
 
 // parseRecord reads `record StaticDataRef { ... }`. It is parseStruct with a
@@ -184,13 +206,14 @@ func (p *parser) parseStruct() *Struct {
 // that is a question the grammar asks.
 func (p *parser) parseRecord() *Record {
 	h := p.parseTypeDecl()
-	return &Record{Name: h.name, Members: h.members, Span: h.span}
+	return &Record{Name: h.name, Annotations: h.anns, Members: h.members, Span: h.span}
 }
 
 // declHead is what struct and record are read into before they become nodes of
 // their own: the shape the declarations share, which is all the parser sees.
 type declHead struct {
 	name    Ident
+	anns    []*Annotation
 	members []Member
 	span    source.Span
 }
@@ -208,6 +231,10 @@ func (p *parser) parseTypeDecl() declHead {
 	}
 	h.name = name
 	h.span = h.span.To(name.Span)
+	if h.anns, ok = p.parseAnnotations(); !ok {
+		p.recoverDecl()
+		return h
+	}
 
 	if _, ok := p.expect(KindLBrace); !ok {
 		p.recoverDecl()
@@ -229,6 +256,8 @@ func (p *parser) parseTypeDecl() declHead {
 // though the same word is a legal name elsewhere: `repeated` opens a repeated
 // field, and protop has no type by that name for it to be confused with.
 func (p *parser) parseMember() Member {
+	p.rejectAnnotations("the member's tag")
+
 	tok := p.peek()
 	if tok.Kind != KindIdent {
 		p.bag.Errorf(diag.UnexpectedToken, tok.Span, "expected a field type, found %s", tok.Kind)
@@ -278,6 +307,7 @@ func (p *parser) parseField() *Field {
 		p.recoverStmt()
 		return nil
 	}
+	p.rejectAnnotations("the member's tag")
 	name, ok := p.expectIdent()
 	if !ok {
 		p.recoverStmt()
@@ -285,6 +315,7 @@ func (p *parser) parseField() *Field {
 	}
 	f := &Field{Type: typ, Name: name, Span: typ.Span.To(name.Span)}
 
+	p.rejectAnnotations("the member's tag")
 	if _, ok := p.expect(KindAssign); !ok {
 		p.recoverStmt()
 		return f
@@ -301,10 +332,151 @@ func (p *parser) parseField() *Field {
 			"field tag must be greater than 0; a MessagePack key is tag - 1, so tag 0 names no slot")
 	}
 
+	if f.Annotations, ok = p.parseAnnotations(); !ok {
+		p.recoverStmt()
+		return f
+	}
+
 	if semi, ok := p.expect(KindSemi); ok {
 		f.Span = f.Span.To(semi.Span)
 	}
 	return f
+}
+
+// --- annotations -------------------------------------------------------------
+
+// parseAnnotations reads the run of annotations at the current position, which
+// may be empty. One bracket is one annotation and they stack by juxtaposition:
+// there is no comma between them, because annotation contents already contain
+// commas and a separator that competes with them buys nothing. Whitespace is
+// insignificant, so a head carrying four wraps freely across lines.
+//
+// The order is the source's. protopc never sorts them and never drops a
+// duplicate, because it does not know what either would mean to the backend
+// reading them.
+// An unterminated annotation ends the run and is reported false: everything
+// after an unclosed `[` has already been read as its text, so the member it
+// was written on is not there to be parsed and its caller recovers instead.
+func (p *parser) parseAnnotations() ([]*Annotation, bool) {
+	var anns []*Annotation
+	for p.at(KindLBracket) {
+		a, ok := p.parseAnnotation()
+		anns = append(anns, a)
+		if !ok {
+			return anns, false
+		}
+	}
+	return anns, true
+}
+
+// parseAnnotation reads one bracket. What it checks is the prefix and nothing
+// else: a prefixed annotation is a backend's language and protopc is not
+// entitled to an opinion about it, while an unprefixed one is protop's own,
+// where the set is closed and an unknown name is a typo.
+func (p *parser) parseAnnotation() (*Annotation, bool) {
+	open := p.next()
+	a := &Annotation{}
+
+	switch tok := p.peek(); {
+	case tok.Kind == KindIdent && p.peekAt(1).Kind == KindColon:
+		prefix := p.identOf(p.next())
+		p.next() // the colon
+		a.Prefix = &prefix
+		if !backends[prefix.Text] {
+			p.bag.Errorf(diag.UnknownAnnotationPrefix, prefix.Span,
+				"unknown annotation prefix `%s`; protopc's backends are %s, and adding one means writing a backend rather than a keyword",
+				prefix.Text, wordList(backends))
+		}
+	case tok.Kind != KindIdent:
+		p.bag.Errorf(diag.UnknownAnnotation, tok.Span, "expected an annotation, found %s", tok.Kind)
+	default:
+		if word := p.text(tok); !protopAnnotations[word] {
+			p.bag.Errorf(diag.UnknownAnnotation, tok.Span,
+				"unknown annotation `%s`; protop's own annotations are %s, and an annotation for a backend carries its prefix, as in `[cs: %s]`",
+				word, wordList(protopAnnotations), word)
+		}
+	}
+
+	text, whole, ok := p.scanAnnotation(open)
+	a.Text, a.Span = p.src.Slice(text), whole
+	return a, ok
+}
+
+// scanAnnotation consumes an annotation's contents up to the `]` that closes
+// open, returning the span of the contents and the span of the whole bracket.
+//
+// The contents are raw text, so the scan counts brackets rather than reading
+// what is between them. It counts tokens rather than characters, which is what
+// the complete lexer buys: a `]` inside a string literal is part of that
+// literal's single token and cannot close the annotation, so `[cs: Foo("]")]`
+// is one annotation rather than a broken one.
+func (p *parser) scanAnnotation(open Token) (text, whole source.Span, ok bool) {
+	start := p.peek().Span.Start
+	end := start
+	brackets, braces := 1, 0
+	for {
+		tok := p.peek()
+		switch tok.Kind {
+		case KindEOF:
+			// A bracket left open was going to close somewhere past the end of
+			// the file, and every token after it has already been read as
+			// annotation text. Reporting at the `[` points at the one character
+			// that has to be found.
+			p.bag.Errorf(diag.UnterminatedAnnotation, open.Span,
+				"unterminated annotation; `[` is closed by the matching `]`")
+			return source.Span{Start: start, End: end}, open.Span.To(tok.Span), false
+		case KindLBracket:
+			brackets++
+		case KindRBracket:
+			brackets--
+			if brackets == 0 {
+				p.next()
+				return source.Span{Start: start, End: end}, open.Span.To(tok.Span), true
+			}
+		case KindLBrace:
+			braces++
+		case KindRBrace:
+			// An annotation's contents balance their braces, so a `}` closing
+			// nothing inside them is the brace of the body the annotation sits
+			// in. Stopping short of it is what keeps one unclosed bracket from
+			// swallowing the declaration around it.
+			if braces == 0 {
+				p.bag.Errorf(diag.UnterminatedAnnotation, open.Span,
+					"unterminated annotation; `[` is closed by the matching `]`")
+				return source.Span{Start: start, End: end}, open.Span.To(tok.Span), false
+			}
+			braces--
+		}
+		end = tok.Span.End
+		p.next()
+	}
+}
+
+// rejectAnnotations reports an annotation written where the grammar has no slot
+// for one, and discards it. An annotation follows what it describes and there
+// is no before-slot, so the brackets are skipped and what follows them is read
+// as though they had not been written -- which is what gets the rest of the
+// line right and keeps one misplaced annotation to one diagnostic.
+func (p *parser) rejectAnnotations(after string) {
+	for p.at(KindLBracket) {
+		open := p.next()
+		p.bag.Errorf(diag.AnnotationNotAllowed, open.Span,
+			"an annotation follows what it describes and there is no before-slot; write this one after %s", after)
+		if _, _, ok := p.scanAnnotation(open); !ok {
+			return
+		}
+	}
+}
+
+// wordList renders a closed set the way a diagnostic wants to read it: sorted,
+// quoted, and comma separated.
+func wordList(set map[string]bool) string {
+	words := make([]string, 0, len(set))
+	for w := range set {
+		words = append(words, "`"+w+"`")
+	}
+	slices.Sort(words)
+	return strings.Join(words, ", ")
 }
 
 // parseTypeRef reads a type as written -- name, optional precision, optional
@@ -417,6 +589,15 @@ func (p *parser) parseEnumMember() *EnumMember {
 func (p *parser) peek() Token { return p.toks[p.i] }
 
 func (p *parser) at(k Kind) bool { return p.toks[p.i].Kind == k }
+
+// peekAt looks n tokens ahead, clamped to the EOF token the lexer always emits
+// so that a lookahead past the end of the file needs no bounds check.
+func (p *parser) peekAt(n int) Token {
+	if i := p.i + n; i < len(p.toks) {
+		return p.toks[i]
+	}
+	return p.toks[len(p.toks)-1]
+}
 
 // next consumes and returns the current token. It never advances past EOF, so
 // every peek is in bounds without a length check.

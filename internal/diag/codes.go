@@ -14,6 +14,7 @@ import "fmt"
 //	0100-0199  file structure -- revision, namespace
 //	0200-0299  declarations
 //	0300-0399  fields, types and tags
+//	0400-0499  annotations
 //	0900-0999  recognised by the spec, not yet implemented by this compiler
 //
 // The 0900 group is temporary by construction: every code in it is a promise
@@ -62,6 +63,20 @@ const (
 	PrecisionNotAllowed Code = 301
 	// PrecisionRequired is a decimal written without its precision.
 	PrecisionRequired Code = 302
+
+	// AnnotationNotAllowed is an annotation written where the grammar has no
+	// slot for one. An annotation follows what it describes, and there is no
+	// before-slot.
+	AnnotationNotAllowed Code = 400
+	// UnknownAnnotationPrefix is a prefix naming a backend protopc does not
+	// have. An unknown prefix is an error rather than a silent drop, because a
+	// typo that vanishes from the output is worse than the rule it replaced.
+	UnknownAnnotationPrefix Code = 401
+	// UnknownAnnotation is an unprefixed annotation outside protop's own set,
+	// which is closed and read.
+	UnknownAnnotation Code = 402
+	// UnterminatedAnnotation is a `[` with no matching `]`.
+	UnterminatedAnnotation Code = 403
 
 	// NotYetImplemented is a construct the spec defines and this milestone does
 	// not read. Reporting it as its own code, rather than as a syntax error, is
