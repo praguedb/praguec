@@ -37,6 +37,32 @@
 //                             and does not read it. This is C#'S OWN SLOT,
 //                             and the text is written exactly as emitted.
 //
+// WHY THE C# ATTRIBUTE IS BEFORE AND NOT AFTER — the real reason is not "C#
+// does it that way", it is VERBATIM-NESS. The test the passthrough has to pass
+// is: can the text be pasted out of the C# into protop, and back out again,
+// BYTE FOR BYTE. Two measurements say the bracket cannot host it.
+//
+//   The text contains brackets and quotes. The corpus's own topic attribute is
+//   [DataCacheTopic("Cache.[v:brandId].SportGame")] — a `[`, a `]` and two `"`
+//   inside the thing that would be going inside a `[ ]`. Put that in a bracket
+//   that already means something and it must become a STRING, and a string must
+//   be escaped. Spelling A is the proof:
+//
+//       option (protop.type_attribute) =
+//           "[DataCacheTopic(\"Cache.[v:brandId].SportGame\")]";
+//
+//   Attributes stack. 55 of the corpus's 356 attribute-carrying sites carry two
+//   or more, up to four. C# stacks them one per line and so does this; a
+//   bracket list after the tag would have to cram them onto the field line,
+//   next to the wire contract, which is the one line that should stay legible.
+//
+// So the field line keeps type, name, tag, presence and protop's own checked
+// options — everything protopc UNDERSTANDS — and the text it does not
+// understand sits above, quoted by nothing and escaped by nothing.
+//
+// The cost, stated plainly: a reader must learn two positions. That is one
+// sentence, and it is the same sentence in both languages the file mixes.
+//
 // Each annotation sits where its own language puts it. That is the whole rule,
 // and it is structural: the reader never inspects a NAME to learn whether a
 // bracket is compiled or copied — only where it sits.

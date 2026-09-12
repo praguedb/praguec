@@ -6,7 +6,7 @@ Two spellings of the same content, written so they can be read side by side.
 |---|---|
 | [`a-strict-protobuf/prague.proto`](a-strict-protobuf/prague.proto) | protop as a strict profile. **Verified: compiles under `protoc` 36.1.** |
 | [`a-strict-protobuf/protop/options.proto`](a-strict-protobuf/protop/options.proto) | the option vocabulary spelling A needs. |
-| [`b-native/prague.protop`](b-native/prague.protop) | protop as its own language. **Verified: `protoc` rejects it at line 96, `revision 1;`.** |
+| [`b-native/prague.protop`](b-native/prague.protop) | protop as its own language. **Verified: `protoc` rejects it at line 122, `revision 1;`.** |
 
 The first pass asked whether **table / record / struct** could be spelled at all.
 Every pass since has been a subtraction, and every subtraction has paid:
@@ -372,6 +372,41 @@ table SportGame {
 Each annotation sits where its **own language** already puts it: C# attributes
 before the declaration, options after the field. Nothing new is invented, and the
 reader never inspects a name to learn whether a bracket is compiled or copied.
+
+**Why the C# attribute is *before* and not after** — the reason is not symmetry
+with C#, it is **verbatim-ness**. The passthrough has to survive a round trip:
+paste the text out of the C# into protop, and back out again, byte for byte. Two
+measurements say a bracket cannot host it.
+
+*The text contains brackets and quotes.* The corpus's topic attribute is
+`[DataCacheTopic("Cache.[v:brandId].SportGame")]` — a `[`, a `]` and two `"`
+inside the thing that would go inside a `[…]`. Inside a bracket that already
+means something it must become a **string**, and a string must be escaped.
+Spelling A is the proof:
+
+```proto
+option (protop.type_attribute) = "[DataCacheTopic(\"Cache.[v:brandId].SportGame\")]";
+```
+
+*Attributes stack.* **55 of the corpus's 356 attribute-carrying sites carry two
+or more**, up to four:
+
+| attributes on one member | sites |
+|---|---|
+| 1 | 301 |
+| 2 | 43 |
+| 3 | 11 |
+| 4 | 1 |
+
+C# stacks them one per line; so does B. A bracket list after the tag would crowd
+them onto the field line beside the wire contract — the one line that has to stay
+legible.
+
+So the field line carries everything protopc **understands** (type, name, tag,
+presence, checked options) and the text it does not understand sits above,
+quoted by nothing and escaped by nothing. The cost is that a reader learns two
+positions — one sentence, and the same sentence in both of the languages the
+file mixes.
 
 **Spelling A cannot have this rule** — it has exactly one slot, so its checked
 options and its verbatim C# text share the bracket:
