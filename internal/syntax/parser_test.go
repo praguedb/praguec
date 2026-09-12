@@ -1,0 +1,454 @@
+package syntax
+
+import (
+	"fmt"
+	"os"
+	"path/filepath"
+	"slices"
+	"strings"
+	"testing"
+
+	"github.com/nanov/protobuf-to-messagepack-sharp/internal/diag"
+	"github.com/nanov/protobuf-to-messagepack-sharp/internal/source"
+)
+
+// specSubsetFixture is protop lifted verbatim out of section 1 of the spec. It
+// is a file rather than a string literal so that TestSpecSubsetIsVerbatim can
+// hold it against the spec byte for byte.
+const specSubsetFixture = "spec_section1_subset.protop"
+
+// specSection1 is the spec file the fixture is lifted from.
+var specSection1 = filepath.Join("..", "..", "docs", "spec", "protop", "shared-repository.md")
+
+// parse runs the whole frontend -- lexer and parser -- over src.
+func parse(t *testing.T, src string) (*source.File, *File, *diag.Bag) {
+	t.Helper()
+	f := source.NewFile("x.protop", src)
+	var bag diag.Bag
+	return f, Parse(f, &bag), &bag
+}
+
+// parseClean parses src and fails the test if anything at all was reported.
+func parseClean(t *testing.T, src string) (*source.File, *File) {
+	t.Helper()
+	f, file, bag := parse(t, src)
+	if bag.Len() != 0 {
+		t.Fatalf("unexpected diagnostics:\n%s", diag.RenderAll(f, bag))
+	}
+	return f, file
+}
+
+// dump renders what the parser promises to get right -- names, types, tags and
+// enum numbers -- one line per node, so that a whole tree can be asserted
+// against a literal and a mismatch reads as a diff.
+func dump(file *File) string {
+	var b strings.Builder
+	if file.Revision != nil {
+		fmt.Fprintf(&b, "revision %d\n", file.Revision.Number.Value)
+	}
+	if file.Namespace != nil {
+		fmt.Fprintf(&b, "namespace %s\n", file.Namespace)
+	}
+	for _, d := range file.Decls {
+		switch d := d.(type) {
+		case *Struct:
+			fmt.Fprintf(&b, "struct %s\n", d.Name.Text)
+			for _, f := range d.Fields {
+				fmt.Fprintf(&b, "  %s %s = %d\n", typeString(f.Type), f.Name.Text, f.Tag.Value)
+			}
+		case *Enum:
+			fmt.Fprintf(&b, "enum %s\n", d.Name.Text)
+			for _, m := range d.Members {
+				fmt.Fprintf(&b, "  %s = %d\n", m.Name.Text, m.Number.Value)
+			}
+		default:
+			fmt.Fprintf(&b, "<unhandled declaration %T>\n", d)
+		}
+	}
+	return b.String()
+}
+
+// typeString writes a TypeRef back the way the source spelled it.
+func typeString(t TypeRef) string {
+	s := t.Name.Text
+	if t.Precision != nil {
+		s += fmt.Sprintf("(%d)", t.Precision.Value)
+	}
+	if t.Optional {
+		s += "?"
+	}
+	return s
+}
+
+func assertDump(t *testing.T, file *File, want string) {
+	t.Helper()
+	if got := dump(file); got != want {
+		t.Errorf("tree:\n%s\nwant:\n%s", got, want)
+	}
+}
+
+func readFixture(t *testing.T, name string) string {
+	t.Helper()
+	b, err := os.ReadFile(filepath.Join("testdata", name))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(b)
+}
+
+// The milestone's headline claim: the subset of the language this parser reads
+// parses straight out of the spec, with nothing to say about it.
+func TestParseSpecSection1Subset(t *testing.T) {
+	src := readFixture(t, specSubsetFixture)
+	f, file := parseClean(t, src)
+
+	assertDump(t, file, `revision 1
+namespace Common.IntegratedEventApi.Cache.Prague.Models
+struct Venue
+  int64 id = 2
+  string name = 3
+enum EventStatus
+  UNKNOWN = 0
+  NOT_STARTED = 1
+  IN_PROGRESS = 2
+  FINISHED = 3
+enum BetTypeStatus
+  UNKNOWN = 0
+  OPEN = 1
+  SUSPENDED = 2
+  CLOSED = 3
+`)
+
+	// A declaration's span covers the whole declaration, opening keyword to
+	// closing brace. Later stages quote source by span, so slicing one back has
+	// to return what was written.
+	venue, ok := file.Decls[0].(*Struct)
+	if !ok {
+		t.Fatalf("first declaration is %T, want *Struct", file.Decls[0])
+	}
+	const wantVenue = "struct Venue {\n  int64  id   = 2;\n  string name = 3;\n}"
+	if got := f.Slice(venue.Span); got != wantVenue {
+		t.Errorf("Venue spans:\n%s\nwant:\n%s", got, wantVenue)
+	}
+}
+
+// What keeps "parses verbatim out of the spec" honest: the fixture is not a
+// paraphrase of section 1, it is a copy of it. If the spec changes its mind
+// about the language, this fails before the parser silently keeps reading the
+// old one.
+func TestSpecSubsetIsVerbatim(t *testing.T) {
+	fixture := readFixture(t, specSubsetFixture)
+	spec, err := os.ReadFile(specSection1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(spec), fixture) {
+		t.Errorf("testdata/%s no longer appears verbatim in %s", specSubsetFixture, specSection1)
+	}
+}
+
+// Presence and precision, which section 1's Venue does not exercise: `?` binds
+// to the type, and `decimal` carries its scale.
+func TestParsePresenceAndPrecision(t *testing.T) {
+	_, file := parseClean(t, `revision 1;
+namespace A;
+struct S {
+  int64? x = 1;
+  decimal(4)? y = 2;
+}
+`)
+	assertDump(t, file, `revision 1
+namespace A
+struct S
+  int64? x = 1
+  decimal(4)? y = 2
+`)
+
+	s := file.Decls[0].(*Struct)
+	if x := s.Fields[0].Type; !x.Optional || x.Precision != nil {
+		t.Errorf("int64? is %+v, want Optional and no Precision", x)
+	}
+	y := s.Fields[1].Type
+	if !y.Optional {
+		t.Errorf("decimal(4)? is not Optional")
+	}
+	if y.Precision == nil {
+		t.Fatalf("decimal(4)? carries no Precision")
+	}
+	if y.Precision.Value != 4 {
+		t.Errorf("precision = %d, want 4", y.Precision.Value)
+	}
+}
+
+// Every diagnostic the parser raises, pinned by code sequence and by where it
+// points. Codes are protopc's interface -- an editor filters on them and a
+// changelog cites them -- so the sequence is asserted exactly.
+//
+// Lexical diagnostics come first in the bag whatever their position, because
+// Parse tokenises the whole file before it reads a token of it.
+func TestParseDiagnostics(t *testing.T) {
+	tests := []struct {
+		name      string
+		src       string
+		wantCodes []diag.Code
+		wantLine  int
+		wantCol   int
+	}{
+		{
+			name:      "missing revision",
+			src:       "namespace A;\nstruct S { int64 a = 1; }\n",
+			wantCodes: []diag.Code{diag.MissingRevision},
+			wantLine:  1, wantCol: 1,
+		},
+		{
+			name:      "missing namespace",
+			src:       "revision 1;\nstruct S { int64 a = 1; }\n",
+			wantCodes: []diag.Code{diag.MissingNamespace},
+			wantLine:  1, wantCol: 1,
+		},
+		{
+			// Both are checked after the whole file, so a header-less file still
+			// reports everything else wrong with it -- here, nothing.
+			name:      "missing both, reported at the head of the file",
+			src:       "struct S { int64 a = 1; }\n",
+			wantCodes: []diag.Code{diag.MissingRevision, diag.MissingNamespace},
+			wantLine:  1, wantCol: 1,
+		},
+		{
+			name: "tag 0",
+			src: `revision 1;
+namespace A;
+struct S {
+  int64 id = 0;
+}
+`,
+			wantCodes: []diag.Code{diag.TagOutOfRange},
+			wantLine:  4, wantCol: 14,
+		},
+		{
+			name: "precision on a type that takes none",
+			src: `revision 1;
+namespace A;
+struct S {
+  int64(4) x = 1;
+}
+`,
+			wantCodes: []diag.Code{diag.PrecisionNotAllowed},
+			wantLine:  4, wantCol: 9, // the precision itself, not the type
+		},
+		{
+			name: "decimal without its precision",
+			src: `revision 1;
+namespace A;
+struct S {
+  decimal x = 1;
+}
+`,
+			wantCodes: []diag.Code{diag.PrecisionRequired},
+			wantLine:  4, wantCol: 3,
+		},
+		{
+			name:      "unterminated block comment",
+			src:       "revision 1;\nnamespace A;\n/* and then nothing\n",
+			wantCodes: []diag.Code{diag.UnterminatedBlockComment},
+			wantLine:  3, wantCol: 1,
+		},
+		{
+			// A construct the spec defines and this milestone does not read is
+			// the compiler's fault, not the user's, and says so.
+			name: "record declaration",
+			src: `revision 1;
+namespace A;
+record R {
+  int64 id = 1;
+}
+`,
+			wantCodes: []diag.Code{diag.NotYetImplemented},
+			wantLine:  3, wantCol: 1,
+		},
+		{
+			name:      "unsupported revision",
+			src:       "revision 2;\nnamespace A;\n",
+			wantCodes: []diag.Code{diag.UnsupportedRevision},
+			wantLine:  1, wantCol: 10,
+		},
+		{
+			name:      "revision after another declaration",
+			src:       "namespace A;\nrevision 1;\n",
+			wantCodes: []diag.Code{diag.RevisionNotFirst},
+			wantLine:  2, wantCol: 1,
+		},
+		{
+			name:      "duplicate revision",
+			src:       "revision 1;\nrevision 1;\nnamespace A;\n",
+			wantCodes: []diag.Code{diag.DuplicateRevision},
+			wantLine:  2, wantCol: 1,
+		},
+		{
+			name:      "duplicate namespace",
+			src:       "revision 1;\nnamespace A;\nnamespace B;\n",
+			wantCodes: []diag.Code{diag.DuplicateNamespace},
+			wantLine:  3, wantCol: 1,
+		},
+		{
+			name:      "unknown declaration",
+			src:       "revision 1;\nnamespace A;\nwidget W {\n}\n",
+			wantCodes: []diag.Code{diag.UnknownDeclaration},
+			wantLine:  3, wantCol: 1,
+		},
+		{
+			// A field of a declared type is good protop that needs name
+			// resolution, which is a later milestone -- not a syntax error.
+			name: "field of a declared type",
+			src: `revision 1;
+namespace A;
+struct S {
+  Venue venue = 1;
+}
+`,
+			wantCodes: []diag.Code{diag.NotYetImplemented},
+			wantLine:  4, wantCol: 3,
+		},
+		{
+			name: "repeated member",
+			src: `revision 1;
+namespace A;
+struct S {
+  repeated int64 xs = 1;
+}
+`,
+			wantCodes: []diag.Code{diag.NotYetImplemented},
+			wantLine:  4, wantCol: 3,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			f, _, bag := parse(t, tt.src)
+
+			var got []diag.Code
+			for _, d := range bag.All() {
+				got = append(got, d.Code)
+			}
+			if !slices.Equal(got, tt.wantCodes) {
+				t.Fatalf("codes = %v, want %v:\n%s", got, tt.wantCodes, diag.RenderAll(f, bag))
+			}
+			if pos := f.Position(bag.All()[0].Span.Start); pos.Line != tt.wantLine || pos.Column != tt.wantCol {
+				t.Errorf("first diagnostic at %d:%d, want %d:%d", pos.Line, pos.Column, tt.wantLine, tt.wantCol)
+			}
+		})
+	}
+}
+
+// A tag is 1-based because a MessagePack key is tag - 1. An enum member's
+// number is a value on the wire and not a position, so the same 0 that is an
+// error on a field is idiomatic here -- it is how section 1 spells UNKNOWN.
+func TestZeroIsATagErrorAndALegalEnumNumber(t *testing.T) {
+	_, file := parseClean(t, "revision 1;\nnamespace A;\nenum E {\n  UNKNOWN = 0;\n}\n")
+	assertDump(t, file, "revision 1\nnamespace A\nenum E\n  UNKNOWN = 0\n")
+
+	_, _, bag := parse(t, "revision 1;\nnamespace A;\nstruct S {\n  int64 id = 0;\n}\n")
+	if bag.Len() != 1 || bag.All()[0].Code != diag.TagOutOfRange {
+		t.Fatalf("tag 0 in a struct raised %d diagnostics, want one TagOutOfRange", bag.Len())
+	}
+}
+
+// The caret is the reason spans are carried rather than positions, so one
+// diagnostic is pinned as the user reads it -- code, location and the width of
+// the underline under the token that is wrong.
+func TestRenderPointsAtTheOffendingToken(t *testing.T) {
+	f, _, bag := parse(t, "revision 1;\nnamespace A;\nstruct S {\n  int64 id = 0;\n}\n")
+	if bag.Len() != 1 {
+		t.Fatalf("got %d diagnostics, want 1:\n%s", bag.Len(), diag.RenderAll(f, bag))
+	}
+	want := "x.protop:4:14: error PROTOP0300: field tag must be greater than 0; " +
+		"a MessagePack key is tag - 1, so tag 0 names no slot\n" +
+		"  |\n" +
+		"4 |   int64 id = 0;\n" +
+		"  |              ^"
+	if got := diag.Render(f, bag.All()[0]); got != want {
+		t.Errorf("rendered:\n%s\nwant:\n%s", got, want)
+	}
+}
+
+// On an error path the parser still appends what it managed to read: a field
+// whose tag failed lands in the tree with the zero tag. That is safe only
+// because bag.HasErrors gates everything downstream, and a partial tree is what
+// lets an editor outline a file that is still being typed.
+func TestParseKeepsAPartialFieldWhenItsTagFails(t *testing.T) {
+	f, file, bag := parse(t, "revision 1;\nnamespace A;\nstruct S {\n  int64 id = ;\n}\n")
+	if !bag.HasErrors() {
+		t.Fatal("a field with no tag was accepted")
+	}
+	if bag.Len() != 1 || bag.All()[0].Code != diag.UnexpectedToken {
+		t.Fatalf("got %d diagnostics, want one UnexpectedToken:\n%s", bag.Len(), diag.RenderAll(f, bag))
+	}
+	assertDump(t, file, "revision 1\nnamespace A\nstruct S\n  int64 id = 0\n")
+}
+
+// A missing `;` is reported where it is and not recovered from: the token that
+// is not a semicolon is almost always the start of the next member, and
+// skipping to the next `;` would report one mistake and swallow a member that
+// was perfectly good.
+func TestParseReportsAMissingSemicolonInPlace(t *testing.T) {
+	f, file, bag := parse(t, `revision 1;
+namespace A;
+struct S {
+  int64 a = 1
+  int64 b = 2;
+}
+`)
+	if bag.Len() != 1 || bag.All()[0].Code != diag.UnexpectedToken {
+		t.Fatalf("got %d diagnostics, want one UnexpectedToken:\n%s", bag.Len(), diag.RenderAll(f, bag))
+	}
+	// Reported at the token that should have been a `;`: the next member's type.
+	if pos := f.Position(bag.All()[0].Span.Start); pos.Line != 5 || pos.Column != 3 {
+		t.Errorf("reported at %d:%d, want 5:3", pos.Line, pos.Column)
+	}
+	assertDump(t, file, "revision 1\nnamespace A\nstruct S\n  int64 a = 1\n  int64 b = 2\n")
+}
+
+// Recovery inside a body leaves the closing `}` for the loop that reads the
+// body, so a member the parser gave up on ends that body and nothing after it.
+func TestRecoveryInsideABodyLeavesTheClosingBrace(t *testing.T) {
+	f, file, bag := parse(t, `revision 1;
+namespace A;
+struct S {
+  int64 a
+}
+enum E {
+  UNKNOWN = 0;
+}
+`)
+	if bag.Len() != 1 || bag.All()[0].Code != diag.UnexpectedToken {
+		t.Fatalf("got %d diagnostics, want one UnexpectedToken:\n%s", bag.Len(), diag.RenderAll(f, bag))
+	}
+	// Had recovery swallowed the `}`, the struct body would have run on into the
+	// enum and every line of it would be a second mistake.
+	assertDump(t, file, `revision 1
+namespace A
+struct S
+  int64 a = 0
+enum E
+  UNKNOWN = 0
+`)
+}
+
+// Recovery at the top level consumes the balanced `}` of the declaration it is
+// skipping, so one unreadable declaration costs exactly one diagnostic and the
+// next declaration parses.
+func TestRecoveryAtTopLevelConsumesTheDeclarationItSkips(t *testing.T) {
+	f, file, bag := parse(t, `revision 1;
+namespace A;
+record R {
+  int64 id = 1;
+}
+struct S {
+  int64 a = 1;
+}
+`)
+	if bag.Len() != 1 || bag.All()[0].Code != diag.NotYetImplemented {
+		t.Fatalf("got %d diagnostics, want one NotYetImplemented:\n%s", bag.Len(), diag.RenderAll(f, bag))
+	}
+	assertDump(t, file, "revision 1\nnamespace A\nstruct S\n  int64 a = 1\n")
+}
