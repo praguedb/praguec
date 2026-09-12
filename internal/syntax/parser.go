@@ -54,6 +54,30 @@ var notYetCollections = map[string]bool{
 	"map": true,
 }
 
+// IsScalar reports whether name is one of protop's scalar type keywords.
+//
+// The set is read here and nowhere else. A second stage that needed to know
+// what a scalar is would otherwise keep a copy of the list, and the list is
+// #32's single edit: two copies is two edits, and the second one is the one
+// that gets forgotten.
+func IsScalar(name string) bool { return scalarTypes[name] }
+
+// ScalarTakesPrecision reports whether name is the one scalar that carries a
+// precision, `decimal(4)`.
+func ScalarTakesPrecision(name string) bool { return name == scaledScalar }
+
+// CollectionArity reports the number of type arguments the collection named
+// takes, and whether name is a collection at all.
+func CollectionArity(name string) (int, bool) {
+	arity, ok := collectionTypes[name]
+	return arity, ok
+}
+
+// RelationAnnotation is the name of protop's own relation annotation, the
+// `references` of `[references(SportGame)]`. Its contents are read by the stage
+// that can look a name up, which is not this one.
+const RelationAnnotation = "references"
+
 // backends is the legal set of annotation prefixes, which is exactly the
 // backends protopc has. `[go: json:"sportGame"]` becomes legal by a Go backend
 // being written, not by a word being added here.
@@ -65,7 +89,7 @@ var backends = map[string]bool{
 // prefix. It is closed and read -- an unknown one is an error -- which is the
 // whole difference between it and the text protopc passes through untouched.
 var protopAnnotations = map[string]bool{
-	"references": true,
+	RelationAnnotation: true,
 }
 
 // ofWord and asWord are the two words that read as keywords inside a view and

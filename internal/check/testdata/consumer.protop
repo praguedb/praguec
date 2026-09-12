@@ -1,0 +1,40 @@
+revision 1;
+
+namespace BrandDataReader.Services.Cache;
+
+import "prague.protop";
+
+view SlimSportGame of SportGame {
+  event_id as id;
+
+  sport_type_id;
+  country_id;
+  league_id;
+  home_team_id;
+
+  venue;
+  sport_type;
+}
+
+view SlimOdd of Odd {
+  name;
+  timestamp;
+}
+
+view SlimBetType of BetType {
+  key as id;
+
+  event_id;
+  id as bet_type_id;
+
+  name;
+
+  status;
+  status_manual;
+  status_watch_dog;
+
+  limit_manual_single;
+  timestamp;
+
+  SlimOdd odds;
+}
