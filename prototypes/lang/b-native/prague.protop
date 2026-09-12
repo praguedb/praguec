@@ -1,20 +1,39 @@
 // SPELLING B — protop as its own language.
 //
-// NOT VALID PROTOBUF. protoc rejects this at line 1. That is the entire point
+// NOT VALID PROTOBUF. protoc rejects it at the first statement, `revision 1;`
+// ("Expected top-level statement", measured). That is the entire point
 // of the specimen: it is the same content as ../a-strict-protobuf/prague.proto,
 // written without the constraint, so the two can be read side by side.
 //
 // Divergence is deliberately minimal. Field syntax, tag syntax, scalar type
-// names and the package/namespace idea are unchanged from Protobuf. The only
-// new things are: a `revision` statement, three declaration keywords in place
-// of `message`, `key` as a field modifier, and `?` as the presence marker.
+// names and the package/namespace idea are unchanged from Protobuf. Everything
+// new is here in one list:
+//
+//   revision 1;                  the dialect stamp (issue #27)
+//   struct / record / table      three declaration keywords in place of `message`
+//   view X of Y                  a field-subset at Y's tags
+//   key                          identity, simple or composite
+//   index / index(range|many)    cache index kind
+//   alias a = b;                 get/set passthrough
+//   ?                            presence marker
+//   decimal(N)                   scaled money
+//   $annotation                  open-ended attribute, borrowed from Cap'n Proto
+//   NO TAG => NO WIRE SLOT       the one structural rule the syntax encodes
+//
+// Loans, marked in place:
+//   Cap'n Proto  `group`     — a name over fields that keep their own ordinals
+//   FlatBuffers  struct/table — the value/evolving split, drawn where FB draws it
+//   FlatBuffers  `(key)`      — a field nominated as the identity of its type
+//   Cap'n Proto  `$name`     — annotation application, for the attribute tail
 
 revision 1;
 
 namespace Common.IntegratedEventApi.Cache.Prague.Models;
 
 // --- STRUCT -----------------------------------------------------------------
-// Value payload, embedded, emitted as a C# struct.
+// Value payload, embedded, emitted as a C# struct. FlatBuffers' struct rule —
+// all fields present, no defaults, scalars only, never changes — is exactly the
+// rule Venue already obeys, so the keyword is borrowed along with the rule.
 struct Venue {
   int64  id   = 2;
   string name = 3;
@@ -27,6 +46,13 @@ enum EventStatus {
   FINISHED    = 3;
 }
 
+enum BetTypeStatus {
+  UNKNOWN   = 0;
+  OPEN      = 1;
+  SUSPENDED = 2;
+  CLOSED    = 3;
+}
+
 // --- RECORD -----------------------------------------------------------------
 // Plain payload. No identity, reference type.
 record StaticDataRef {
@@ -34,35 +60,135 @@ record StaticDataRef {
   string name = 2;
 }
 
-// --- TABLE ------------------------------------------------------------------
-// Payload WITH identity. Emits the cache attributes.
-table SportGame {
+record Odd {
+  string name        = 1;
+  double odds_actual = 9;
+  int64  timestamp   = 5;
+}
+
+// --- TABLE, SIMPLE KEY ------------------------------------------------------
+// Identity IS a stored field. `key` is FlatBuffers' `(key)` promoted from an
+// attribute to a modifier, because here it is load-bearing rather than advisory.
+table SportGame "Cache.[v:brandId].SportGame" {
   key int64 event_id = 1;
 
-  int64  sport_type_id = 2;
-  int64? home_team_id  = 5;
+  index int64 sport_type_id = 2;
+  index int64 country_id    = 3;
+  index int64 league_id     = 4;
+
+  int64? home_team_id = 5;
 
   // A struct field is nullable because the wire slot can be nil. protop can
   // enforce that directly here; in spelling A it is a rule protop has to
   // invent, because protoc will not let the file say it.
   Venue? venue = 7;
 
+  int32? fixture_id = 15;
+
+  // COMPUTED MEMBER, class 2 — derived index. No tag, therefore no wire slot:
+  // the syntax carries what spelling A has to spell as [IgnoreMember].
+  // `else 0` is not an expression, it is the declared substitute for absent —
+  // which is the whole of `FixtureId ?? 0`.
+  index(many) int32 fixture_id_index = fixture_id else 0;
+
+  index EventStatus event_status = 24;
+
+  index(range) int64 event_date         = 28;
+  index(range) int64 provider_timestamp = 35;
+
   decimal(4)? live_limit_manual_single = 36;
 
-  EventStatus event_status = 24;
+  repeated StaticDataRef runners = 47;
 
   StaticDataRef  sport_type = 55;
   StaticDataRef? home_team  = 58;
-
-  repeated StaticDataRef runners = 47;
 }
 
-// --- PROJECTION -------------------------------------------------------------
-// The one construct spelling A cannot express AT ALL. In A this is an
-// unrelated message that happens to reuse tags, and nothing checks it.
-projection SlimSportGame of SportGame {
-  event_id;
-  sport_type_id;
+// --- TABLE, COMPOSITE KEY ---------------------------------------------------
+table BetType "Cache.[v:brandId].BetType" {
+  // COMPUTED MEMBER, class 1 — composite identity.
+  //
+  // Borrowed from Cap'n Proto's `group`: a name over fields that keep their own
+  // ordinals. Cap'n Proto's group consumes no ordinal of its own. This one does
+  // — `= 1` — because the corpus wire format already says so: the tuple is
+  // [Key(0)] and duplicates on the wire what tags 2 and 3 already carry.
+  //
+  // Writing the tag makes the duplication visible and makes the collision
+  // checkable. In spelling A both are invisible: the option claims tag 1 and a
+  // field may claim it too, and protoc compiles that without a word (measured).
+  key key = 1 (event_id, bet_type_id);
+
+  index int64 event_id = 2;
+  int64 id             = 3;
+
+  // COMPUTED MEMBER, class 3 — alias. No tag, no wire slot, get AND set.
+  // It exists so this type's API matches its view, SlimBetType, which names the
+  // tag-3 field `bet_type_id` directly.
+  alias bet_type_id = id;
+
+  string name = 4;
+
+  BetTypeStatus  status            = 7;
+  BetTypeStatus? status_manual     = 8;
+  BetTypeStatus? status_watch_dog  = 9;
+
+  decimal(4)? limit_manual_single = 22;
+
+  int64 timestamp = 25;
+
+  repeated Odd odds = 26;
+}
+
+// --- VIEWS ------------------------------------------------------------------
+// A view is a field-subset of another type AT THAT TYPE'S TAGS. Tag, type and
+// presence come from the source; the view line carries only the name, an
+// optional rename, and its own index kind — because the corpus's index sets
+// genuinely differ between a type and its view.
+//
+// A view is ALSO a table in its own right, with its own cache and topic, so
+// `view` and `table` are orthogonal axes rather than alternatives.
+//
+// Everything the compiler checks here — source exists, field exists, tags are a
+// subset, types agree, presence agrees, no tag invented — is, in spelling A,
+// an unchecked string inside an option. protoc accepts `view_of` naming a
+// message that does not exist, on a field that does not exist, at a tag whose
+// type disagrees. Measured; see the README.
+view SlimSportGame of SportGame "Cache.[v:brandId].SportGame" {
+  // The key is inherited from SportGame. Only the name changes — and under
+  // int-key MessagePack, names are not on the wire, so a rename is free.
+  // That freeness is why `EventId`/`Id` and `Key`/`Id` drift across the corpus.
+  event_id as id;
+
+  index sport_type_id;
+  index country_id;
+  index league_id;
+
+  home_team_id;
   venue;
   sport_type;
+}
+
+view SlimBetType of BetType "Cache.[v:brandId].BetType" {
+  // Inherits the composite key from BetType at tag 1, renamed.
+  key as id;
+
+  index event_id;
+  index id as bet_type_id;
+
+  name;
+
+  index status;
+  status_manual;
+  status_watch_dog;
+
+  limit_manual_single;
+
+  // [DataCacheFromTimestamp], the one corpus instance. There is a long tail of
+  // B2Tech.Feed.Cache attributes protop has not met yet; rather than invent a
+  // keyword per attribute, Cap'n Proto's `$annotation` application syntax gives
+  // the tail one spelling. A keyword is what an attribute earns by being
+  // load-bearing — `key` and `index` earned it; this has not.
+  index(range) timestamp $from_timestamp;
+
+  odds;
 }
