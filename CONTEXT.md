@@ -57,13 +57,19 @@ type holds a **foreign key** — a field whose value is the other type's identit
 Distinct from containment: a related type exists independently and is referred
 to, a contained one has no identity and cannot.
 
+A relation requires a referent that exists as a payload type. Most of the
+corpus's foreign-key-shaped members have none, and carry a **snapshot** instead.
+
 ## snapshot
 
-A denormalized copy of a related type carried inline by the referring type, at
-its own key, alongside the foreign key. The corpus's `SportType` beside
-`SportTypeId`. A snapshot is not a pointer and not a join — it is duplicated
-data, and it can disagree with the foreign key it accompanies, which is a
-species of drift.
+An `Id` field paired with an inline copy of what it identifies, at its own key,
+where **no payload type for the referent exists**. The corpus's `SportType`
+beside `SportTypeId`: two members, two keys, two halves of one referent.
+
+A snapshot is not a cached relation and not a join — there is nothing to join
+to, which is why the copy is there at all. It is the whole representation. The
+two halves can disagree, most consequentially about presence, which is a species
+of **drift**.
 
 ## index
 
