@@ -1,0 +1,477 @@
+package syntax
+
+import (
+	"github.com/nanov/protobuf-to-messagepack-sharp/internal/diag"
+	"github.com/nanov/protobuf-to-messagepack-sharp/internal/source"
+)
+
+// protopRevision is the dialect this compiler implements. `revision 1;` stamps
+// the language's version, not the schema's.
+const protopRevision = 1
+
+// scaledScalar is the one scalar type that carries a precision: decimal(4).
+const scaledScalar = "decimal"
+
+// scalarTypes is the closed set of protop's scalar type keywords, hard-coded
+// from a census of every fenced protop block in docs/spec/protop.md -- which
+// returns these six and nothing else.
+//
+// Whether the set is closed at all is one of the four things the spec
+// deliberately leaves open, tracked as nanov/protobuf-to-messagepack-sharp#32.
+// Widening protop's scalars is one edit here.
+var scalarTypes = map[string]bool{
+	"int64":      true,
+	"int32":      true,
+	"string":     true,
+	"double":     true,
+	"bool":       true,
+	scaledScalar: true,
+}
+
+// notYetDecls are declaration keywords the spec defines and this milestone
+// does not read. They are diagnosed as not-yet-implemented rather than as
+// syntax errors: a user who writes valid protop deserves to be told the
+// compiler is behind, not that they are wrong.
+var notYetDecls = map[string]bool{
+	"record": true,
+	"table":  true,
+	"view":   true,
+	"import": true,
+}
+
+// notYetMembers is the same courtesy one level down, for the words that open a
+// member the parser cannot read yet. All four sit in leading position, which is
+// the only reason they can be recognised without being reserved -- `key key =
+// 1 (event_id, bet_type_id);` names a member `key` in the second position.
+var notYetMembers = map[string]bool{
+	"repeated": true,
+	"key":      true,
+	"alias":    true,
+	"reserved": true,
+}
+
+// Parse reads one file into an AST, appending every diagnostic it finds to bag.
+//
+// It always returns a File, even for source it could not parse: the tree is
+// best-effort, and bag.HasErrors is what says whether it means anything.
+// Partial trees are what let an editor outline a file that is still being
+// typed, and the reason recovery skips to the next `;` or balanced `}` instead
+// of giving up at the first error.
+func Parse(f *source.File, bag *diag.Bag) *File {
+	p := &parser{src: f, toks: Lex(f, bag), bag: bag}
+	return p.parseFile()
+}
+
+type parser struct {
+	src  *source.File
+	toks []Token
+	bag  *diag.Bag
+	i    int // index into toks of the next unread token
+}
+
+func (p *parser) parseFile() *File {
+	file := &File{Span: source.Span{Start: 0, End: source.Pos(len(p.src.Text))}}
+	for !p.at(KindEOF) {
+		p.parseDecl(file)
+	}
+	// Both file-level declarations are checked after the whole file, so that a
+	// file missing its header still reports everything else wrong with it.
+	if file.Revision == nil {
+		p.bag.Errorf(diag.MissingRevision, p.headSpan(), "a protop file must open with `revision %d;`", protopRevision)
+	}
+	if file.Namespace == nil {
+		p.bag.Errorf(diag.MissingNamespace, p.headSpan(), "a protop file must declare a `namespace`")
+	}
+	return file
+}
+
+func (p *parser) parseDecl(file *File) {
+	tok := p.peek()
+	if tok.Kind != KindIdent {
+		p.bag.Errorf(diag.UnknownDeclaration, tok.Span, "expected a declaration, found %s", tok.Kind)
+		p.recoverDecl()
+		return
+	}
+
+	switch word := p.text(tok); word {
+	case "revision":
+		p.parseRevision(file)
+	case "namespace":
+		p.parseNamespace(file)
+	case "struct":
+		file.Decls = append(file.Decls, p.parseStruct())
+	case "enum":
+		file.Decls = append(file.Decls, p.parseEnum())
+	default:
+		if notYetDecls[word] {
+			p.bag.Errorf(diag.NotYetImplemented, tok.Span, "`%s` is not yet implemented", word)
+		} else {
+			p.bag.Errorf(diag.UnknownDeclaration, tok.Span,
+				"unknown declaration `%s`; expected `struct`, `enum`, `record`, `table`, `view` or `import`", word)
+		}
+		p.recoverDecl()
+	}
+}
+
+// parseRevision reads `revision 1;`. A malformed stamp is still recorded, so
+// that one mistake produces one diagnostic rather than also a missing-revision.
+func (p *parser) parseRevision(file *File) {
+	kw := p.next()
+	rev := &Revision{Span: kw.Span}
+
+	if num, ok := p.expectInt(); !ok {
+		p.recoverDecl()
+	} else {
+		rev.Number = num
+		rev.Span = rev.Span.To(num.Span)
+		if num.Value != protopRevision {
+			p.bag.Errorf(diag.UnsupportedRevision, num.Span,
+				"unknown revision %d; this compiler implements revision %d", num.Value, protopRevision)
+		}
+		if semi, ok := p.expect(KindSemi); ok {
+			rev.Span = rev.Span.To(semi.Span)
+		}
+	}
+
+	switch {
+	case file.Revision != nil:
+		p.bag.Errorf(diag.DuplicateRevision, rev.Span, "`revision` is already declared at %s",
+			p.src.Position(file.Revision.Span.Start))
+		return // the first stamp wins
+	case len(file.Decls) > 0 || file.Namespace != nil:
+		p.bag.Errorf(diag.RevisionNotFirst, rev.Span, "`revision` must be the first declaration in the file")
+	}
+	file.Revision = rev
+}
+
+func (p *parser) parseNamespace(file *File) {
+	kw := p.next()
+	ns := &Namespace{Span: kw.Span}
+
+	for {
+		part, ok := p.expectIdent()
+		if !ok {
+			p.recoverDecl()
+			break
+		}
+		ns.Parts = append(ns.Parts, part)
+		ns.Span = ns.Span.To(part.Span)
+		if !p.at(KindDot) {
+			if semi, ok := p.expect(KindSemi); ok {
+				ns.Span = ns.Span.To(semi.Span)
+			}
+			break
+		}
+		p.next() // the dot
+	}
+
+	if file.Namespace != nil {
+		p.bag.Errorf(diag.DuplicateNamespace, ns.Span, "`namespace` is already declared at %s",
+			p.src.Position(file.Namespace.Span.Start))
+		return // the first declaration wins
+	}
+	file.Namespace = ns
+}
+
+func (p *parser) parseStruct() *Struct {
+	kw := p.next()
+	s := &Struct{Span: kw.Span}
+
+	name, ok := p.expectIdent()
+	if !ok {
+		p.recoverDecl()
+		return s
+	}
+	s.Name = name
+	s.Span = s.Span.To(name.Span)
+
+	if _, ok := p.expect(KindLBrace); !ok {
+		p.recoverDecl()
+		return s
+	}
+	for !p.at(KindRBrace) && !p.at(KindEOF) {
+		if f := p.parseField(); f != nil {
+			s.Fields = append(s.Fields, f)
+		}
+	}
+	if closing, ok := p.expect(KindRBrace); ok {
+		s.Span = s.Span.To(closing.Span)
+	}
+	return s
+}
+
+// parseField reads one tagged member, `decimal(4)? live_limit_manual_single =
+// 36;`. It consumes at least one token on every path, which is what keeps the
+// body loop that calls it moving.
+func (p *parser) parseField() *Field {
+	tok := p.peek()
+	if tok.Kind != KindIdent {
+		p.bag.Errorf(diag.UnexpectedToken, tok.Span, "expected a field type, found %s", tok.Kind)
+		p.next()
+		p.recoverStmt()
+		return nil
+	}
+	if word := p.text(tok); notYetMembers[word] {
+		p.bag.Errorf(diag.NotYetImplemented, tok.Span, "`%s` is not yet implemented", word)
+		p.next()
+		p.recoverStmt()
+		return nil
+	}
+
+	typ, ok := p.parseTypeRef()
+	if !ok {
+		p.recoverStmt()
+		return nil
+	}
+	name, ok := p.expectIdent()
+	if !ok {
+		p.recoverStmt()
+		return nil
+	}
+	f := &Field{Type: typ, Name: name, Span: typ.Span.To(name.Span)}
+
+	if _, ok := p.expect(KindAssign); !ok {
+		p.recoverStmt()
+		return f
+	}
+	tag, ok := p.expectInt()
+	if !ok {
+		p.recoverStmt()
+		return f
+	}
+	f.Tag = tag
+	f.Span = f.Span.To(tag.Span)
+	if tag.Value == 0 {
+		p.bag.Errorf(diag.TagOutOfRange, tag.Span,
+			"field tag must be greater than 0; a MessagePack key is tag - 1, so tag 0 names no slot")
+	}
+
+	if semi, ok := p.expect(KindSemi); ok {
+		f.Span = f.Span.To(semi.Span)
+	}
+	return f
+}
+
+// parseTypeRef reads a type as written -- name, optional precision, optional
+// `?` -- and checks the name against the scalar set. It does not resolve
+// anything: a type reference is a name until the checking stage says otherwise.
+func (p *parser) parseTypeRef() (TypeRef, bool) {
+	name := p.identOf(p.next())
+	t := TypeRef{Name: name, Span: name.Span}
+
+	if p.at(KindLParen) {
+		p.next()
+		prec, ok := p.expectInt()
+		if !ok {
+			return t, false
+		}
+		closing, ok := p.expect(KindRParen)
+		if !ok {
+			return t, false
+		}
+		t.Precision = &prec
+		t.Span = t.Span.To(closing.Span)
+	}
+	// The `?` binds to the type, not to the field: presence is a property of
+	// what is stored, and `decimal(4)?` is one type.
+	if p.at(KindQuestion) {
+		t.Optional = true
+		t.Span = t.Span.To(p.next().Span)
+	}
+
+	p.checkScalar(t)
+	return t, true
+}
+
+func (p *parser) checkScalar(t TypeRef) {
+	if !scalarTypes[t.Name.Text] {
+		p.bag.Errorf(diag.NotYetImplemented, t.Name.Span,
+			"`%s` is not one of protop's scalar types; a field of a declared type is not yet implemented", t.Name.Text)
+		return
+	}
+	switch {
+	case t.Name.Text == scaledScalar && t.Precision == nil:
+		p.bag.Errorf(diag.PrecisionRequired, t.Name.Span,
+			"`%s` requires a precision, as in `%s(4)`", scaledScalar, scaledScalar)
+	case t.Name.Text != scaledScalar && t.Precision != nil:
+		p.bag.Errorf(diag.PrecisionNotAllowed, t.Precision.Span,
+			"a precision is only allowed on `%s`, not on `%s`", scaledScalar, t.Name.Text)
+	}
+}
+
+func (p *parser) parseEnum() *Enum {
+	kw := p.next()
+	e := &Enum{Span: kw.Span}
+
+	name, ok := p.expectIdent()
+	if !ok {
+		p.recoverDecl()
+		return e
+	}
+	e.Name = name
+	e.Span = e.Span.To(name.Span)
+
+	if _, ok := p.expect(KindLBrace); !ok {
+		p.recoverDecl()
+		return e
+	}
+	for !p.at(KindRBrace) && !p.at(KindEOF) {
+		if m := p.parseEnumMember(); m != nil {
+			e.Members = append(e.Members, m)
+		}
+	}
+	if closing, ok := p.expect(KindRBrace); ok {
+		e.Span = e.Span.To(closing.Span)
+	}
+	return e
+}
+
+// parseEnumMember reads `NOT_STARTED = 1;`. There is no lower bound on the
+// number: an enum member's value is not a tag, and 0 is the idiomatic unknown
+// arm.
+func (p *parser) parseEnumMember() *EnumMember {
+	tok := p.peek()
+	if tok.Kind != KindIdent {
+		p.bag.Errorf(diag.UnexpectedToken, tok.Span, "expected an enum member name, found %s", tok.Kind)
+		p.next()
+		p.recoverStmt()
+		return nil
+	}
+	name := p.identOf(p.next())
+	m := &EnumMember{Name: name, Span: name.Span}
+
+	if _, ok := p.expect(KindAssign); !ok {
+		p.recoverStmt()
+		return m
+	}
+	num, ok := p.expectInt()
+	if !ok {
+		p.recoverStmt()
+		return m
+	}
+	m.Number = num
+	m.Span = m.Span.To(num.Span)
+
+	if semi, ok := p.expect(KindSemi); ok {
+		m.Span = m.Span.To(semi.Span)
+	}
+	return m
+}
+
+// --- token access ------------------------------------------------------------
+
+func (p *parser) peek() Token { return p.toks[p.i] }
+
+func (p *parser) at(k Kind) bool { return p.toks[p.i].Kind == k }
+
+// next consumes and returns the current token. It never advances past EOF, so
+// every peek is in bounds without a length check.
+func (p *parser) next() Token {
+	t := p.toks[p.i]
+	if p.i < len(p.toks)-1 {
+		p.i++
+	}
+	return t
+}
+
+func (p *parser) text(t Token) string { return p.src.Slice(t.Span) }
+
+func (p *parser) identOf(t Token) Ident { return Ident{Text: p.text(t), Span: t.Span} }
+
+// expect consumes the current token when it is of kind k. On a mismatch it
+// reports and consumes nothing, leaving the caller to recover -- which is what
+// keeps one misplaced token from being reported twice.
+func (p *parser) expect(k Kind) (Token, bool) {
+	if p.at(k) {
+		return p.next(), true
+	}
+	tok := p.peek()
+	p.bag.Errorf(diag.UnexpectedToken, tok.Span, "expected %s, found %s", k, tok.Kind)
+	return tok, false
+}
+
+func (p *parser) expectIdent() (Ident, bool) {
+	tok, ok := p.expect(KindIdent)
+	if !ok {
+		return Ident{Span: tok.Span}, false
+	}
+	return p.identOf(tok), true
+}
+
+func (p *parser) expectInt() (IntLit, bool) {
+	tok, ok := p.expect(KindInt)
+	if !ok {
+		return IntLit{Span: tok.Span}, false
+	}
+	return IntLit{Value: tok.Int, Span: tok.Span}, true
+}
+
+// headSpan is where a missing file-level declaration is reported: the first
+// token, or the start of an empty file.
+func (p *parser) headSpan() source.Span {
+	if len(p.toks) > 0 {
+		return p.toks[0].Span
+	}
+	return source.SpanAt(0)
+}
+
+// --- recovery ----------------------------------------------------------------
+//
+// A missing trailing `;` is not one of these points. It is reported where it
+// is and parsing continues, because the token that is not a semicolon is almost
+// always the start of the next member -- skipping to the next `;` would report
+// one mistake and swallow a member that was perfectly good.
+//
+// Both recovery points skip to the end of the construct that failed: the next
+// `;`, or the `}` that closes a block the construct opened. The difference is
+// what they do with a `}` they did not open -- recoverDecl consumes it, because
+// at the top level it can only be the end of the declaration it is skipping;
+// recoverStmt leaves it, because inside a body it belongs to the enclosing
+// block and the loop that reads that body needs to see it.
+
+func (p *parser) recoverDecl() {
+	depth := 0
+	for {
+		switch p.peek().Kind {
+		case KindEOF:
+			return
+		case KindSemi:
+			if depth == 0 {
+				p.next()
+				return
+			}
+		case KindLBrace:
+			depth++
+		case KindRBrace:
+			depth--
+			if depth <= 0 {
+				p.next()
+				return
+			}
+		}
+		p.next()
+	}
+}
+
+func (p *parser) recoverStmt() {
+	depth := 0
+	for {
+		switch p.peek().Kind {
+		case KindEOF:
+			return
+		case KindSemi:
+			if depth == 0 {
+				p.next()
+				return
+			}
+		case KindLBrace:
+			depth++
+		case KindRBrace:
+			if depth == 0 {
+				return
+			}
+			depth--
+		}
+		p.next()
+	}
+}
