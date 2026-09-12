@@ -15,12 +15,17 @@ last, so the frontier query returns exactly one:
 ```sh
 repo=nanov/protobuf-to-messagepack-sharp
 for n in $(gh issue list --repo "$repo" --label wayfinder:task --state open \
-             --json number --jq '.[].number' | sort -n); do
+             --json number,title \
+             --jq '.[] | select(.title | test("^M[0-9]+:")) | .number' | sort -n); do
   open_blockers=$(gh api "repos/$repo/issues/$n/dependencies/blocked_by" \
                     --jq '[.[] | select(.state == "open")] | length')
   if [ "$open_blockers" = "0" ]; then echo "$n"; fi
 done
 ```
+
+The title filter is load-bearing: `wayfinder:task` is the tracker's label for
+*any* ticket needing manual unblocking, and some of them (#18) are not build
+milestones at all.
 
 If it returns more than one, the dependencies were not wired; say so on the map
 rather than picking. If it returns none, every milestone is done or claimed —
