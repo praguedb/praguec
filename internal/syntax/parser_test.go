@@ -640,6 +640,46 @@ struct S {
 			wantLine:  4, wantCol: 9,
 		},
 		{
+			// Section 3 gives an annotation one position, after what it
+			// describes. Before a member is the mirror of before a declaration
+			// head and costs the same one diagnostic.
+			name: "annotation before a member",
+			src: `revision 1;
+namespace A;
+struct S {
+  [cs: X] int64 a = 1;
+}
+`,
+			wantCodes: []diag.Code{diag.AnnotationNotAllowed},
+			wantLine:  4, wantCol: 3,
+		},
+		{
+			// The position that would have to mean "annotate the type" if any
+			// position did. None does: an annotation describes the member.
+			name: "annotation between a type and a name",
+			src: `revision 1;
+namespace A;
+struct S {
+  int64 [cs: Y] b = 2;
+}
+`,
+			wantCodes: []diag.Code{diag.AnnotationNotAllowed},
+			wantLine:  4, wantCol: 9,
+		},
+		{
+			// The backend set is closed, and closed means closed against every
+			// prefix rather than against the one another test happens to use.
+			name: "unknown annotation prefix that is not `go`",
+			src: `revision 1;
+namespace A;
+struct S {
+  int64 a = 1 [kt: Serializable];
+}
+`,
+			wantCodes: []diag.Code{diag.UnknownAnnotationPrefix},
+			wantLine:  4, wantCol: 16,
+		},
+		{
 			// A list has one element type. Two is not a list of pairs, it is a
 			// type protop does not have.
 			name: "list given two type arguments",
@@ -718,6 +758,37 @@ struct S {
 `,
 			wantCodes: []diag.Code{diag.UnexpectedToken},
 			wantLine:  4, wantCol: 12,
+		},
+		{
+			// A member that repeats a tag is told that and nothing else. The
+			// reservation has already been reported against the member that
+			// holds the tag first, and saying it twice would describe one
+			// retired tag as two problems.
+			name: "a tag both reserved and already used is told once per member",
+			src: `revision 1;
+namespace A;
+table T {
+  int64 b = 10;
+  int64 c = 10;
+  reserved 8..14;
+}
+`,
+			wantCodes: []diag.Code{diag.TagIsReserved, diag.DuplicateTag},
+			wantLine:  4, wantCol: 13,
+		},
+		{
+			// Overlapping reservations are one reservation as far as a tag is
+			// concerned: the tag is retired once however many ranges cover it.
+			name: "overlapping reserved ranges retire a tag once",
+			src: `revision 1;
+namespace A;
+table T {
+  reserved 8..14, 10..20;
+  int64 a = 12;
+}
+`,
+			wantCodes: []diag.Code{diag.TagIsReserved},
+			wantLine:  5, wantCol: 13,
 		},
 	}
 
@@ -968,26 +1039,96 @@ struct S
 `)
 }
 
+// The three closed sets, written out here as literals so that the test has an
+// oracle the implementation cannot move. Each of these sets is a decision --
+// protop's scalars are a census of the spec (#32), the legal annotation
+// prefixes are exactly the backends protopc has, and protop's own annotations
+// are read rather than passed through -- and a set that can be widened or
+// narrowed with the suite green is not closed in any sense that matters.
+var (
+	wantScalarTypes       = []string{"bool", "decimal", "double", "int32", "int64", "string"}
+	wantBackends          = []string{"cs"}
+	wantProtopAnnotations = []string{"references"}
+	wantCollectionTypes   = map[string]int{"list": 1, "map": 2}
+)
+
+func TestClosedSetsAreExactlyWhatTheySay(t *testing.T) {
+	for _, tt := range []struct {
+		name string
+		got  map[string]bool
+		want []string
+	}{
+		{"scalarTypes", scalarTypes, wantScalarTypes},
+		{"backends", backends, wantBackends},
+		{"protopAnnotations", protopAnnotations, wantProtopAnnotations},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			names := make([]string, 0, len(tt.got))
+			for name, ok := range tt.got {
+				if !ok {
+					t.Errorf("%s[%q] is false; membership is the map's only meaning", tt.name, name)
+				}
+				names = append(names, name)
+			}
+			slices.Sort(names)
+			if !slices.Equal(names, tt.want) {
+				t.Errorf("%s = %v, want %v", tt.name, names, tt.want)
+			}
+		})
+	}
+
+	// A collection carries its arity, so widening it is two mistakes rather
+	// than one: a name that should not be generic, and a shape for it.
+	t.Run("collectionTypes", func(t *testing.T) {
+		if len(collectionTypes) != len(wantCollectionTypes) {
+			t.Fatalf("collectionTypes = %v, want %v", collectionTypes, wantCollectionTypes)
+		}
+		for name, arity := range wantCollectionTypes {
+			if got, ok := collectionTypes[name]; !ok || got != arity {
+				t.Errorf("collectionTypes[%q] = %d, %v; want %d", name, got, ok, arity)
+			}
+		}
+	})
+
+	// `list` and `map` are not scalars, and the separation is the point: #32 is
+	// about the scalar set and a type constructor is not in it.
+	for _, name := range []string{"list", "map"} {
+		if scalarTypes[name] {
+			t.Errorf("%q is in scalarTypes; a collection is a type constructor, not a scalar", name)
+		}
+	}
+}
+
 // Whether protop's scalar set is closed at all is unresolved -- #32 -- and the
 // parser no longer branches on it: a name outside the set is a reference to a
 // declared type. What keeps the census honest is the fixture. Every type
 // section 1 names is one of the six scalars, one of the two collections, or a
 // declaration in the same file, so a seventh scalar appearing in the spec fails
 // here rather than parsing quietly as a name that will resolve to nothing.
+//
+// The oracle is the literal above, not the map under test. Reading `scalarTypes`
+// here would make widening it *weaken* the check, which is exactly how this
+// test used to pass a mutation that added `float` and `datetime`.
 func TestSpecSubsetNamesNoTypeItDoesNotDeclare(t *testing.T) {
 	_, file := parseClean(t, readFixture(t, specSubsetFixture))
 
-	declared := map[string]bool{}
+	known := map[string]bool{}
+	for _, name := range wantScalarTypes {
+		known[name] = true
+	}
+	for name := range wantCollectionTypes {
+		known[name] = true
+	}
 	for _, d := range file.Decls {
 		switch d := d.(type) {
 		case *Struct:
-			declared[d.Name.Text] = true
+			known[d.Name.Text] = true
 		case *Record:
-			declared[d.Name.Text] = true
+			known[d.Name.Text] = true
 		case *Table:
-			declared[d.Name.Text] = true
+			known[d.Name.Text] = true
 		case *Enum:
-			declared[d.Name.Text] = true
+			known[d.Name.Text] = true
 		}
 	}
 
@@ -995,10 +1136,9 @@ func TestSpecSubsetNamesNoTypeItDoesNotDeclare(t *testing.T) {
 	// has to fail here for the same reason the bare name would.
 	var check func(owner string, t2 TypeRef)
 	check = func(owner string, t2 TypeRef) {
-		name := t2.Name.Text
-		if _, isCollection := collectionTypes[name]; !scalarTypes[name] && !isCollection && !declared[name] {
+		if !known[t2.Name.Text] {
 			t.Errorf("field %s names %s, which is neither a scalar, a collection, nor declared in the fixture",
-				owner, name)
+				owner, t2.Name.Text)
 		}
 		for _, arg := range t2.Args {
 			check(owner, arg)
@@ -1030,29 +1170,37 @@ func declMembers(d Decl) []Member {
 
 // Annotations, in the three positions section 1 uses them: after a declaration
 // head, after a tag, and stacked by juxtaposition. Contents are carried
-// verbatim and in source order -- the two on `timestamp` are not sorted and the
-// two identical ones on `x` are both kept, because protopc does not know what
-// either would mean to the backend that reads them.
+// verbatim, in source order, and both of the identical ones on `x` are kept,
+// because protopc does not know what any of it would mean to the backend that
+// reads it.
+//
+// Every run here is written in reverse alphabetical order on purpose. A stage
+// that sorted annotations -- or that collected them into a map and wrote them
+// back out -- would be invisible to a fixture whose runs happen to be sorted
+// already, and the order a C# attribute list is emitted in is a diff in the
+// generated file.
 func TestParseAnnotations(t *testing.T) {
 	_, file := parseClean(t, `revision 1;
 namespace A;
 record R
-  [cs: DataCache(CacheClassName = nameof(BPSportGameCache))]
   [cs: DataCacheContract(typeof(SportGameCacheContract), Role = ContractRole.Producer)]
+  [cs: DataCache(CacheClassName = nameof(BPSportGameCache))]
 {
   int64 event_id  = 1 [references(SportGame)];
-  int64 timestamp = 2 [cs: DataCacheFromTimestamp] [cs: DataCacheIgnoreEquality];
+  int64 timestamp = 2 [cs: DataCacheIgnoreEquality] [cs: DataCacheFromTimestamp];
   int64 x         = 3 [cs: A] [cs: A];
+  int64 y         = 4 [cs: Zeta] [cs: Mid] [cs: Alpha];
 }
 `)
 	assertDump(t, file, `revision 1
 namespace A
 record R
-  [cs: DataCache(CacheClassName = nameof(BPSportGameCache))]
   [cs: DataCacheContract(typeof(SportGameCacheContract), Role = ContractRole.Producer)]
+  [cs: DataCache(CacheClassName = nameof(BPSportGameCache))]
   int64 event_id = 1 [references(SportGame)]
-  int64 timestamp = 2 [cs: DataCacheFromTimestamp] [cs: DataCacheIgnoreEquality]
+  int64 timestamp = 2 [cs: DataCacheIgnoreEquality] [cs: DataCacheFromTimestamp]
   int64 x = 3 [cs: A] [cs: A]
+  int64 y = 4 [cs: Zeta] [cs: Mid] [cs: Alpha]
 `)
 
 	// A prefix is a name the parser keeps; protop's own annotations carry none,
@@ -1176,25 +1324,30 @@ func TestParseReservedRangesAreInclusive(t *testing.T) {
 // over fields that keep their own ordinals. Nothing here is a reserved word, and
 // the two spellings of identity are told apart by what follows rather than by
 // what the lexer called it.
+//
+// A composite key and an alias each take annotations in the one position every
+// member takes them in -- last, before the `;`. Both are emitted members and
+// both reach a backend, so an annotation dropped on either is an attribute
+// missing from the generated C#.
 func TestParseCompositeKeyAndAlias(t *testing.T) {
 	_, file := parseClean(t, `revision 1;
 namespace A;
 table BetType {
-  key key = 1 (event_id, bet_type_id);
+  key key = 1 (event_id, bet_type_id) [cs: Z];
 
   int64 event_id = 2 [references(BetType)];
   int64 id       = 3;
 
-  alias bet_type_id = id;
+  alias bet_type_id = id [cs: W];
 }
 `)
 	assertDump(t, file, `revision 1
 namespace A
 table BetType
-  key key = 1 (event_id, bet_type_id)
+  key key = 1 (event_id, bet_type_id) [cs: Z]
   int64 event_id = 2 [references(BetType)]
   int64 id = 3
-  alias bet_type_id = id
+  alias bet_type_id = id [cs: W]
 `)
 
 	tbl := file.Decls[0].(*Table)
@@ -1285,5 +1438,157 @@ func TestFailedAndZeroTagsAreNotDuplicates(t *testing.T) {
 				t.Errorf("codes = %v, want %v:\n%s", got, tt.wantCodes, diag.RenderAll(f, bag))
 			}
 		})
+	}
+}
+
+// Spans, for every node that has one.
+//
+// A span is the parser's whole contribution to every message a user ever
+// reads: a diagnostic, an editor's squiggle and a quoted line are all a span
+// sliced back out of the source. A span that is short by a token is not caught
+// by any test that only looks at the tree, and it is wrong in every message
+// that quotes it.
+//
+// Every expectation below is written as the text it must slice to. A
+// hand-computed byte offset would be a second implementation of the same
+// arithmetic, and would agree with a mistake.
+func TestSpansCoverWhatWasWritten(t *testing.T) {
+	src := `revision 1;
+namespace A.B;
+
+enum E {
+  UNKNOWN = 0;
+  DONE    = 1;
+}
+
+table T
+  [cs: Topic("t")]
+{
+  reserved 8..14, 25;
+  key key = 1 (a, b) [cs: Z];
+  list<Odd?>? odds = 2 [references(X)];
+  decimal(4) amount = 3;
+  list<Odd> plain = 4;
+  alias d = odds;
+}
+`
+	f, file := parseClean(t, src)
+
+	// A span slices to what it claims to cover, named by what it is so a
+	// failure says which node lost its ends.
+	check := func(what string, span source.Span, want string) {
+		t.Helper()
+		if got := f.Slice(span); got != want {
+			t.Errorf("%s spans %q, want %q", what, got, want)
+		}
+	}
+
+	// The file is the whole file, which is what makes a diagnostic with no
+	// better place to point still land inside the source.
+	check("the file", file.Span, src)
+	check("revision", file.Revision.Span, "revision 1;")
+	check("namespace", file.Namespace.Span, "namespace A.B;")
+
+	e, ok := file.Decls[0].(*Enum)
+	if !ok {
+		t.Fatalf("first declaration is %T, want *Enum", file.Decls[0])
+	}
+	check("the enum", e.Span, "enum E {\n  UNKNOWN = 0;\n  DONE    = 1;\n}")
+	check("an enum member", e.Members[0].Span, "UNKNOWN = 0;")
+	check("an enum member's name", e.Members[0].Name.Span, "UNKNOWN")
+	check("an enum member's number", e.Members[0].Number.Span, "0")
+
+	tbl, ok := file.Decls[1].(*Table)
+	if !ok {
+		t.Fatalf("second declaration is %T, want *Table", file.Decls[1])
+	}
+	// A declaration opens at its keyword and closes at its brace, and its
+	// annotations are inside that even though they are written before the
+	// brace rather than after it.
+	check("the table", tbl.Span, src[strings.Index(src, "table T"):strings.LastIndex(src, "}")+1])
+	check("a head annotation", tbl.Annotations[0].Span, `[cs: Topic("t")]`)
+
+	res, ok := tbl.Members[0].(*Reserved)
+	if !ok {
+		t.Fatalf("the first member is %T, want *Reserved", tbl.Members[0])
+	}
+	check("reserved", res.Span, "reserved 8..14, 25;")
+	check("a reserved range", res.Ranges[0].Span, "8..14")
+	// A single tag is a range whose ends are equal, and its span is the one
+	// number that was written -- not a `..` the source does not contain.
+	check("a single reserved tag", res.Ranges[1].Span, "25")
+
+	k, ok := tbl.Members[1].(*CompositeKey)
+	if !ok {
+		t.Fatalf("the second member is %T, want *CompositeKey", tbl.Members[1])
+	}
+	check("a composite key", k.Span, "key key = 1 (a, b) [cs: Z];")
+	check("a composite key's name", k.Name.Span, "key")
+	check("a composite key's part", k.Parts[1].Span, "b")
+	check("a composite key's annotation", k.Annotations[0].Span, "[cs: Z]")
+
+	odds, ok := tbl.Members[2].(*Field)
+	if !ok {
+		t.Fatalf("the third member is %T, want *Field", tbl.Members[2])
+	}
+	check("a field", odds.Span, "list<Odd?>? odds = 2 [references(X)];")
+	// A collection's type closes at its `>`, and its `?` after that. This is
+	// the assertion that says the outer `?` of `list<Odd?>?` belongs to the
+	// outer type: the two are different types and a message that quotes the
+	// wrong one says the wrong thing.
+	check("a collection type", odds.Type.Span, "list<Odd?>?")
+	check("a type argument", odds.Type.Args[0].Span, "Odd?")
+	check("an unprefixed annotation", odds.Annotations[0].Span, "[references(X)]")
+
+	amount, ok := tbl.Members[3].(*Field)
+	if !ok {
+		t.Fatalf("the fourth member is %T, want *Field", tbl.Members[3])
+	}
+	// A precision is part of the type, and is also its own span because the
+	// diagnostic for a precision that does not belong underlines it alone.
+	check("a scaled type", amount.Type.Span, "decimal(4)")
+	check("a precision", amount.Type.Precision.Span, "4")
+	check("a tag", amount.Tag.Span, "3")
+
+	plain, ok := tbl.Members[4].(*Field)
+	if !ok {
+		t.Fatalf("the fifth member is %T, want *Field", tbl.Members[4])
+	}
+	// The same collection with no `?` after it, which is the one shape that
+	// says the span reaches the `>` on its own rather than being carried there
+	// by a trailing presence marker.
+	check("a collection type with no presence marker", plain.Type.Span, "list<Odd>")
+
+	alias, ok := tbl.Members[5].(*Alias)
+	if !ok {
+		t.Fatalf("the sixth member is %T, want *Alias", tbl.Members[5])
+	}
+	check("an alias", alias.Span, "alias d = odds;")
+	check("an alias source", alias.Source.Span, "odds")
+}
+
+// `key` is written in front of the type, so a member that carries it has to
+// span from the `key` and not from the type -- a stage that quotes the member
+// by span has to get back the line that was written. This is the last leading
+// word there is: `repeated` used to be the other one and is now part of the
+// type, which is exactly why the extension still has to be pinned.
+func TestAKeyFieldSpansFromItsLeadingWord(t *testing.T) {
+	f, file := parseClean(t, `revision 1;
+namespace A;
+table T {
+  key int64 id = 1;
+}
+`)
+	id, ok := file.Decls[0].(*Table).Members[0].(*Field)
+	if !ok {
+		t.Fatalf("the member is %T, want *Field", file.Decls[0].(*Table).Members[0])
+	}
+	if got := f.Slice(id.Span); got != "key int64 id = 1;" {
+		t.Errorf("the field spans %q, want %q", got, "key int64 id = 1;")
+	}
+	// And the type is the type alone, which is what the second half of the
+	// extension is for: the field grew at the front and the type did not.
+	if got := f.Slice(id.Type.Span); got != "int64" {
+		t.Errorf("the type spans %q, want %q", got, "int64")
 	}
 }
