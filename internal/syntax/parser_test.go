@@ -291,19 +291,71 @@ table BetType
 	}
 }
 
+// protopBlocks returns the contents of every ```protop fenced block in a spec
+// file, in order, each including its trailing newline.
+func protopBlocks(t *testing.T, specPath string) []string {
+	t.Helper()
+	spec, err := os.ReadFile(specPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var blocks []string
+	var cur strings.Builder
+	inBlock := false
+	for _, line := range strings.SplitAfter(string(spec), "\n") {
+		switch {
+		case !inBlock && strings.TrimRight(line, "\n") == "```protop":
+			inBlock = true
+		case inBlock && strings.TrimRight(line, "\n") == "```":
+			blocks = append(blocks, cur.String())
+			cur.Reset()
+			inBlock = false
+		case inBlock:
+			cur.WriteString(line)
+		}
+	}
+	if inBlock {
+		t.Fatalf("%s has an unclosed ```protop block", specPath)
+	}
+	if len(blocks) == 0 {
+		t.Fatalf("%s has no ```protop blocks; the fixtures are lifted from nothing", specPath)
+	}
+	return blocks
+}
+
+// assertVerbatim holds a fixture against the spec it was lifted from, twice
+// over. Containment is the claim that the fixture appears in that file and
+// nowhere else has to be consulted to read it; equality with a whole fenced
+// block is the claim that it is the block ENTIRE. Containment alone cannot see
+// a truncation -- every prefix of a block is contained in the file too, so a
+// fixture that lost its last declarations would go on passing while the test
+// named after wholeness watched it happen.
+func assertVerbatim(t *testing.T, specPath, fixtureName string) {
+	t.Helper()
+	fixture := readFixture(t, fixtureName)
+	spec, err := os.ReadFile(specPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(spec), fixture) {
+		t.Errorf("testdata/%s no longer appears verbatim in %s", fixtureName, specPath)
+		return
+	}
+	for _, block := range protopBlocks(t, specPath) {
+		if block == fixture {
+			return
+		}
+	}
+	t.Errorf("testdata/%s appears in %s but is no whole ```protop block of it; "+
+		"a fixture that is part of a block is a paraphrase by omission", fixtureName, specPath)
+}
+
 // What keeps "parses verbatim out of the spec" honest: the fixture is not a
 // paraphrase of section 1, it is a copy of it. If the spec changes its mind
 // about the language, this fails before the parser silently keeps reading the
 // old one.
 func TestSpecSubsetIsVerbatim(t *testing.T) {
-	fixture := readFixture(t, specSubsetFixture)
-	spec, err := os.ReadFile(specSection1)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !strings.Contains(string(spec), fixture) {
-		t.Errorf("testdata/%s no longer appears verbatim in %s", specSubsetFixture, specSection1)
-	}
+	assertVerbatim(t, specSection1, specSubsetFixture)
 }
 
 // The consuming side of the language, and with it the last of the grammar: a
@@ -395,14 +447,8 @@ table BetTypeBrandSettings
 // the spec changes its mind about the language this fails before the parser
 // quietly keeps reading the old one.
 func TestSpecSection2IsVerbatim(t *testing.T) {
-	spec, err := os.ReadFile(specSection2)
-	if err != nil {
-		t.Fatal(err)
-	}
 	for _, name := range []string{specSection2Fixture, specSection2TableFixture} {
-		if !strings.Contains(string(spec), readFixture(t, name)) {
-			t.Errorf("testdata/%s no longer appears verbatim in %s", name, specSection2)
-		}
+		assertVerbatim(t, specSection2, name)
 	}
 }
 
