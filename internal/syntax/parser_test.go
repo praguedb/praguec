@@ -443,6 +443,13 @@ struct S
 // points. Codes are protopc's interface -- an editor filters on them and a
 // changelog cites them -- so the sequence is asserted exactly.
 //
+// wantSpan is the text the first diagnostic must underline, written out rather
+// than computed. A line and a column pin only where an underline STARTS, so a
+// message whose span was shortened to a single caret -- or lengthened to the
+// rest of the line -- still passed. The span is the parser's whole contribution
+// to what a user sees, and a test that reads it back out of the source is the
+// only thing that says how wide it is.
+//
 // Lexical diagnostics come first in the bag whatever their position, because
 // Parse tokenises the whole file before it reads a token of it.
 func TestParseDiagnostics(t *testing.T) {
@@ -452,6 +459,7 @@ func TestParseDiagnostics(t *testing.T) {
 		wantCodes []diag.Code
 		wantLine  int
 		wantCol   int
+		wantSpan  string
 	}{
 		{
 			name:      "missing revision",
@@ -519,10 +527,31 @@ struct S {
 			wantLine:  1, wantCol: 10,
 		},
 		{
-			name:      "revision after another declaration",
+			// Named for what it is: the namespace is a header line and not a
+			// declaration, so this covers one arm of the condition and the case
+			// below covers the other. They were one case with a name that
+			// claimed both, and the declaration arm could be deleted outright
+			// with the suite green.
+			name:      "revision after the namespace",
 			src:       "namespace A;\nrevision 1;\n",
 			wantCodes: []diag.Code{diag.RevisionNotFirst},
 			wantLine:  2, wantCol: 1,
+			wantSpan: "revision 1;",
+		},
+		{
+			// The arm that was dead to the suite. `revision` stamps the dialect
+			// the rest of the file is read in, so a declaration above it has
+			// already been read in a dialect the file had not yet named.
+			name: "revision after a declaration",
+			src: `namespace A;
+struct S {
+  int64 a = 1;
+}
+revision 1;
+`,
+			wantCodes: []diag.Code{diag.RevisionNotFirst},
+			wantLine:  5, wantCol: 1,
+			wantSpan: "revision 1;",
 		},
 		{
 			name:      "duplicate revision",
@@ -913,6 +942,7 @@ view V of T {
 `,
 			wantCodes: []diag.Code{diag.TagInViewMember},
 			wantLine:  4, wantCol: 17,
+			wantSpan: "=",
 		},
 		{
 			// A view is a subset of one source. Without the `of` it is a subset
@@ -926,6 +956,7 @@ view V {
 `,
 			wantCodes: []diag.Code{diag.ViewSourceMissing},
 			wantLine:  3, wantCol: 8,
+			wantSpan: "{",
 		},
 		{
 			// The word is `of` and not merely some word: a view head is a name,
@@ -941,6 +972,7 @@ view V from T {
 `,
 			wantCodes: []diag.Code{diag.ViewSourceMissing},
 			wantLine:  3, wantCol: 8,
+			wantSpan: "from",
 		},
 		{
 			// The same mistake said the other way, and so the same code: the
@@ -954,6 +986,7 @@ view V of {
 `,
 			wantCodes: []diag.Code{diag.ViewSourceMissing},
 			wantLine:  3, wantCol: 11,
+			wantSpan: "{",
 		},
 		{
 			// The leading name of a view member narrows it to another view. A
@@ -969,6 +1002,7 @@ view V of T {
 `,
 			wantCodes: []diag.Code{diag.ScalarInViewMember},
 			wantLine:  4, wantCol: 3,
+			wantSpan: "int64",
 		},
 		{
 			// A field written into a view body is two mistakes, and both are
@@ -983,6 +1017,7 @@ view V of T {
 `,
 			wantCodes: []diag.Code{diag.ScalarInViewMember, diag.TagInViewMember},
 			wantLine:  4, wantCol: 3,
+			wantSpan: "int64",
 		},
 		{
 			// Section 3 gives an annotation one position, after what it
@@ -996,6 +1031,7 @@ view V of T {
 `,
 			wantCodes: []diag.Code{diag.AnnotationNotAllowed},
 			wantLine:  4, wantCol: 3,
+			wantSpan: "[",
 		},
 		{
 			// Imports are grouped under the header. What a file depends on is a
@@ -1012,6 +1048,7 @@ import "prague.protop";
 `,
 			wantCodes: []diag.Code{diag.ImportNotInHeader},
 			wantLine:  6, wantCol: 1,
+			wantSpan: `import "prague.protop";`,
 		},
 		{
 			// An import names a file with a string literal. A bare word is not
@@ -1023,6 +1060,7 @@ import prague;
 `,
 			wantCodes: []diag.Code{diag.UnexpectedToken},
 			wantLine:  3, wantCol: 8,
+			wantSpan: "prague",
 		},
 		{
 			// `revision` is first in the file, and an import is something it
@@ -1032,6 +1070,7 @@ import prague;
 			src:       "import \"prague.protop\";\nrevision 1;\nnamespace A;\n",
 			wantCodes: []diag.Code{diag.RevisionNotFirst},
 			wantLine:  2, wantCol: 1,
+			wantSpan: "revision 1;",
 		},
 		{
 			// Overlapping reservations are one reservation as far as a tag is
@@ -1062,6 +1101,11 @@ table T {
 			}
 			if pos := f.Position(bag.All()[0].Span.Start); pos.Line != tt.wantLine || pos.Column != tt.wantCol {
 				t.Errorf("first diagnostic at %d:%d, want %d:%d", pos.Line, pos.Column, tt.wantLine, tt.wantCol)
+			}
+			if tt.wantSpan != "" {
+				if got := f.Slice(bag.All()[0].Span); got != tt.wantSpan {
+					t.Errorf("first diagnostic underlines %q, want %q", got, tt.wantSpan)
+				}
 			}
 		})
 	}
@@ -1095,6 +1139,94 @@ func TestRenderPointsAtTheOffendingToken(t *testing.T) {
 		"  |              ^"
 	if got := diag.Render(f, bag.All()[0]); got != want {
 		t.Errorf("rendered:\n%s\nwant:\n%s", got, want)
+	}
+}
+
+// The four messages this milestone adds, as a user reads them: severity, code,
+// position, wording and the width of the underline, all in one golden each.
+//
+// Every part of that was unpinned. A diagnostic's Message was asserted nowhere
+// in the suite -- the tables collect Code and the renders only ever appeared
+// inside a t.Fatalf format string, printed on failure and never compared -- so
+// PROTOP0308's message, which #36 asks to be the best in the milestone, could
+// be replaced by "unexpected token" with everything green. Two of the four
+// could be emptied entirely.
+//
+// Severity was unpinned too, and it is the worst of the three: bag.HasErrors
+// gates every stage after the parser, so an Errorf quietly demoted to a Warnf
+// means protopc ACCEPTS a view that names no source and hands it to a backend.
+// The word `error` in each golden says so, and HasErrors is asserted beside
+// them in case the rendering ever stops printing it.
+func TestRenderOfTheDiagnosticsThisMilestoneAdds(t *testing.T) {
+	for _, tt := range []struct {
+		name string
+		src  string
+		want string
+	}{
+		{
+			// The one that explains rather than reports. A tag in a view is not
+			// a token in the wrong place, so the message is about what a view
+			// is and what writing a tag in one would do on the wire.
+			name: "a tag on a view member",
+			src:  "revision 1;\nnamespace A;\nview V of T {\n  sport_type_id = 5;\n}\n",
+			want: "x.protop:4:17: error PROTOP0308: a view may not write a tag: `sport_type_id` is " +
+				"pinned to the tag its source gives it, and only the source extends the tag space; " +
+				"a tag added here is never written by the producer, so it would decode to nil " +
+				"forever while squatting a slot the source may later claim\n" +
+				"  |\n" +
+				"4 |   sport_type_id = 5;\n" +
+				"  |                 ^",
+		},
+		{
+			// The message names the missing word and shows the shape, because
+			// the mistake is usually not knowing a view has a source at all.
+			name: "a view that names no source",
+			src:  "revision 1;\nnamespace A;\nview V {\n  name;\n}\n",
+			want: "x.protop:3:8: error PROTOP0203: a view is a subset of one source and declares no " +
+				"members of its own; name that source, as in `view V of SportGame { ... }`\n" +
+				"  |\n" +
+				"3 | view V {\n" +
+				"  |        ^",
+		},
+		{
+			// The underline is the scalar alone and not the whole member: the
+			// name being selected is fine, and the message says which word to
+			// delete.
+			name: "a scalar in a narrowing position",
+			src:  "revision 1;\nnamespace A;\nview V of T {\n  int64 x;\n}\n",
+			want: "x.protop:4:3: error PROTOP0309: `int64` is a scalar and a view member narrows to " +
+				"another view; a member keeps the type its source gives it when it is written as " +
+				"its name alone\n" +
+				"  |\n" +
+				"4 |   int64 x;\n" +
+				"  |   ^^^^^",
+		},
+		{
+			// The whole import is underlined, because the line is not wrong --
+			// only where it is written is -- and the message says where it
+			// belongs and why the position is not a matter of taste.
+			name: "an import below a declaration",
+			src:  "revision 1;\nnamespace A;\nstruct S {\n  int64 a = 1;\n}\nimport \"prague.protop\";\n",
+			want: "x.protop:6:1: error PROTOP0106: an `import` belongs with the file's other imports, " +
+				"above the first declaration; what a file depends on is a property of the whole " +
+				"file and not of the lines below it\n" +
+				"  |\n" +
+				"6 | import \"prague.protop\";\n" +
+				"  | ^^^^^^^^^^^^^^^^^^^^^^^",
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			f, _, bag := parse(t, tt.src)
+			if bag.Len() != 1 {
+				t.Fatalf("got %d diagnostics, want 1:\n%s", bag.Len(), diag.RenderAll(f, bag))
+			}
+			if !bag.HasErrors() {
+				t.Error("reported as a warning; everything downstream is gated on HasErrors, so a warning here is an accepted file")
+			}
+			if got := diag.Render(f, bag.All()[0]); got != tt.want {
+				t.Errorf("rendered:\n%s\nwant:\n%s", got, tt.want)
+			}
+		})
 	}
 }
 
