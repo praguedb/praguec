@@ -2,6 +2,7 @@ package syntax
 
 import (
 	"slices"
+	"strconv"
 	"strings"
 
 	"github.com/nanov/protobuf-to-messagepack-sharp/internal/diag"
@@ -29,6 +30,28 @@ var scalarTypes = map[string]bool{
 	"double":     true,
 	"bool":       true,
 	scaledScalar: true,
+}
+
+// collectionTypes is protop's closed set of generic types, each mapped to the
+// number of type arguments it takes. It is deliberately separate from
+// scalarTypes: a collection is not a scalar, it is a type constructor, and the
+// question of whether protop's scalar set is closed (#32) has nothing to say
+// about it.
+//
+// Repetition is spelled here rather than as a field label because a type is
+// where presence can compose: `list<Odd>?` and `list<Odd?>` are different
+// types, and a `repeated Odd?` could only have been one of them.
+var collectionTypes = map[string]int{
+	"list": 1,
+	"map":  2,
+}
+
+// notYetCollections are collections the spec defines and this milestone does
+// not read. `map` parses in full and is then reported not-yet-implemented: the
+// corpus has no map, and the syntax exists so that adding one later fills a
+// defined slot rather than inventing a third collection form.
+var notYetCollections = map[string]bool{
+	"map": true,
 }
 
 // backends is the legal set of annotation prefixes, which is exactly the
@@ -256,8 +279,8 @@ func (p *parser) parseTypeDecl() declHead {
 
 // parseMember reads one line of a declaration body. The leading word decides
 // which construct it is, and a word in leading position is the construct even
-// though the same word is a legal name elsewhere: `repeated` opens a repeated
-// field, and protop has no type by that name for it to be confused with.
+// though the same word is a legal name elsewhere: `reserved` opens a
+// reservation and `alias` a passthrough, and a field may still be named either.
 //
 // `key` is the one word that needs a second look, because both spellings of
 // identity open with it. The composite spelling names its member immediately,
@@ -289,11 +312,9 @@ func (p *parser) parseMember(keyword string) Member {
 	}
 
 	var lead Token
-	key, repeated := word == "key", word == "repeated"
-	if key || repeated {
-		lead = p.next()
-	}
+	key := word == "key"
 	if key {
+		lead = p.next()
 		p.checkKeyAllowed(keyword, lead.Span)
 	}
 	f := p.parseField()
@@ -303,8 +324,10 @@ func (p *parser) parseMember(keyword string) Member {
 		// there.
 		return nil
 	}
-	f.Key, f.Repeated = key, repeated
-	if key || repeated {
+	f.Key = key
+	if key {
+		// The field's span opens at the `key`, not at the type: a stage that
+		// quotes the member by span has to get back the line that was written.
 		f.Span = lead.Span.To(f.Span)
 	}
 	return f
@@ -714,12 +737,25 @@ func wordList(set map[string]bool) string {
 	return strings.Join(words, ", ")
 }
 
-// parseTypeRef reads a type as written -- name, optional precision, optional
-// `?` -- and checks the name against the scalar set. It does not resolve
-// anything: a type reference is a name until the checking stage says otherwise.
+// parseTypeRef reads a type as written -- name, optional type arguments,
+// optional precision, optional `?` -- and checks what can be checked with
+// nothing resolved. It does not resolve anything: a type reference is a name
+// until the checking stage says otherwise.
+//
+// Type arguments recurse into this same function, which is the whole of what
+// `list<list<int64>>` costs.
 func (p *parser) parseTypeRef() (TypeRef, bool) {
 	name := p.identOf(p.next())
 	t := TypeRef{Name: name, Span: name.Span}
+
+	if p.at(KindLAngle) {
+		args, closing, ok := p.parseTypeArgs()
+		t.Args = args
+		if !ok {
+			return t, false
+		}
+		t.Span = t.Span.To(closing.Span)
+	}
 
 	if p.at(KindLParen) {
 		p.next()
@@ -745,10 +781,38 @@ func (p *parser) parseTypeRef() (TypeRef, bool) {
 	return t, true
 }
 
-// checkTypeRef checks the one thing a type can be checked for with nothing
-// resolved. A name outside protop's scalar set is a reference to a declared
-// type -- `Venue? venue = 7;` -- and whether that declaration exists is a
-// question for the stage that knows what is in scope.
+// parseTypeArgs reads `<T>` or `<K, V>`, the `<` already peeked at by the
+// caller. It returns the arguments read, the token that closed them, and
+// whether the list was closed at all -- a caller that gets false recovers,
+// because everything after an unclosed `<` has been read as a type.
+func (p *parser) parseTypeArgs() ([]TypeRef, Token, bool) {
+	open := p.next()
+	var args []TypeRef
+	for {
+		if p.peek().Kind != KindIdent {
+			tok := p.peek()
+			p.bag.Errorf(diag.UnexpectedToken, tok.Span, "expected a type argument, found %s", tok.Kind)
+			return args, open, false
+		}
+		arg, ok := p.parseTypeRef()
+		args = append(args, arg)
+		if !ok {
+			return args, open, false
+		}
+		if !p.at(KindComma) {
+			break
+		}
+		p.next()
+	}
+	closing, ok := p.expect(KindRAngle)
+	return args, closing, ok
+}
+
+// checkTypeRef checks what a type can be checked for with nothing resolved: its
+// precision, and its arity if it is one of protop's collections. A name outside
+// both closed sets is a reference to a declared type -- `Venue? venue = 7;` --
+// and whether that declaration exists is a question for the stage that knows
+// what is in scope.
 func (p *parser) checkTypeRef(t TypeRef) {
 	switch {
 	case t.Name.Text == scaledScalar && t.Precision == nil:
@@ -758,6 +822,58 @@ func (p *parser) checkTypeRef(t TypeRef) {
 		p.bag.Errorf(diag.PrecisionNotAllowed, t.Precision.Span,
 			"a precision is only allowed on `%s`, not on `%s`", scaledScalar, t.Name.Text)
 	}
+
+	// Both arity diagnostics point at the whole type rather than at the
+	// arguments alone: what is wrong is the combination, and `list` written
+	// bare has no arguments to underline.
+	arity, isCollection := collectionTypes[t.Name.Text]
+	switch {
+	case !isCollection && len(t.Args) > 0:
+		p.bag.Errorf(diag.TypeArgumentsNotAllowed, t.Span,
+			"`%s` takes no type arguments; protop's generic types are %s",
+			t.Name.Text, wordList(collectionKeys()))
+	case isCollection && len(t.Args) != arity:
+		p.bag.Errorf(diag.TypeArgumentCountWrong, t.Span,
+			"`%s` takes %s and was given %d, as in `%s`",
+			t.Name.Text, plural(arity, "type argument"), len(t.Args), collectionExample(t.Name.Text))
+	}
+
+	// A collection the spec defines and this milestone does not read is read in
+	// full and then reported against, once per type written -- the difference
+	// between "protopc is behind" and "you wrote this wrong".
+	if notYetCollections[t.Name.Text] {
+		p.bag.Errorf(diag.NotYetImplemented, t.Name.Span, "`%s` is not yet implemented", t.Name.Text)
+	}
+}
+
+// collectionKeys is collectionTypes as a set, for the diagnostic that lists it.
+func collectionKeys() map[string]bool {
+	set := make(map[string]bool, len(collectionTypes))
+	for name := range collectionTypes {
+		set[name] = true
+	}
+	return set
+}
+
+// collectionExample writes the shape a collection is meant to have, which is
+// what a diagnostic about its arity is actually asking for.
+func collectionExample(name string) string {
+	switch collectionTypes[name] {
+	case 1:
+		return name + "<Odd>"
+	case 2:
+		return name + "<string, Odd>"
+	}
+	return name
+}
+
+// plural counts a noun the way a message reads it: "1 type argument", "2 type
+// arguments".
+func plural(n int, noun string) string {
+	if n == 1 {
+		return "1 " + noun
+	}
+	return strconv.Itoa(n) + " " + noun + "s"
 }
 
 func (p *parser) parseEnum() *Enum {

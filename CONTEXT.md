@@ -9,9 +9,9 @@ and its tickets; hard-to-reverse ones get an ADR under `docs/adr/`.
 The language. Its own grammar, parsed by protopc alone — `protoc` cannot read a
 `.protop` file and is not in the pipeline at all. The name is inherited from the
 period when protop was a strict profile of Protobuf, and so is the vocabulary:
-*tag*, *field*, *reserved*, *repeated* all keep their Protobuf meanings
-deliberately. See [ADR-0001](docs/adr/0001-protop-is-its-own-language.md); the
-language itself is specified in [`docs/spec/protop.md`](docs/spec/protop.md).
+*tag*, *field*, *reserved* all keep their Protobuf meanings deliberately. See
+[ADR-0001](docs/adr/0001-protop-is-its-own-language.md); the language itself is
+specified in [`docs/spec/protop.md`](docs/spec/protop.md).
 
 ## protopc
 

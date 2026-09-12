@@ -62,7 +62,7 @@ table SportGame
 
   decimal(4)? live_limit_manual_single = 36;
 
-  repeated StaticDataRef runners = 47;
+  list<StaticDataRef> runners = 47;
 
   StaticDataRef  sport_type = 55;
   StaticDataRef  country    = 56;
@@ -96,5 +96,5 @@ table BetType
 
   int64 timestamp = 25 [cs: DataCacheFromTimestamp] [cs: DataCacheIgnoreEquality];
 
-  repeated Odd odds = 26;
+  list<Odd> odds = 26;
 }

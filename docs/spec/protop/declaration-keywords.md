@@ -11,4 +11,4 @@
 
 `Venue`'s tags start at 2. Inherited from the corpus and preserved deliberately — renumbering would break the wire.
 
-**`record` cannot be a relation target**, because a relation resolves against a key and a record has none. That is also what makes `repeated` unambiguous: composition and reference are told apart by whether the child type declares identity, with no second keyword.
+**`record` cannot be a relation target**, because a relation resolves against a key and a record has none. That is also what makes `list<T>` unambiguous: composition and reference are told apart by whether the element type declares identity, with no second keyword.

@@ -13,8 +13,13 @@ import (
 //
 // The lexer covers protop's entire punctuation set, including what the parser
 // cannot read yet: `[`, `]` and `:` belong to annotations, `..` to reserved
-// ranges. Tokenising is cheap, and a complete lexer means growing the language
-// is a parser change alone.
+// ranges, `<` and `>` to a type's arguments. Tokenising is cheap, and a
+// complete lexer means growing the language is a parser change alone.
+//
+// `<` and `>` are also what make an annotation carrying a generic -- `[cs:
+// Foo<Bar>]` -- scan as text rather than as two unexpected characters:
+// annotation contents are read out of the token stream after the whole file has
+// been lexed, so a character the lexer rejects is rejected even inside them.
 //
 // Integer literals have no decimal point, which is what makes `8..14` lex as
 // 8, `..`, 14 rather than as two malformed floats. Nothing in the grammar is a
@@ -114,6 +119,10 @@ func (l *lexer) punctuation(i int) (Kind, int) {
 		return KindLBracket, 1
 	case ']':
 		return KindRBracket, 1
+	case '<':
+		return KindLAngle, 1
+	case '>':
+		return KindRAngle, 1
 	}
 	return 0, 0
 }

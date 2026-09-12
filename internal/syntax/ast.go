@@ -138,12 +138,6 @@ type Field struct {
 	// the composite spelling needs a node of its own.
 	Key bool
 
-	// Repeated is the `repeated` of `repeated StaticDataRef runners = 47;`.
-	// Whether that means composition or a collection of references is decided
-	// by whether the element type declares identity, which is a question for
-	// the stage that resolves names.
-	Repeated bool
-
 	Type        TypeRef
 	Name        Ident
 	Tag         IntLit
@@ -234,6 +228,14 @@ type Annotation struct {
 // is in scope.
 type TypeRef struct {
 	Name Ident
+
+	// Args are the type's arguments: `list<Odd>` has one, `map<string, Odd>`
+	// two, and everything else none. Repetition is a type here rather than a
+	// label on the field, which is what lets presence compose -- `list<Odd>?`
+	// is Optional on the outer ref and `list<Odd?>` on the inner one, a
+	// difference `repeated Odd?` had no way to write. Nesting needs no further
+	// machinery: `list<list<int64>>` is this field twice.
+	Args []TypeRef
 
 	// Precision is the N of `decimal(N)`, nil when the type carries none.
 	Precision *IntLit

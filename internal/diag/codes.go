@@ -77,6 +77,14 @@ const (
 	// ReservedRangeReversed is a range whose upper bound is below its lower one,
 	// which retires nothing. `14..8` is `8..14` written backwards.
 	ReservedRangeReversed Code = 305
+	// TypeArgumentCountWrong is a collection given the wrong number of type
+	// arguments -- `list<A, B>`, or a bare `list` with none. A collection's
+	// arity is fixed by what it is: a list has one element type and a map has a
+	// key and a value.
+	TypeArgumentCountWrong Code = 306
+	// TypeArgumentsNotAllowed is a `<...>` on a type that takes none. Only a
+	// collection is generic; `int64<string>` names no type protop has.
+	TypeArgumentsNotAllowed Code = 307
 
 	// AnnotationNotAllowed is an annotation written where the grammar has no
 	// slot for one. An annotation follows what it describes, and there is no

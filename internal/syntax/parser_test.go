@@ -81,14 +81,11 @@ func dumpDecl(b *strings.Builder, keyword string, name Ident, anns []*Annotation
 	for _, m := range members {
 		switch m := m.(type) {
 		case *Field:
-			// `key` and `repeated` are both written in front of the type, and no
-			// field carries both: identity is one value, not a collection.
+			// `key` is the one word written in front of the type. Repetition is
+			// not: it is part of the type, and typeString writes it there.
 			lead := ""
-			switch {
-			case m.Key:
+			if m.Key {
 				lead = "key "
-			case m.Repeated:
-				lead = "repeated "
 			}
 			fmt.Fprintf(b, "  %s%s %s = %d%s\n", lead, typeString(m.Type), m.Name.Text, m.Tag.Value, annSuffix(m.Annotations))
 		case *CompositeKey:
@@ -137,9 +134,18 @@ func annSuffix(anns []*Annotation) string {
 	return b.String()
 }
 
-// typeString writes a TypeRef back the way the source spelled it.
+// typeString writes a TypeRef back the way the source spelled it, arguments
+// included -- which is what makes `list<Odd>?` and `list<Odd?>` two different
+// lines of a dump rather than one.
 func typeString(t TypeRef) string {
 	s := t.Name.Text
+	if len(t.Args) > 0 {
+		args := make([]string, len(t.Args))
+		for i, a := range t.Args {
+			args[i] = typeString(a)
+		}
+		s += "<" + strings.Join(args, ", ") + ">"
+	}
 	if t.Precision != nil {
 		s += fmt.Sprintf("(%d)", t.Precision.Value)
 	}
@@ -212,7 +218,7 @@ table SportGame
   int64 event_date = 28
   int64 provider_timestamp = 35
   decimal(4)? live_limit_manual_single = 36
-  repeated StaticDataRef runners = 47
+  list<StaticDataRef> runners = 47
   StaticDataRef sport_type = 55
   StaticDataRef country = 56
   StaticDataRef league = 57
@@ -233,7 +239,7 @@ table BetType
   BetTypeStatus? status_watch_dog = 9
   decimal(4)? limit_manual_single = 22
   int64 timestamp = 25 [cs: DataCacheFromTimestamp] [cs: DataCacheIgnoreEquality]
-  repeated Odd odds = 26
+  list<Odd> odds = 26
 `)
 
 	// A declaration's span covers the whole declaration, opening keyword to
@@ -633,6 +639,86 @@ struct S {
 			wantCodes: []diag.Code{diag.PrecisionNotAllowed},
 			wantLine:  4, wantCol: 9,
 		},
+		{
+			// A list has one element type. Two is not a list of pairs, it is a
+			// type protop does not have.
+			name: "list given two type arguments",
+			src: `revision 1;
+namespace A;
+struct S {
+  list<Odd, Venue> odds = 1;
+}
+`,
+			wantCodes: []diag.Code{diag.TypeArgumentCountWrong},
+			wantLine:  4, wantCol: 3,
+		},
+		{
+			// A bare `list` in type position is not a declared type named
+			// `list`: the collections are a closed set and the name is taken
+			// there, so what is missing is the element type.
+			name: "list with no type argument",
+			src: `revision 1;
+namespace A;
+struct S {
+  list odds = 1;
+}
+`,
+			wantCodes: []diag.Code{diag.TypeArgumentCountWrong},
+			wantLine:  4, wantCol: 3,
+		},
+		{
+			// Only a collection is generic. The diagnostic underlines the whole
+			// type because what is wrong is the combination.
+			name: "type arguments on a type that takes none",
+			src: `revision 1;
+namespace A;
+struct S {
+  int64<string> a = 1;
+}
+`,
+			wantCodes: []diag.Code{diag.TypeArgumentsNotAllowed},
+			wantLine:  4, wantCol: 3,
+		},
+		{
+			// `map` is reserved, not implemented: it parses in full -- the
+			// arguments are read and checked -- and is then reported against as
+			// a compiler that is behind, not a file that is wrong.
+			name: "map is parsed and not implemented",
+			src: `revision 1;
+namespace A;
+struct S {
+  map<string, Odd> odds_by_name = 1;
+}
+`,
+			wantCodes: []diag.Code{diag.NotYetImplemented},
+			wantLine:  4, wantCol: 3,
+		},
+		{
+			// Both facts are independently true and both are told: the arity is
+			// wrong, and the construct would not have been read anyway.
+			name: "map with the wrong arity is told both things",
+			src: `revision 1;
+namespace A;
+struct S {
+  map<string> m = 1;
+}
+`,
+			wantCodes: []diag.Code{diag.TypeArgumentCountWrong, diag.NotYetImplemented},
+			wantLine:  4, wantCol: 3,
+		},
+		{
+			// The `<` promises a type argument, and a member that fails mid-way
+			// is recovered from at the `;` like any other.
+			name: "type argument list with no closing angle",
+			src: `revision 1;
+namespace A;
+struct S {
+  list<Odd odds = 1;
+}
+`,
+			wantCodes: []diag.Code{diag.UnexpectedToken},
+			wantLine:  4, wantCol: 12,
+		},
 	}
 
 	for _, tt := range tests {
@@ -768,12 +854,13 @@ struct S {
 
 // `record` is `struct` with a different keyword: the parser reads one shape and
 // section 4 gives the two different meanings. A field may name a declared type,
-// and `repeated` is a modifier on the field rather than part of its type.
+// and a collection is a type over one -- `list<T>` -- rather than a label in
+// front of the field.
 //
 // Nothing here is resolved -- `Venue` names no declaration in this file and the
 // parser has nothing to say about that, because whether a name is in scope is a
 // question only the stage that knows the scope can ask.
-func TestParseRecordNamedTypesAndRepeated(t *testing.T) {
+func TestParseRecordNamedTypesAndLists(t *testing.T) {
 	_, file := parseClean(t, `revision 1;
 namespace A;
 record StaticDataRef {
@@ -781,10 +868,10 @@ record StaticDataRef {
   string name = 2;
 }
 struct S {
-  StaticDataRef  sport_type = 1;
-  StaticDataRef? home_team  = 2;
-  repeated StaticDataRef runners = 3;
-  Venue? venue = 4;
+  StaticDataRef       sport_type = 1;
+  StaticDataRef?      home_team  = 2;
+  list<StaticDataRef> runners    = 3;
+  Venue?              venue      = 4;
 }
 `)
 	assertDump(t, file, `revision 1
@@ -795,7 +882,7 @@ record StaticDataRef
 struct S
   StaticDataRef sport_type = 1
   StaticDataRef? home_team = 2
-  repeated StaticDataRef runners = 3
+  list<StaticDataRef> runners = 3
   Venue? venue = 4
 `)
 
@@ -803,23 +890,90 @@ struct S
 		t.Errorf("first declaration is %T, want *Record", file.Decls[0])
 	}
 	s := file.Decls[1].(*Struct)
-	// `repeated` is not part of the type: the element type is what a later
-	// stage resolves, and the collection is a property of the field.
-	runners := s.Members[2].(*Field)
-	if !runners.Repeated || runners.Type.Name.Text != "StaticDataRef" {
-		t.Errorf("runners is %+v, want Repeated of StaticDataRef", runners)
+	// The element type is an argument of the collection type, and the field
+	// carries nothing extra: the whole of the repetition is in TypeRef.
+	runners := s.Members[2].(*Field).Type
+	if runners.Name.Text != "list" || len(runners.Args) != 1 || runners.Args[0].Name.Text != "StaticDataRef" {
+		t.Errorf("runners is %s, want list<StaticDataRef>", typeString(runners))
 	}
-	if s.Members[0].(*Field).Repeated {
-		t.Error("sport_type is Repeated")
+	if got := s.Members[0].(*Field).Type; len(got.Args) != 0 {
+		t.Errorf("sport_type is %s, want no type arguments", typeString(got))
 	}
+}
+
+// The reason repetition moved into the type: presence composes, and the three
+// spellings are three types. `repeated Odd?` could only ever have been one of
+// the last two.
+func TestListComposesWithPresenceAndNests(t *testing.T) {
+	_, file := parseClean(t, `revision 1;
+namespace A;
+struct S {
+  list<Odd>        plain   = 1;
+  list<Odd>?       maybe   = 2;
+  list<Odd?>       holes   = 3;
+  list<list<int64>> nested = 4;
+}
+`)
+	assertDump(t, file, `revision 1
+namespace A
+struct S
+  list<Odd> plain = 1
+  list<Odd>? maybe = 2
+  list<Odd?> holes = 3
+  list<list<int64>> nested = 4
+`)
+
+	s := file.Decls[0].(*Struct)
+	types := make([]TypeRef, 4)
+	for i := range types {
+		types[i] = s.Members[i].(*Field).Type
+	}
+	// `list<Odd>?` is Optional on the outer ref; `list<Odd?>` on the inner one.
+	// One bool, two positions, and that is the whole of the disambiguation.
+	if types[1].Optional == types[2].Optional {
+		t.Errorf("list<Odd>? and list<Odd?> agree about Optional on the outer ref")
+	}
+	if !types[1].Optional || types[1].Args[0].Optional {
+		t.Errorf("list<Odd>? is %+v, want the `?` on the collection", types[1])
+	}
+	if types[2].Optional || !types[2].Args[0].Optional {
+		t.Errorf("list<Odd?> is %+v, want the `?` on the element", types[2])
+	}
+	// Nesting needs no code of its own: Args recurses.
+	if inner := types[3].Args[0]; inner.Name.Text != "list" || inner.Args[0].Name.Text != "int64" {
+		t.Errorf("nested is %s, want list<list<int64>>", typeString(types[3]))
+	}
+}
+
+// `list` and `map` are words, not keyword token kinds -- the same property
+// TestKeyIsAWordAndNotAKeyword pins for `key`. A member may be named either,
+// and the parser tells a type position from a name position by where it is.
+func TestListIsAWordAndNotAKeyword(t *testing.T) {
+	_, file := parseClean(t, `revision 1;
+namespace A;
+struct S {
+  int64      list = 1;
+  int64      map  = 2;
+  list<Odd>  odds = 3;
+  list<int64> tags = 4;
+}
+`)
+	assertDump(t, file, `revision 1
+namespace A
+struct S
+  int64 list = 1
+  int64 map = 2
+  list<Odd> odds = 3
+  list<int64> tags = 4
+`)
 }
 
 // Whether protop's scalar set is closed at all is unresolved -- #32 -- and the
 // parser no longer branches on it: a name outside the set is a reference to a
 // declared type. What keeps the census honest is the fixture. Every type
-// section 1 names is one of the six or a declaration in the same file, so a
-// seventh scalar appearing in the spec fails here rather than parsing quietly
-// as a name that will resolve to nothing.
+// section 1 names is one of the six scalars, one of the two collections, or a
+// declaration in the same file, so a seventh scalar appearing in the spec fails
+// here rather than parsing quietly as a name that will resolve to nothing.
 func TestSpecSubsetNamesNoTypeItDoesNotDeclare(t *testing.T) {
 	_, file := parseClean(t, readFixture(t, specSubsetFixture))
 
@@ -836,15 +990,27 @@ func TestSpecSubsetNamesNoTypeItDoesNotDeclare(t *testing.T) {
 			declared[d.Name.Text] = true
 		}
 	}
+
+	// A collection's arguments are types too, and `list<SomethingUndeclared>`
+	// has to fail here for the same reason the bare name would.
+	var check func(owner string, t2 TypeRef)
+	check = func(owner string, t2 TypeRef) {
+		name := t2.Name.Text
+		if _, isCollection := collectionTypes[name]; !scalarTypes[name] && !isCollection && !declared[name] {
+			t.Errorf("field %s names %s, which is neither a scalar, a collection, nor declared in the fixture",
+				owner, name)
+		}
+		for _, arg := range t2.Args {
+			check(owner, arg)
+		}
+	}
 	for _, d := range file.Decls {
 		for _, m := range declMembers(d) {
 			f, ok := m.(*Field)
 			if !ok {
 				continue
 			}
-			if name := f.Type.Name.Text; !scalarTypes[name] && !declared[name] {
-				t.Errorf("field %s names %s, which is neither a scalar nor declared in the fixture", f.Name.Text, name)
-			}
+			check(f.Name.Text, f.Type)
 		}
 	}
 }
@@ -948,7 +1114,7 @@ table SportGame
   key int64 event_id = 1;
 
   int64? home_team_id = 5;
-  repeated StaticDataRef runners = 47;
+  list<StaticDataRef> runners = 47;
 }
 `)
 	assertDump(t, file, `revision 1
@@ -958,7 +1124,7 @@ table SportGame
   reserved 8..14, 16..23, 25
   key int64 event_id = 1
   int64? home_team_id = 5
-  repeated StaticDataRef runners = 47
+  list<StaticDataRef> runners = 47
 `)
 
 	tbl, ok := file.Decls[0].(*Table)
