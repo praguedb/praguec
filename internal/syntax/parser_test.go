@@ -588,15 +588,21 @@ struct S {
 			// The arm that was dead to the suite. `revision` stamps the dialect
 			// the rest of the file is read in, so a declaration above it has
 			// already been read in a dialect the file had not yet named.
+			//
+			// The declaration is the ONLY thing above the revision here --
+			// namespace and imports come after -- so this case turns on the
+			// `len(file.Decls) > 0` arm and on nothing else. With a namespace
+			// above it too, the arm could be deleted outright and the case
+			// would go on passing on the namespace's account.
 			name: "revision after a declaration",
-			src: `namespace A;
-struct S {
+			src: `struct S {
   int64 a = 1;
 }
 revision 1;
+namespace A;
 `,
 			wantCodes: []diag.Code{diag.RevisionNotFirst},
-			wantLine:  5, wantCol: 1,
+			wantLine:  4, wantCol: 1,
 			wantSpan: "revision 1;",
 		},
 		{
