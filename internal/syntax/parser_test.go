@@ -17,8 +17,18 @@ import (
 // hold it against the spec byte for byte.
 const specSubsetFixture = "spec_section1_subset.protop"
 
-// specSection1 is the spec file the fixture is lifted from.
-var specSection1 = filepath.Join("..", "..", "docs", "spec", "protop", "shared-repository.md")
+// The two fenced blocks of section 2, lifted the same way: the consuming
+// service's whole file, and the table such a service may declare of its own.
+const (
+	specSection2Fixture      = "spec_section2.protop"
+	specSection2TableFixture = "spec_section2_table.protop"
+)
+
+// specSection1 and specSection2 are the spec files the fixtures are lifted from.
+var (
+	specSection1 = filepath.Join("..", "..", "docs", "spec", "protop", "shared-repository.md")
+	specSection2 = filepath.Join("..", "..", "docs", "spec", "protop", "service-repository.md")
+)
 
 // parse runs the whole frontend -- lexer and parser -- over src.
 func parse(t *testing.T, src string) (*source.File, *File, *diag.Bag) {
@@ -293,6 +303,106 @@ func TestSpecSubsetIsVerbatim(t *testing.T) {
 	}
 	if !strings.Contains(string(spec), fixture) {
 		t.Errorf("testdata/%s no longer appears verbatim in %s", specSubsetFixture, specSection1)
+	}
+}
+
+// The consuming side of the language, and with it the last of the grammar: a
+// service that imports the shared schema and declares only what it reads. Every
+// line of section 2's first block parses, and the parser has nothing to say
+// about any of it.
+//
+// Nothing here is resolved and that is the milestone's boundary, not an
+// omission. `of SportGame` finds no SportGame, `sport_type_id;` is not held
+// against the source's members, `SlimOdd odds;` is not checked to be a view of
+// whatever type `odds` has, and `import "prague.protop";` opens no file.
+func TestParseSpecSection2(t *testing.T) {
+	src := readFixture(t, specSection2Fixture)
+	f, file := parseClean(t, src)
+
+	assertDump(t, file, `revision 1
+namespace BrandDataReader.Services.Cache
+import "prague.protop"
+view SlimSportGame of SportGame
+  event_id as id
+  sport_type_id
+  country_id
+  league_id
+  home_team_id
+  venue
+  sport_type
+view SlimOdd of Odd
+  name
+  timestamp
+view SlimBetType of BetType
+  key as id
+  event_id
+  id as bet_type_id
+  name
+  status
+  status_manual
+  status_watch_dog
+  limit_manual_single
+  timestamp
+  SlimOdd odds
+`)
+
+	// `key as id;` is the line the whole no-keyword-token-kinds decision is for.
+	// `key` is the composite identity section 1 declares, and here it is a name
+	// being selected -- an ident like any other, needing nothing of its own.
+	bet, ok := file.Decls[2].(*View)
+	if !ok {
+		t.Fatalf("third declaration is %T, want *View", file.Decls[2])
+	}
+	if m := bet.Members[0]; m.Name.Text != "key" || m.As == nil || m.As.Text != "id" || m.Narrow != nil {
+		t.Errorf("`key as id;` read as %+v, want the member `key` renamed to `id`", m)
+	}
+	// A narrowing is two idents and nothing else: no `= tag`, which is what
+	// separates it from a field, and one more ident than a plain selection.
+	if m := bet.Members[9]; m.Narrow == nil || m.Narrow.Text != "SlimOdd" || m.Name.Text != "odds" || m.As != nil {
+		t.Errorf("`SlimOdd odds;` read as %+v, want `odds` narrowed to `SlimOdd`", m)
+	}
+
+	// A declaration's span covers the whole declaration, and a view's opens at
+	// its keyword and closes at its brace like every other.
+	const wantSlimOdd = "view SlimOdd of Odd {\n  name;\n  timestamp;\n}"
+	if got := f.Slice(file.Decls[1].(*View).Span); got != wantSlimOdd {
+		t.Errorf("SlimOdd spans:\n%s\nwant:\n%s", got, wantSlimOdd)
+	}
+}
+
+// Section 2's second block: a service may declare tables of its own, for caches
+// it produces and nobody else reads. M2 already read every construct in it, so
+// this is the cheapest possible regression test for that claim -- and it is
+// worth having precisely because nothing had to be written to make it pass.
+//
+// The block is a declaration rather than a file, so the header is prepended
+// here instead of being copied into the fixture: the fixture has to stay
+// byte-for-byte what the spec fences, and the spec fences no header around it.
+func TestParseSpecSection2Table(t *testing.T) {
+	_, file := parseClean(t, "revision 1;\nnamespace A;\n"+readFixture(t, specSection2TableFixture))
+
+	assertDump(t, file, `revision 1
+namespace A
+table BetTypeBrandSettings
+  [cs: DataCache]
+  key int64 bet_type_id = 1
+  bool is_enabled = 2
+`)
+}
+
+// The other half of "parses verbatim out of the spec", for section 2's two
+// blocks. The fixtures are copies of the spec, not paraphrases of it, and if
+// the spec changes its mind about the language this fails before the parser
+// quietly keeps reading the old one.
+func TestSpecSection2IsVerbatim(t *testing.T) {
+	spec, err := os.ReadFile(specSection2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{specSection2Fixture, specSection2TableFixture} {
+		if !strings.Contains(string(spec), readFixture(t, name)) {
+			t.Errorf("testdata/%s no longer appears verbatim in %s", name, specSection2)
+		}
 	}
 }
 
