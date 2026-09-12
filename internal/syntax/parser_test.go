@@ -2719,3 +2719,214 @@ func TestAViewMemberNameCarriesItsOwnSpan(t *testing.T) {
 		t.Errorf("the member spans %q, want the whole line", got)
 	}
 }
+
+// Recovery from a malformed view HEAD, which is the half of recovery that
+// e8e3033 did not reach: it pinned what happens after a bad line inside a body,
+// and left what happens after a bad line before one.
+//
+// The distinction is recoverDecl against recoverStmt and it is invisible to a
+// count: the diagnostic is the same either way, and only the declarations after
+// the view tell the two apart. recoverDecl stops at the brace that closes what
+// it entered; recoverStmt keeps going to the next `;` at depth zero, which is
+// somewhere inside the next declaration -- so the file after a single typo'd
+// view head quietly loses a struct, and nothing that counts errors can see it.
+func TestAMalformedViewHeadStopsAtItsOwnBody(t *testing.T) {
+	const tail = `struct S {
+  int64 x = 1;
+}
+`
+	for _, tt := range []struct {
+		name string
+		src  string
+		code diag.Code
+	}{
+		{"no name", "view {\n  a;\n}\n", diag.UnexpectedToken},
+		{"no source", "view V {\n  a;\n}\n", diag.ViewSourceMissing},
+		// An unterminated annotation on the head stops at the `}` that closes
+		// the body it sits in -- scanAnnotation will not swallow a brace it did
+		// not open -- so recovery starts ON that brace and has to consume it.
+		{"unterminated annotation", "view V of T [cs: X\n  a;\n}\n", diag.UnterminatedAnnotation},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			f, file, bag := parse(t, "revision 1;\nnamespace A;\n"+tt.src+tail)
+			var got []diag.Code
+			for _, d := range bag.All() {
+				got = append(got, d.Code)
+			}
+			if !slices.Equal(got, []diag.Code{tt.code}) {
+				t.Fatalf("codes = %v, want just %v:\n%s", got, tt.code, diag.RenderAll(f, bag))
+			}
+			if len(file.Decls) != 2 {
+				t.Fatalf("decls = %d, want the view and the struct after it; the file below a bad head is not part of it", len(file.Decls))
+			}
+			if _, ok := file.Decls[1].(*Struct); !ok {
+				t.Errorf("the declaration after the view is %T, want *Struct", file.Decls[1])
+			}
+		})
+	}
+
+	// A head that goes wrong before its `{` has no body brace to stop at, so
+	// recovery runs to the end of the NEXT declaration and that one is lost.
+	// That is the cost of the mistake and it is bounded: the declaration after
+	// that still parses. Under recoverStmt there is no bound -- it would
+	// consume every brace it met and take the rest of the file with it.
+	f, file, bag := parse(t, `revision 1;
+namespace A;
+view V of T x
+struct S {
+  int64 x = 1;
+}
+enum E {
+  ONE = 1;
+}
+`)
+	if bag.Len() != 1 || bag.All()[0].Code != diag.UnexpectedToken {
+		t.Fatalf("got %d diagnostics, want one UnexpectedToken:\n%s", bag.Len(), diag.RenderAll(f, bag))
+	}
+	assertDump(t, file, `revision 1
+namespace A
+view V of T
+enum E
+  ONE = 1
+`)
+}
+
+// The same for a malformed import, and the same invisibility: one diagnostic
+// either way, and only what survives below it says which recovery ran.
+//
+// The node is kept whatever happens to the path. A best-effort tree is the
+// stated contract, and an import with no readable path is still the statement
+// that this file depends on something -- which is what an editor lists, and
+// what M4 counts when it decides whether a name could have come from anywhere.
+func TestAMalformedImportStopsAtItsOwnLine(t *testing.T) {
+	f, file, bag := parse(t, `revision 1;
+namespace A;
+import }
+struct S {
+  int64 x = 1;
+}
+`)
+	if bag.Len() != 1 || bag.All()[0].Code != diag.UnexpectedToken {
+		t.Fatalf("got %d diagnostics, want one UnexpectedToken:\n%s", bag.Len(), diag.RenderAll(f, bag))
+	}
+	if len(file.Imports) != 1 {
+		t.Errorf("imports = %d, want the import that was written", len(file.Imports))
+	}
+	assertDump(t, file, `revision 1
+namespace A
+import 
+struct S
+  int64 x = 1
+`)
+
+	// Two independent mistakes on one line: the path is not a string, and the
+	// import is below a declaration. Neither excuses the other -- a reader who
+	// fixes the path has not moved the import, and would find the second
+	// diagnostic waiting on the next compile.
+	f, file, bag = parse(t, `revision 1;
+namespace A;
+struct S {
+  int64 x = 1;
+}
+import prague;
+`)
+	var got []diag.Code
+	for _, d := range bag.All() {
+		got = append(got, d.Code)
+	}
+	if !slices.Equal(got, []diag.Code{diag.UnexpectedToken, diag.ImportNotInHeader}) {
+		t.Fatalf("codes = %v, want the bad path and the misplaced import:\n%s", got, diag.RenderAll(f, bag))
+	}
+	if len(file.Imports) != 1 {
+		t.Errorf("imports = %d, want the import that was written", len(file.Imports))
+	}
+}
+
+// A `}` that closes nothing ends the declaration recovery is in, rather than
+// putting it into deficit. The depth counter can go negative -- recovery is
+// started at a token the parser could not read, which may already be inside a
+// body whose `{` was consumed by whatever went wrong -- and a check for exactly
+// zero would sail past this brace and every following one, ending only at the
+// first `;` that happened to land at depth zero again. That is somewhere in the
+// middle of the next declaration, so one stray brace would cost two.
+func TestRecoveryEndsAtABraceItDidNotOpen(t *testing.T) {
+	f, file, bag := parse(t, `revision 1;
+namespace A;
+struct S {
+  int64 x = 1;
+}
+}
+struct T {
+  int64 y = 1;
+}
+`)
+	if bag.Len() != 1 || bag.All()[0].Code != diag.UnknownDeclaration {
+		t.Fatalf("got %d diagnostics, want one UnknownDeclaration:\n%s", bag.Len(), diag.RenderAll(f, bag))
+	}
+	assertDump(t, file, `revision 1
+namespace A
+struct S
+  int64 x = 1
+struct T
+  int64 y = 1
+`)
+}
+
+// Recovery inside a line stops at the line's own `;`, and a `;` nested inside
+// braces is not it. Unguarded, the first semicolon anywhere would end recovery
+// -- leaving the parser inside a brace run it never left, so the `}` that
+// followed would be read as the end of the enclosing body and the rest of that
+// body would cascade out into the file.
+func TestRecoveryInsideALineIgnoresANestedSemicolon(t *testing.T) {
+	f, file, bag := parse(t, `revision 1;
+namespace A;
+view V of T {
+  a = { x; };
+  b;
+}
+struct S {
+  int64 x = 1;
+}
+`)
+	if bag.Len() != 1 || bag.All()[0].Code != diag.TagInViewMember {
+		t.Fatalf("got %d diagnostics, want one TagInViewMember:\n%s", bag.Len(), diag.RenderAll(f, bag))
+	}
+	assertDump(t, file, `revision 1
+namespace A
+view V of T
+  a
+  b
+struct S
+  int64 x = 1
+`)
+}
+
+// An unterminated annotation on a view member costs one diagnostic and nothing
+// else: the member is kept, recovery runs, and the declaration after the view
+// still parses. All three are separable and all three were free -- dropping the
+// member passed, and skipping recovery passed.
+func TestAnUnterminatedAnnotationOnAViewMemberKeepsTheMember(t *testing.T) {
+	f, file, bag := parse(t, `revision 1;
+namespace A;
+view V of T {
+  a [cs: X
+}
+struct S {
+  int64 x = 1;
+}
+`)
+	if bag.Len() != 1 || bag.All()[0].Code != diag.UnterminatedAnnotation {
+		t.Fatalf("got %d diagnostics, want one UnterminatedAnnotation:\n%s", bag.Len(), diag.RenderAll(f, bag))
+	}
+	v := file.Decls[0].(*View)
+	if len(v.Members) != 1 || v.Members[0].Name.Text != "a" {
+		t.Errorf("members are %v, want the member the annotation was written on", v.Members)
+	}
+	assertDump(t, file, `revision 1
+namespace A
+view V of T
+  a [cs: X]
+struct S
+  int64 x = 1
+`)
+}
