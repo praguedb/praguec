@@ -10,6 +10,11 @@ Issues live as GitHub issues on `nanov/protobuf-to-messagepack-sharp`, managed v
 
 The five canonical roles, each label string equal to its name. See `docs/agents/triage-labels.md`.
 
+### Build loop
+
+How an autonomous session runs a `M<n>:` build ticket end to end, and the
+frontend conventions it must not break. See `docs/agents/build-loop.md`.
+
 ### Domain docs
 
 Single-context: `CONTEXT.md` + `docs/adr/` at the repo root. See `docs/agents/domain.md`.
