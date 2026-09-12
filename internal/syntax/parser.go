@@ -334,7 +334,7 @@ func (p *parser) parseViewSource() (Ident, bool) {
 	tok := p.peek()
 	p.bag.Errorf(diag.ViewSourceMissing, tok.Span,
 		"a view is a subset of one source and declares no members of its own; name that source, as in `view V %s SportGame { ... }`", ofWord)
-	return Ident{Span: tok.Span}, false
+	return Ident{}, false
 }
 
 // parseViewMember reads one line of a view body, in all three of its spellings:
@@ -381,19 +381,26 @@ func (p *parser) parseViewMember() *ViewMember {
 		m.Span = m.Span.To(as.Span)
 	}
 
-	// A tag here is not a syntax slip. A view is pinned to its source's tags
-	// and only the source extends the tag space, so the member is told what a
-	// view is rather than which token was expected.
-	if p.at(KindAssign) {
-		p.bag.Errorf(diag.TagInViewMember, p.peek().Span,
-			"a view may not write a tag: `%s` is pinned to the tag its source gives it, and only the source extends the tag space; a tag added here is never written by the producer, so it would decode to nil forever while squatting a slot the source may later claim",
-			m.Name.Text)
+	var ok bool
+	if m.Annotations, ok = p.parseAnnotations(); !ok {
 		p.recoverStmt()
 		return m
 	}
 
-	var ok bool
-	if m.Annotations, ok = p.parseAnnotations(); !ok {
+	// A tag here is not a syntax slip. A view is pinned to its source's tags
+	// and only the source extends the tag space, so the member is told what a
+	// view is rather than which token was expected.
+	//
+	// The check comes after the annotations, not before them, because an
+	// annotation follows what it describes and a view member is fully read
+	// only once its annotations are. Checked first, `a [cs: X] = 1;` never
+	// reached this diagnostic at all: the `[` is not an `=`, so the member
+	// fell through to the annotations, and the `=` after them was reported as
+	// a missing `;` instead of as the thing it actually is.
+	if p.at(KindAssign) {
+		p.bag.Errorf(diag.TagInViewMember, p.peek().Span,
+			"a view may not write a tag: `%s` is pinned to the tag its source gives it, and only the source extends the tag space; a tag added here is never written by the producer, so it would decode to nil forever while squatting a slot the source may later claim",
+			m.Name.Text)
 		p.recoverStmt()
 		return m
 	}

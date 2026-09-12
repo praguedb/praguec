@@ -2408,6 +2408,33 @@ struct S
 		t.Errorf("members are %v, want the member that wrote the tag and the one after it", v.Members)
 	}
 
+	// The same mistake with an annotation on the member, which is where the
+	// check used to be in the wrong place. An annotation follows what it
+	// describes, so a view member is fully read only once its annotations are;
+	// with the tag checked first, the `[` was not an `=`, the member fell
+	// through to the annotations, and the `=` after them was reported as a
+	// missing `;` -- two PROTOP0200 at one column, and the milestone's
+	// best-worded diagnostic never said.
+	f, file, bag = parse(t, `revision 1;
+namespace A;
+view V of T {
+  a [cs: X] = 1;
+  b;
+}
+`)
+	if bag.Len() != 1 || bag.All()[0].Code != diag.TagInViewMember {
+		t.Fatalf("got %d diagnostics, want one TagInViewMember:\n%s", bag.Len(), diag.RenderAll(f, bag))
+	}
+	if got := f.Slice(bag.All()[0].Span); got != "=" {
+		t.Errorf("the diagnostic underlines %q, want the tag's `=`", got)
+	}
+	assertDump(t, file, `revision 1
+namespace A
+view V of T
+  a [cs: X]
+  b
+`)
+
 	// The same mistake without its `;`, which is the input that tells the two
 	// recoveries apart: with no semicolon to stop at, recovery runs up to the
 	// body's `}` and must LEAVE it for the body loop. recoverDecl consumes the
