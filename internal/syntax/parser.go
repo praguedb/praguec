@@ -50,19 +50,8 @@ var protopAnnotations = map[string]bool{
 // syntax errors: a user who writes valid protop deserves to be told the
 // compiler is behind, not that they are wrong.
 var notYetDecls = map[string]bool{
-	"table":  true,
 	"view":   true,
 	"import": true,
-}
-
-// notYetMembers is the same courtesy one level down, for the words that open a
-// member the parser cannot read yet. All three sit in leading position, which
-// is the only reason they can be recognised without being reserved -- `key key
-// = 1 (event_id, bet_type_id);` names a member `key` in the second position.
-var notYetMembers = map[string]bool{
-	"key":      true,
-	"alias":    true,
-	"reserved": true,
 }
 
 // Parse reads one file into an AST, appending every diagnostic it finds to bag.
@@ -122,6 +111,8 @@ func (p *parser) parseDecl(file *File) {
 		file.Decls = append(file.Decls, p.parseStruct())
 	case "record":
 		file.Decls = append(file.Decls, p.parseRecord())
+	case "table":
+		file.Decls = append(file.Decls, p.parseTable())
 	case "enum":
 		file.Decls = append(file.Decls, p.parseEnum())
 	default:
@@ -209,7 +200,15 @@ func (p *parser) parseRecord() *Record {
 	return &Record{Name: h.name, Annotations: h.anns, Members: h.members, Span: h.span}
 }
 
-// declHead is what struct and record are read into before they become nodes of
+// parseTable reads `table SportGame [cs: ...] { ... }`. Its body is the same
+// grammar as a struct's; what a table has that the others do not is identity,
+// and identity is a member -- a `key` -- rather than anything in the head.
+func (p *parser) parseTable() *Table {
+	h := p.parseTypeDecl()
+	return &Table{Name: h.name, Annotations: h.anns, Members: h.members, Span: h.span}
+}
+
+// declHead is what struct, record and table are read into before they become nodes of
 // their own: the shape the declarations share, which is all the parser sees.
 type declHead struct {
 	name    Ident
@@ -218,8 +217,8 @@ type declHead struct {
 	span    source.Span
 }
 
-// parseTypeDecl reads `<keyword> Name { <members> }`, the keyword already
-// peeked at by the caller that dispatched on it.
+// parseTypeDecl reads `<keyword> Name [<annotations>] { <members> }`, the
+// keyword already peeked at by the caller that dispatched on it.
 func (p *parser) parseTypeDecl() declHead {
 	kw := p.next()
 	h := declHead{span: kw.Span}
@@ -255,6 +254,14 @@ func (p *parser) parseTypeDecl() declHead {
 // which construct it is, and a word in leading position is the construct even
 // though the same word is a legal name elsewhere: `repeated` opens a repeated
 // field, and protop has no type by that name for it to be confused with.
+//
+// `key` is the one word that needs a second look, because both spellings of
+// identity open with it. The composite spelling names its member immediately,
+// which puts its `=` two tokens in; the simple spelling still has a type to get
+// through, so two tokens in is the field's name. That one lookahead is what the
+// decision to have no keyword token kinds costs, and `key key = 1 (event_id,
+// bet_type_id);` -- a member named `key`, of a kind named `key` -- is what it
+// buys.
 func (p *parser) parseMember() Member {
 	p.rejectAnnotations("the member's tag")
 
@@ -265,16 +272,20 @@ func (p *parser) parseMember() Member {
 		p.recoverStmt()
 		return nil
 	}
-	if word := p.text(tok); notYetMembers[word] {
-		p.bag.Errorf(diag.NotYetImplemented, tok.Span, "`%s` is not yet implemented", word)
-		p.next()
-		p.recoverStmt()
-		return nil
+	word := p.text(tok)
+
+	switch {
+	case word == "reserved":
+		return p.parseReserved()
+	case word == "alias":
+		return p.parseAlias()
+	case word == "key" && p.peekAt(2).Kind == KindAssign:
+		return p.parseCompositeKey()
 	}
 
 	var lead Token
-	repeated := p.text(tok) == "repeated"
-	if repeated {
+	key, repeated := word == "key", word == "repeated"
+	if key || repeated {
 		lead = p.next()
 	}
 	f := p.parseField()
@@ -284,11 +295,152 @@ func (p *parser) parseMember() Member {
 		// there.
 		return nil
 	}
-	if repeated {
-		f.Repeated = true
+	f.Key, f.Repeated = key, repeated
+	if key || repeated {
 		f.Span = lead.Span.To(f.Span)
 	}
 	return f
+}
+
+// parseCompositeKey reads `key key = 1 (event_id, bet_type_id);`. The parts are
+// recorded as written: whether they name fields of this declaration is a
+// question about the whole body, and belongs to the stage that has it.
+func (p *parser) parseCompositeKey() *CompositeKey {
+	kw := p.next()
+	k := &CompositeKey{Span: kw.Span}
+
+	name, ok := p.expectIdent()
+	if !ok {
+		p.recoverStmt()
+		return k
+	}
+	k.Name = name
+	k.Span = k.Span.To(name.Span)
+
+	if _, ok := p.expect(KindAssign); !ok {
+		p.recoverStmt()
+		return k
+	}
+	tag, ok := p.expectInt()
+	if !ok {
+		p.recoverStmt()
+		return k
+	}
+	k.Tag = tag
+	k.Span = k.Span.To(tag.Span)
+	p.checkTag(tag)
+
+	if _, ok := p.expect(KindLParen); !ok {
+		p.recoverStmt()
+		return k
+	}
+	for {
+		part, ok := p.expectIdent()
+		if !ok {
+			p.recoverStmt()
+			return k
+		}
+		k.Parts = append(k.Parts, part)
+		k.Span = k.Span.To(part.Span)
+		if !p.at(KindComma) {
+			break
+		}
+		p.next()
+	}
+	closing, ok := p.expect(KindRParen)
+	if !ok {
+		p.recoverStmt()
+		return k
+	}
+	k.Span = k.Span.To(closing.Span)
+
+	if k.Annotations, ok = p.parseAnnotations(); !ok {
+		p.recoverStmt()
+		return k
+	}
+	if semi, ok := p.expect(KindSemi); ok {
+		k.Span = k.Span.To(semi.Span)
+	}
+	return k
+}
+
+// parseAlias reads `alias bet_type_id = id;`. There is no tag: an alias is a
+// second name for a field that already has one, and naming no wire slot is the
+// whole of what makes it free to add.
+func (p *parser) parseAlias() *Alias {
+	kw := p.next()
+	a := &Alias{Span: kw.Span}
+
+	name, ok := p.expectIdent()
+	if !ok {
+		p.recoverStmt()
+		return a
+	}
+	a.Name = name
+	a.Span = a.Span.To(name.Span)
+
+	if _, ok := p.expect(KindAssign); !ok {
+		p.recoverStmt()
+		return a
+	}
+	src, ok := p.expectIdent()
+	if !ok {
+		p.recoverStmt()
+		return a
+	}
+	a.Source = src
+	a.Span = a.Span.To(src.Span)
+
+	if a.Annotations, ok = p.parseAnnotations(); !ok {
+		p.recoverStmt()
+		return a
+	}
+	if semi, ok := p.expect(KindSemi); ok {
+		a.Span = a.Span.To(semi.Span)
+	}
+	return a
+}
+
+// parseReserved reads `reserved 8..14, 16..23, 25;`, the list that retires tags
+// where they were declared. The lexer makes `8..14` three tokens, so a range
+// and a single differ by whether a `..` follows the first number.
+func (p *parser) parseReserved() *Reserved {
+	kw := p.next()
+	r := &Reserved{Span: kw.Span}
+
+	for {
+		lo, ok := p.expectInt()
+		if !ok {
+			p.recoverStmt()
+			return r
+		}
+		// A single tag is held as the range that begins and ends with it. The
+		// two spellings retire exactly the same tags, and the span still says
+		// which one was written.
+		entry := ReservedRange{Lo: lo, Hi: lo, Span: lo.Span}
+		if p.at(KindDotDot) {
+			p.next()
+			hi, ok := p.expectInt()
+			if !ok {
+				p.recoverStmt()
+				return r
+			}
+			entry.Hi = hi
+			entry.Span = entry.Span.To(hi.Span)
+		}
+		r.Ranges = append(r.Ranges, entry)
+		r.Span = r.Span.To(entry.Span)
+
+		if !p.at(KindComma) {
+			break
+		}
+		p.next()
+	}
+
+	if semi, ok := p.expect(KindSemi); ok {
+		r.Span = r.Span.To(semi.Span)
+	}
+	return r
 }
 
 // parseField reads one tagged member, `decimal(4)? live_limit_manual_single =
@@ -327,10 +479,7 @@ func (p *parser) parseField() *Field {
 	}
 	f.Tag = tag
 	f.Span = f.Span.To(tag.Span)
-	if tag.Value == 0 {
-		p.bag.Errorf(diag.TagOutOfRange, tag.Span,
-			"field tag must be greater than 0; a MessagePack key is tag - 1, so tag 0 names no slot")
-	}
+	p.checkTag(tag)
 
 	if f.Annotations, ok = p.parseAnnotations(); !ok {
 		p.recoverStmt()
@@ -341,6 +490,16 @@ func (p *parser) parseField() *Field {
 		f.Span = f.Span.To(semi.Span)
 	}
 	return f
+}
+
+// checkTag reports a tag outside the legal range. Every tagged member is held
+// to it, the composite key included: it spends an ordinal exactly as a field
+// does, which is the reason it writes one.
+func (p *parser) checkTag(tag IntLit) {
+	if tag.Value == 0 {
+		p.bag.Errorf(diag.TagOutOfRange, tag.Span,
+			"field tag must be greater than 0; a MessagePack key is tag - 1, so tag 0 names no slot")
+	}
 }
 
 // --- annotations -------------------------------------------------------------

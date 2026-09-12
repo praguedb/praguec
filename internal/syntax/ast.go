@@ -99,6 +99,17 @@ type Record struct {
 
 func (*Record) isDecl() {}
 
+// Table is `table SportGame [cs: ...] { ... }`: the one declaration that
+// carries identity -- a `key` -- and so the only one a relation can name.
+type Table struct {
+	Name        Ident
+	Annotations []*Annotation
+	Members     []Member
+	Span        source.Span
+}
+
+func (*Table) isDecl() {}
+
 // Enum is `enum EventStatus { ... }`.
 type Enum struct {
 	Name    Ident
@@ -122,6 +133,11 @@ type Member interface {
 // Field is one tagged member, `decimal(4)? live_limit_manual_single = 36;`.
 // The fields are declared in the order the source writes them.
 type Field struct {
+	// Key marks `key int64 event_id = 1;`, a field that is also the
+	// declaration's identity. A simple key is a field and nothing more; only
+	// the composite spelling needs a node of its own.
+	Key bool
+
 	// Repeated is the `repeated` of `repeated StaticDataRef runners = 47;`.
 	// Whether that means composition or a collection of references is decided
 	// by whether the element type declares identity, which is a question for
@@ -136,6 +152,59 @@ type Field struct {
 }
 
 func (*Field) isMember() {}
+
+// CompositeKey is `key key = 1 (event_id, bet_type_id);` -- a name over fields
+// that keep their own ordinals, borrowed from Cap'n Proto's group. Cap'n
+// Proto's group consumes no ordinal; this one does, because the corpus's wire
+// format already says so, and writing the tag is what makes the duplication
+// visible and the collision checkable.
+//
+// Parts are the names as written. Matching them against the fields beside them
+// needs the whole declaration read and is the checking stage's job.
+type CompositeKey struct {
+	Name        Ident
+	Tag         IntLit
+	Parts       []Ident
+	Annotations []*Annotation
+	Span        source.Span
+}
+
+func (*CompositeKey) isMember() {}
+
+// Alias is `alias bet_type_id = id;`: get and set passthrough, no wire slot and
+// no tag. It exists so a table's API matches the view that renames the field.
+type Alias struct {
+	Name        Ident
+	Source      Ident
+	Annotations []*Annotation
+	Span        source.Span
+}
+
+func (*Alias) isMember() {}
+
+// Reserved is `reserved 8..14, 16..23, 25;`, the mechanism that keeps cross-repo
+// skew safe: a tag is retired where it was declared, and a removal without a
+// reservation breaks every view at compile time.
+type Reserved struct {
+	Ranges []ReservedRange
+	Span   source.Span
+}
+
+func (*Reserved) isMember() {}
+
+// ReservedRange is one entry of a `reserved` list, inclusive at both ends. A
+// single tag is a range whose ends are equal: nothing downstream cares which of
+// the two spellings was used, and the span still says which was written.
+type ReservedRange struct {
+	Lo   IntLit
+	Hi   IntLit
+	Span source.Span
+}
+
+// Contains reports whether the range retires tag.
+func (r ReservedRange) Contains(tag uint64) bool {
+	return r.Lo.Value <= tag && tag <= r.Hi.Value
+}
 
 // Annotation is one bracket: `[cs: DataCacheTopic("...")]` or
 // `[references(SportGame)]`. An annotation follows what it describes; there is

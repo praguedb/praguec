@@ -55,6 +55,8 @@ func dump(file *File) string {
 			dumpDecl(&b, "struct", d.Name, d.Annotations, d.Members)
 		case *Record:
 			dumpDecl(&b, "record", d.Name, d.Annotations, d.Members)
+		case *Table:
+			dumpDecl(&b, "table", d.Name, d.Annotations, d.Members)
 		case *Enum:
 			fmt.Fprintf(&b, "enum %s\n", d.Name.Text)
 			for _, m := range d.Members {
@@ -67,8 +69,8 @@ func dump(file *File) string {
 	return b.String()
 }
 
-// dumpDecl writes one declaration and its members, which is where struct and
-// record differ by their keyword and by nothing else.
+// dumpDecl writes one declaration and its members, which is where struct,
+// record and table differ by their keyword and by nothing else.
 func dumpDecl(b *strings.Builder, keyword string, name Ident, anns []*Annotation, members []Member) {
 	fmt.Fprintf(b, "%s %s\n", keyword, name.Text)
 	// A head's annotations get a line each; a member's trail the member, which
@@ -79,15 +81,43 @@ func dumpDecl(b *strings.Builder, keyword string, name Ident, anns []*Annotation
 	for _, m := range members {
 		switch m := m.(type) {
 		case *Field:
+			// `key` and `repeated` are both written in front of the type, and no
+			// field carries both: identity is one value, not a collection.
 			lead := ""
-			if m.Repeated {
+			switch {
+			case m.Key:
+				lead = "key "
+			case m.Repeated:
 				lead = "repeated "
 			}
 			fmt.Fprintf(b, "  %s%s %s = %d%s\n", lead, typeString(m.Type), m.Name.Text, m.Tag.Value, annSuffix(m.Annotations))
+		case *CompositeKey:
+			parts := make([]string, len(m.Parts))
+			for i, part := range m.Parts {
+				parts[i] = part.Text
+			}
+			fmt.Fprintf(b, "  key %s = %d (%s)%s\n", m.Name.Text, m.Tag.Value, strings.Join(parts, ", "), annSuffix(m.Annotations))
+		case *Alias:
+			fmt.Fprintf(b, "  alias %s = %s%s\n", m.Name.Text, m.Source.Text, annSuffix(m.Annotations))
+		case *Reserved:
+			fmt.Fprintf(b, "  reserved %s\n", rangeList(m.Ranges))
 		default:
 			fmt.Fprintf(b, "  <unhandled member %T>\n", m)
 		}
 	}
+}
+
+// rangeList writes a reserved list back the way the source spelled it: a range
+// whose ends are equal was written as the single tag it retires.
+func rangeList(ranges []ReservedRange) string {
+	out := make([]string, len(ranges))
+	for i, r := range ranges {
+		out[i] = fmt.Sprint(r.Lo.Value)
+		if r.Hi.Value != r.Lo.Value {
+			out[i] += fmt.Sprintf("..%d", r.Hi.Value)
+		}
+	}
+	return strings.Join(out, ", ")
 }
 
 // annString writes an annotation back the way the source spelled it, which for
@@ -415,6 +445,47 @@ struct S {
 			wantLine:  4, wantCol: 13,
 		},
 		{
+			// A range's `..` promises an upper bound, and a member that fails
+			// mid-way is recovered from at the `;` like any other -- the next
+			// member is still read.
+			name: `reserved range with no upper bound`,
+			src: `revision 1;
+namespace A;
+table T {
+  reserved 8..;
+  int64 a = 1;
+}
+`,
+			wantCodes: []diag.Code{diag.UnexpectedToken},
+			wantLine:  4, wantCol: 15,
+		},
+		{
+			// An alias is two names and an `=`; without the second name there is
+			// nothing to pass through to.
+			name: `alias with no source`,
+			src: `revision 1;
+namespace A;
+table T {
+  alias bet_type_id = ;
+}
+`,
+			wantCodes: []diag.Code{diag.UnexpectedToken},
+			wantLine:  4, wantCol: 23,
+		},
+		{
+			// A composite key spends an ordinal exactly as a field does, so the
+			// bound that makes tag 0 name no slot is the same bound.
+			name: `composite key with tag 0`,
+			src: `revision 1;
+namespace A;
+table T {
+  key key = 0 (a, b);
+}
+`,
+			wantCodes: []diag.Code{diag.TagOutOfRange},
+			wantLine:  4, wantCol: 13,
+		},
+		{
 			// A precision belongs to `decimal` alone, and a declared type is
 			// told it so in the same words a scalar is: neither is resolved
 			// here, and the fix is the same.
@@ -625,6 +696,8 @@ func TestSpecSubsetNamesNoTypeItDoesNotDeclare(t *testing.T) {
 			declared[d.Name.Text] = true
 		case *Record:
 			declared[d.Name.Text] = true
+		case *Table:
+			declared[d.Name.Text] = true
 		case *Enum:
 			declared[d.Name.Text] = true
 		}
@@ -648,6 +721,8 @@ func declMembers(d Decl) []Member {
 	case *Struct:
 		return d.Members
 	case *Record:
+		return d.Members
+	case *Table:
 		return d.Members
 	}
 	return nil
@@ -722,5 +797,159 @@ struct S {
 	}
 	if got := b[0].Text; got != "Bar(new[] { 1 })" {
 		t.Errorf("text = %q, want %q", got, "Bar(new[] { 1 })")
+	}
+}
+
+// A table is the one declaration with identity, and the simple spelling of it
+// is a field with `key` in front: one member, not two, so the tag it carries is
+// the tag of the field that is the key.
+func TestParseTableWithASimpleKey(t *testing.T) {
+	_, file := parseClean(t, `revision 1;
+namespace A;
+table SportGame
+  [cs: DataCacheTopic(TopicNames.BrandFromConfigs.SportGame)]
+{
+  reserved 8..14, 16..23, 25;
+
+  key int64 event_id = 1;
+
+  int64? home_team_id = 5;
+  repeated StaticDataRef runners = 47;
+}
+`)
+	assertDump(t, file, `revision 1
+namespace A
+table SportGame
+  [cs: DataCacheTopic(TopicNames.BrandFromConfigs.SportGame)]
+  reserved 8..14, 16..23, 25
+  key int64 event_id = 1
+  int64? home_team_id = 5
+  repeated StaticDataRef runners = 47
+`)
+
+	tbl, ok := file.Decls[0].(*Table)
+	if !ok {
+		t.Fatalf("declaration is %T, want *Table", file.Decls[0])
+	}
+	// The key is a field and nothing else: it has a type and spends an ordinal,
+	// and only the composite spelling needs a node of its own.
+	key, ok := tbl.Members[1].(*Field)
+	if !ok {
+		t.Fatalf("the key is %T, want *Field", tbl.Members[1])
+	}
+	if !key.Key || key.Type.Name.Text != "int64" || key.Tag.Value != 1 {
+		t.Errorf("key is %+v, want Key int64 with tag 1", key)
+	}
+	if tbl.Members[2].(*Field).Key {
+		t.Error("home_team_id is a Key")
+	}
+	// `reserved` is a member and holds its place: section 1 writes it above the
+	// key, and source order is what a backend emits and a diagnostic quotes.
+	if _, ok := tbl.Members[0].(*Reserved); !ok {
+		t.Errorf("first member is %T, want *Reserved", tbl.Members[0])
+	}
+}
+
+// `reserved 8..14, 25;` retires both ends of a range and the single tag beside
+// it. Which of the two spellings was written is not a difference downstream, so
+// a single is the range that begins and ends with it.
+func TestParseReservedRangesAreInclusive(t *testing.T) {
+	_, file := parseClean(t, "revision 1;\nnamespace A;\ntable T {\n  reserved 8..14, 25;\n}\n")
+
+	r := file.Decls[0].(*Table).Members[0].(*Reserved)
+	if len(r.Ranges) != 2 {
+		t.Fatalf("read %d ranges, want 2", len(r.Ranges))
+	}
+	for _, tt := range []struct {
+		tag  uint64
+		want bool
+	}{{7, false}, {8, true}, {11, true}, {14, true}, {15, false}, {24, false}, {25, true}, {26, false}} {
+		got := r.Ranges[0].Contains(tt.tag) || r.Ranges[1].Contains(tt.tag)
+		if got != tt.want {
+			t.Errorf("tag %d reserved = %v, want %v", tt.tag, got, tt.want)
+		}
+	}
+}
+
+// The member the whole no-keyword-token-kinds decision was made for: `key key =
+// 1 (event_id, bet_type_id);` is a member named `key`, of a kind named `key`,
+// over fields that keep their own ordinals. Nothing here is a reserved word, and
+// the two spellings of identity are told apart by what follows rather than by
+// what the lexer called it.
+func TestParseCompositeKeyAndAlias(t *testing.T) {
+	_, file := parseClean(t, `revision 1;
+namespace A;
+table BetType {
+  key key = 1 (event_id, bet_type_id);
+
+  int64 event_id = 2 [references(BetType)];
+  int64 id       = 3;
+
+  alias bet_type_id = id;
+}
+`)
+	assertDump(t, file, `revision 1
+namespace A
+table BetType
+  key key = 1 (event_id, bet_type_id)
+  int64 event_id = 2 [references(BetType)]
+  int64 id = 3
+  alias bet_type_id = id
+`)
+
+	tbl := file.Decls[0].(*Table)
+	k, ok := tbl.Members[0].(*CompositeKey)
+	if !ok {
+		t.Fatalf("the key is %T, want *CompositeKey", tbl.Members[0])
+	}
+	// The composite key spends an ordinal of its own -- the one thing that
+	// separates it from Cap'n Proto's group -- and writing it is what makes the
+	// duplication visible.
+	if k.Name.Text != "key" || k.Tag.Value != 1 {
+		t.Errorf("key is %s = %d, want key = 1", k.Name.Text, k.Tag.Value)
+	}
+	if len(k.Parts) != 2 || k.Parts[0].Text != "event_id" || k.Parts[1].Text != "bet_type_id" {
+		t.Errorf("parts are %+v, want event_id then bet_type_id", k.Parts)
+	}
+
+	// An alias names no wire slot, so it has no tag to get wrong: it is a second
+	// name for a field that already has one.
+	a, ok := tbl.Members[3].(*Alias)
+	if !ok {
+		t.Fatalf("the alias is %T, want *Alias", tbl.Members[3])
+	}
+	if a.Name.Text != "bet_type_id" || a.Source.Text != "id" {
+		t.Errorf("alias is %s = %s, want bet_type_id = id", a.Name.Text, a.Source.Text)
+	}
+}
+
+// What the lookahead costs and what it buys. `key` in leading position opens
+// either spelling, and the word after it does not settle which: the simple
+// spelling may name its field `key` too. What settles it is the `=`, two tokens
+// in for the composite spelling and further on for the simple one.
+func TestKeyIsAWordAndNotAKeyword(t *testing.T) {
+	_, file := parseClean(t, `revision 1;
+namespace A;
+table T {
+  key int64 key = 1;
+  int64 alias = 2;
+  int64 reserved = 3;
+}
+`)
+	assertDump(t, file, `revision 1
+namespace A
+table T
+  key int64 key = 1
+  int64 alias = 2
+  int64 reserved = 3
+`)
+
+	tbl := file.Decls[0].(*Table)
+	k, ok := tbl.Members[0].(*Field)
+	if !ok {
+		t.Fatalf("`key int64 key = 1;` read as %T, want *Field", tbl.Members[0])
+	}
+	if !k.Key || k.Name.Text != "key" {
+		t.Errorf("member is %+v, want a Key field named key", k)
 	}
 }
