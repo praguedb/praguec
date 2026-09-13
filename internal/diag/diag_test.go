@@ -3,6 +3,7 @@ package diag
 import (
 	"os"
 	"regexp"
+	"strings"
 	"testing"
 
 	"github.com/nanov/protobuf-to-messagepack-sharp/internal/source"
@@ -35,6 +36,7 @@ var wantCodeNumbers = []struct {
 	{"DuplicateNamespace", DuplicateNamespace, "PROTOP0105"},
 	{"ImportNotInHeader", ImportNotInHeader, "PROTOP0106"},
 	{"ImportNotFound", ImportNotFound, "PROTOP0107"},
+	{"ImportAmbiguous", ImportAmbiguous, "PROTOP0108"},
 
 	{"UnexpectedToken", UnexpectedToken, "PROTOP0200"},
 	{"UnknownDeclaration", UnknownDeclaration, "PROTOP0201"},
@@ -239,5 +241,177 @@ func TestADiagnosticRaisedOnTheBagNamesNoFile(t *testing.T) {
 	b.Errorf(TagOutOfRange, source.SpanAt(0), "field tag must be greater than 0")
 	if b.All()[0].File != nil {
 		t.Error("a diagnostic raised on the bag itself must not name a file")
+	}
+}
+
+// The MSVS form is the one shape MSBuild's canonical error parser reads, and
+// the literal below is what that parser expects -- `path(line,col): category
+// code: text`, one line, no snippet. Nothing generates it and no flag can
+// rewrite it: it is written out here because the format is a contract with a
+// program protopc does not own.
+func TestRenderMSVSIsTheShapeMSBuildParses(t *testing.T) {
+	f := source.NewFile("prague.protop", "revision 1;\nstruct S {\n  int64 id = 0;\n}\n")
+
+	var b Bag
+	b.Errorf(TagOutOfRange, source.Span{Start: 36, End: 37}, "field tag must be greater than 0")
+
+	got := RenderAs(MSVS, f, b.All()[0])
+	want := "prague.protop(3,14): error PROTOP0300: field tag must be greater than 0"
+	if got != want {
+		t.Errorf("RenderAs(MSVS) = %q\nwant %q", got, want)
+	}
+
+	// The same diagnostic in the same place, in the default form, so that the
+	// two are held apart by something other than which function was called.
+	if gcc := RenderAs(GCC, f, b.All()[0]); !strings.HasPrefix(gcc, "prague.protop:3:14: error PROTOP0300: ") {
+		t.Errorf("RenderAs(GCC) = %q, want the colon form", gcc)
+	}
+}
+
+// MSBuild's error parser is line-based, so a message that wrapped would have
+// its tail read as an unrelated line of build output. protopc's messages are
+// long enough for this not to be hypothetical.
+func TestRenderMSVSFlattensAMultiLineMessage(t *testing.T) {
+	f := source.NewFile("a.protop", "revision 1;\n")
+
+	var b Bag
+	b.Errorf(UnknownType, source.SpanAt(0), "one\ntwo\r\nthree\rfour")
+
+	got := RenderAs(MSVS, f, b.All()[0])
+	want := "a.protop(1,1): error PROTOP0311: one two three four"
+	if got != want {
+		t.Errorf("RenderAs(MSVS) = %q\nwant %q", got, want)
+	}
+}
+
+// A warning renders as a warning in both forms. MSBuild branches on the word:
+// the same line with `error` fails a build that the `warning` spelling does not.
+func TestRenderMSVSSaysWhichSeverityItIs(t *testing.T) {
+	f := source.NewFile("a.protop", "revision 1;\n")
+
+	var b Bag
+	b.Warnf(NotYetImplemented, source.SpanAt(0), "not yet")
+
+	got := RenderAs(MSVS, f, b.All()[0])
+	want := "a.protop(1,1): warning PROTOP0900: not yet"
+	if got != want {
+		t.Errorf("RenderAs(MSVS) = %q\nwant %q", got, want)
+	}
+}
+
+// The MSVS renderer honours the file a diagnostic names, the way the GCC one
+// does. Rendering a cross-file diagnostic against the wrong file is the bug
+// Diagnostic.File exists to prevent, and it has to be prevented in both forms.
+func TestRenderMSVSHonoursTheFileTheDiagnosticNames(t *testing.T) {
+	prague := source.NewFile("prague.protop", "revision 1;\n")
+	consumer := source.NewFile("consumer.protop", "import \"nope.protop\";\n")
+
+	var b Bag
+	b.In(consumer).Errorf(ImportNotFound, source.Span{Start: 7, End: 20}, "no file %q in the set", "nope.protop")
+
+	got := RenderAs(MSVS, prague, b.All()[0])
+	want := "consumer.protop(1,8): error PROTOP0107: no file \"nope.protop\" in the set"
+	if got != want {
+		t.Errorf("RenderAs(MSVS) = %q\nwant %q", got, want)
+	}
+}
+
+// The two names --error-format accepts, and the fact that it accepts no others.
+// The strings are buf's, which is where a user's fingers come from.
+func TestParseFormat(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		want Format
+		ok   bool
+	}{
+		{"gcc", GCC, true},
+		{"msvs", MSVS, true},
+		{"text", GCC, false},
+		{"json", GCC, false},
+		{"github-actions", GCC, false},
+		{"", GCC, false},
+		{"GCC", GCC, false},
+	} {
+		got, ok := ParseFormat(tc.name)
+		if got != tc.want || ok != tc.ok {
+			t.Errorf("ParseFormat(%q) = %v, %v; want %v, %v", tc.name, got, ok, tc.want, tc.ok)
+		}
+	}
+}
+
+// The spellings round-trip, because --error-format's value and the name in a
+// message about an unknown one are the same word.
+func TestFormatString(t *testing.T) {
+	for _, name := range []string{"gcc", "msvs"} {
+		f, ok := ParseFormat(name)
+		if !ok {
+			t.Fatalf("ParseFormat(%q) rejected a name it must accept", name)
+		}
+		if f.String() != name {
+			t.Errorf("Format(%q).String() = %q", name, f.String())
+		}
+	}
+}
+
+// The default format is GCC. It is asserted against the zero value rather than
+// against a constant, because what makes it the default is that it is what a
+// Format nobody set renders as.
+//
+// It is provisional: docs/research/proto-to-messagepack-csharp.md:924 and :1292
+// both say the MSVS form should be the default. The contradiction is filed, not
+// resolved, and this test is what a resolution would have to come and change.
+func TestTheDefaultFormatIsTerminalFirst(t *testing.T) {
+	var zero Format
+	if zero != GCC {
+		t.Fatalf("the zero Format is %v, want gcc", zero)
+	}
+	f := source.NewFile("a.protop", "revision 1;\n")
+	var b Bag
+	b.Errorf(UnknownType, source.SpanAt(0), "x")
+	if RenderAs(zero, f, b.All()[0]) != Render(f, b.All()[0]) {
+		t.Error("the zero Format does not render as the caret form")
+	}
+}
+
+// A stage that reports one file at a time gets its file stamped by the driver
+// that owns the several. Without this, a parse error in the fourth file of a
+// compile renders its snippet against the first -- which is not a wrong
+// position, it is a position in the wrong file, and it points at real source.
+func TestWithinStampsTheFileOnWhatItAdds(t *testing.T) {
+	first := source.NewFile("first.protop", "revision 1;\n")
+	fourth := source.NewFile("fourth.protop", "revision 1;\n")
+
+	var b Bag
+	b.Errorf(MissingNamespace, source.SpanAt(0), "before")
+	b.Within(fourth, func(bag *Bag) {
+		bag.Errorf(MissingNamespace, source.SpanAt(0), "inside")
+	})
+	b.Errorf(MissingNamespace, source.SpanAt(0), "after")
+
+	got := []*source.File{b.All()[0].File, b.All()[1].File, b.All()[2].File}
+	want := []*source.File{nil, fourth, nil}
+	for i := range got {
+		if got[i] != want[i] {
+			t.Errorf("diagnostic %d names %v, want %v", i, got[i], want[i])
+		}
+	}
+	if b.All()[1].File == first {
+		t.Error("the wrong file was stamped")
+	}
+}
+
+// Within does not overwrite a file a diagnostic already names. A stage that
+// knows which file it is talking about -- the checker, reporting a view in one
+// file against its source in another -- is more right than the driver is.
+func TestWithinLeavesAnAlreadyNamedFileAlone(t *testing.T) {
+	outer := source.NewFile("outer.protop", "revision 1;\n")
+	inner := source.NewFile("inner.protop", "revision 1;\n")
+
+	var b Bag
+	b.Within(outer, func(bag *Bag) {
+		bag.In(inner).Errorf(ViewSourceNotFound, source.SpanAt(0), "elsewhere")
+	})
+	if b.All()[0].File != inner {
+		t.Errorf("Within overwrote the file the stage named")
 	}
 }

@@ -61,6 +61,14 @@ const (
 	// an import that is not in it.
 	ImportNotFound Code = 107
 
+	// ImportAmbiguous is an import string that more than one include root
+	// provides. The loader searches the roots in the order the user gave them,
+	// so it always has a file it *could* take -- but which root should win when
+	// two answer is nanov/protobuf-to-messagepack-sharp#48 and is unresolved,
+	// and a build whose meaning depends on an unresolved rule should say so
+	// rather than pick in silence. Reported, not ranked.
+	ImportAmbiguous Code = 108
+
 	// UnexpectedToken is the generic shape error: the parser wanted one thing
 	// and found another.
 	UnexpectedToken Code = 200

@@ -85,6 +85,25 @@ func (b *Bag) add(sev Severity, code Code, span source.Span, format string, args
 // indexes into.
 func (b *Bag) In(f *source.File) *Sink { return &Sink{bag: b, file: f} }
 
+// Within runs fn against the bag and stamps every diagnostic fn adds that does
+// not already name a file.
+//
+// It exists for the stages that see one file at a time -- the lexer and the
+// parser -- reporting into a bag that a driver is filling from several. Those
+// stages cannot name the file they are reporting against and should not have
+// to; the driver opened it and is the only thing that knows. Without this, a
+// parse error in the fourth file of a compile renders its snippet against the
+// first.
+func (b *Bag) Within(f *source.File, fn func(*Bag)) {
+	start := len(b.diags)
+	fn(b)
+	for i := start; i < len(b.diags); i++ {
+		if b.diags[i].File == nil {
+			b.diags[i].File = f
+		}
+	}
+}
+
 // Sink is a Bag as seen from inside one file. It exists so that a stage holding
 // several files does not repeat which one it is reporting against on every
 // call, and so that it cannot pass the wrong one.
@@ -180,4 +199,95 @@ func RenderAll(f *source.File, b *Bag) string {
 		out = append(out, Render(f, d))
 	}
 	return strings.Join(out, "\n")
+}
+
+// Format selects how a diagnostic is written out.
+//
+// Two consumers want different things from the same fact. A terminal wants the
+// caret snippet above: the line, and a run of ^ under the span, which is why a
+// span is carried rather than a position. MSBuild wants
+// `path(line,col): error CODE: text`, which is the one shape its canonical
+// error parser recognises -- and recognising it is what lights up Visual
+// Studio's error list, `dotnet build`'s summary and GitHub Actions'
+// annotations, none of which read the GCC form at all.
+//
+// The default is GCC, and it is provisional. docs/research/
+// proto-to-messagepack-csharp.md:924 and :1292 both say the MSVS-shaped form
+// should be the default, on the grounds that MSBuild parses it natively; a
+// terminal-first tool makes the caret renderer the default and the MSVS form a
+// flag, which is what protopc does here. The contradiction is in the record and
+// is filed rather than resolved -- nanov/protobuf-to-messagepack-sharp#49 says
+// to pick terminal-first provisionally and say so, and this is the saying.
+type Format int
+
+const (
+	// GCC is the caret form: `path:line:col: error CODE: text`, followed by
+	// the source line and a caret run under the span.
+	GCC Format = iota
+	// MSVS is MSBuild's canonical form: `path(line,col): error CODE: text`,
+	// one diagnostic per line and no snippet.
+	MSVS
+)
+
+// String is the spelling --error-format accepts, which is also buf's: `gcc` and
+// `msvs` are two of the six names buf gives the same choice.
+func (f Format) String() string {
+	if f == MSVS {
+		return "msvs"
+	}
+	return "gcc"
+}
+
+// ParseFormat reads a --error-format value. It reports whether the name is one
+// protopc has, so that the caller can list the ones it does.
+func ParseFormat(name string) (Format, bool) {
+	switch name {
+	case "gcc":
+		return GCC, true
+	case "msvs":
+		return MSVS, true
+	}
+	return GCC, false
+}
+
+// RenderAs formats one diagnostic in the given format.
+func RenderAs(format Format, f *source.File, d Diagnostic) string {
+	if format == MSVS {
+		return renderMSVS(f, d)
+	}
+	return Render(f, d)
+}
+
+// RenderAllAs formats every diagnostic in the bag in the given format, one per
+// paragraph.
+func RenderAllAs(format Format, f *source.File, b *Bag) string {
+	out := make([]string, 0, b.Len())
+	for _, d := range b.All() {
+		out = append(out, RenderAs(format, f, d))
+	}
+	return strings.Join(out, "\n")
+}
+
+// renderMSVS writes the one shape MSBuild's canonical error parser reads:
+//
+//	prague.protop(3,14): error PROTOP0300: field tag must be greater than 0
+//
+// The message is flattened to one line because that parser is line-based: a
+// diagnostic whose text wrapped would have its tail read as an unrelated line
+// of build output, and protopc's messages are long enough that this is not
+// hypothetical.
+func renderMSVS(f *source.File, d Diagnostic) string {
+	if d.File != nil {
+		f = d.File
+	}
+	pos := f.Position(d.Span.Start)
+	return fmt.Sprintf("%s(%d,%d): %s %s: %s",
+		pos.File, pos.Line, pos.Column, d.Severity, d.Code, oneLine(d.Message))
+}
+
+// oneLine collapses every line break in a message to a single space.
+func oneLine(s string) string {
+	s = strings.ReplaceAll(s, "\r\n", "\n")
+	s = strings.ReplaceAll(s, "\r", "\n")
+	return strings.ReplaceAll(s, "\n", " ")
 }

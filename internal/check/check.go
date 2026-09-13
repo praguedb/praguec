@@ -246,7 +246,7 @@ func (c *checker) resolveImports(w *fileWork) {
 	}
 
 	for _, im := range w.ast.Imports {
-		path := importPath(im.Path)
+		path := ImportPath(im.Path)
 		imported, ok := c.byPath[path]
 		if !ok {
 			w.sink.Errorf(diag.ImportNotFound, im.Span,
@@ -268,9 +268,13 @@ func (c *checker) resolveImports(w *fileWork) {
 	w.file.scope = scope
 }
 
-// importPath is the key an import names in the file set: the literal's
+// ImportPath is the key an import names in the file set: the literal's
 // contents, quotes stripped and nothing else done to them.
-func importPath(lit syntax.StringLit) string {
+//
+// It is exported because the stage that builds a FileSet has to key it the same
+// way the stage that reads one looks names up in it, and those are now two
+// packages. One definition, in the package that owns FileSet.
+func ImportPath(lit syntax.StringLit) string {
 	return strings.TrimSuffix(strings.TrimPrefix(lit.Text, `"`), `"`)
 }
 
