@@ -234,9 +234,11 @@ func writeEnum(b *strings.Builder, d *check.Decl) {
 // dataCacheKeyAttribute marks the member that carries the declaration's
 // identity. It is the one attribute protopc writes that belongs to
 // `B2Tech.Feed.Cache.Core` rather than to MessagePack, and it is written
-// because the corpus writes it on all 14 keys and protop's `key` keyword is the
-// only thing that could produce it. Which version of that package protop
-// targets is #21 and is open; nothing here pins one.
+// because the corpus writes it on every key it has and protop's `key` keyword
+// is the only thing that could produce it: 11 sites over the 14 payload types,
+// the other three -- Venue, BOVenue and SlimOdd -- having no key at all. Which
+// version of that package protop targets is #21 and is open; nothing here pins
+// one.
 const dataCacheKeyAttribute = "[DataCacheKey]\n"
 
 func writeMember(b *strings.Builder, d *check.Decl, m *check.Member) {
