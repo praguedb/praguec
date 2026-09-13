@@ -747,6 +747,65 @@ view V of T {
 	}
 }
 
+// Narrowing and renaming in one member, which section 5 writes as `SlimOdd
+// odds as o;`. The three facts are asserted apart because they come from three
+// different places -- the name from the view line's rename, the type from the
+// narrowing, the tag from the source and from neither half -- and a test that
+// compared one rendered member would pass on any two of the three.
+//
+// The parser's own test for this asserts the dump, so it holds the shape that
+// survived parsing and says nothing about the model a backend reads. This is
+// the model.
+func TestAViewMemberMayNarrowAndRenameAtOnce(t *testing.T) {
+	schema := checkClean(t, map[string]string{
+		"a.protop": `revision 1;
+namespace A;
+record Inner {
+  int64 id = 1;
+}
+view SlimInner of Inner {
+  id;
+}
+table Outer {
+  key int64 id = 1;
+  Inner odds = 7;
+}
+view SlimOuter of Outer {
+  SlimInner odds as o;
+}
+`,
+	})
+	file := schema.File("a.protop")
+	view := file.Decl("SlimOuter")
+
+	// The name is the rename's, and it is the member's only name: a view that
+	// still answered to `odds` would have renamed nothing, it would have
+	// aliased.
+	m := view.Member("o")
+	if m == nil {
+		t.Fatalf("the view has no member `o`:\n%s", dump(schema))
+	}
+	if view.Member("odds") != nil {
+		t.Error("the view still knows the member by its source's name `odds`; a rename replaces the name rather than adding one")
+	}
+
+	// The type is the narrowing's. `Inner` is what the source lends and
+	// `SlimInner` is what the leading type asks for.
+	if got := typeString(m.Type); got != "view:SlimInner" {
+		t.Errorf("`SlimInner odds as o;` is %s, want view:SlimInner -- the leading type is what the member holds", got)
+	}
+
+	// And the tag is the source's, untouched by either half. 7 is neither the
+	// member's position in the view nor a tag of `SlimInner`, so a tag read off
+	// the wrong thing does not land on it by luck.
+	if m.Tag != 7 {
+		t.Errorf("`SlimInner odds as o;` is tag %d, want Outer's 7: a view invents no tags, and narrowing and renaming are not tags", m.Tag)
+	}
+	if m.From != file.Decl("Outer").Member("odds") {
+		t.Error("the member does not point at the source member `odds` it took its tag from")
+	}
+}
+
 // A view member that selects an alias keeps what the alias passes through to.
 // An alias is nothing but that passthrough -- it has no wire slot and no value
 // of its own -- so a view member that selects one and forgot its target is a
