@@ -263,16 +263,18 @@ func TestAnAmbiguousImportIsReportedOnce(t *testing.T) {
 	}
 }
 
-// One file reached under two import strings is one entry in the set.
+// One file reached under two import strings is one unit, under both of them.
 //
 // The two strings are real: with roots `lib` and `.`, the file `lib/b.protop`
 // is `b.protop` to anything searching the first root and `lib/b.protop` to
 // anything searching the second, and a schema may well contain both spellings.
-// Keying alone cannot collapse them -- they are different keys by construction
-// -- so the loader also remembers which absolute paths it has opened. Without
-// that, the file parses twice, the checker sees two files, and every
-// declaration in it is emitted twice under two names.
-func TestOneFileReachedUnderTwoImportStringsIsOneEntry(t *testing.T) {
+// The key is the import string as written -- check.FileSet's contract, which
+// this package does not get to change -- so the two are different keys by
+// construction, and both have to be in the set or the checker raises
+// PROTOP0107 for a file the loader opened. What must not happen twice is the
+// *load*: a second read and parse would be two files to the checker, and every
+// declaration in it would be emitted twice under two names.
+func TestOneFileReachedUnderTwoImportStringsIsOneUnitUnderBoth(t *testing.T) {
 	dir := plant(t,
 		file{"a.protop", src("A", "b.protop")},
 		file{"c.protop", src("C", "lib/b.protop")},
@@ -285,10 +287,13 @@ func TestOneFileReachedUnderTwoImportStringsIsOneEntry(t *testing.T) {
 	if got := codes(bag); len(got) != 0 {
 		t.Fatalf("codes = %v, want none", got)
 	}
-	// Three files on disk, three entries: b.protop is in the set once, under
-	// whichever of its two names reached it first.
-	if got, want := len(res.Set), 3; got != want {
-		t.Errorf("the set has %d entries, want %d: %v", got, want, keys(res.Set))
+	want := []string{"a.protop", "b.protop", "c.protop", "lib/b.protop"}
+	if got := keys(res.Set); !slices.Equal(got, want) {
+		t.Fatalf("set keys = %v, want %v; both spellings resolved, so both must be findable", got, want)
+	}
+	// Both keys, one unit: the same parsed file, not a second copy of it.
+	if a, b := res.Set["b.protop"], res.Set["lib/b.protop"]; a.Source != b.Source || a.File != b.File {
+		t.Errorf("the two spellings name two units; lib/b.protop was loaded twice")
 	}
 	var bs int
 	for _, u := range res.Set {
@@ -298,25 +303,159 @@ func TestOneFileReachedUnderTwoImportStringsIsOneEntry(t *testing.T) {
 			}
 		}
 	}
-	if bs != 1 {
-		t.Errorf("B is declared by %d entries of the set, want 1: %v", bs, keys(res.Set))
+	if bs != 2 {
+		t.Errorf("B is reachable through %d entries of the set, want 2: %v", bs, keys(res.Set))
 	}
 }
 
 // One root listed twice is one root. Two spellings of one directory provide one
 // file, not two, and reporting that as an ambiguity would be a diagnostic about
 // the command line rather than about the schema.
+//
+// The spellings have to reach Load *as written*, which is why this test calls
+// Load itself rather than going through loadIn: loadIn builds every path with
+// filepath.Join, and Join cleans, so three spellings would arrive as three
+// copies of one string and the test would exercise nothing. A relative and an
+// absolute spelling of one directory is the pair that survives every cleaning,
+// and it is the pair a Makefile produces -- `-I inc` from one rule and `-I
+// $(abspath inc)` from the next.
+//
+// Two mechanisms collapse them and they are asserted apart:
+//
+//   - resolveRoots cleans and dedups, which is what keeps `one` and `one/` from
+//     being two roots. Its only effect is on the list a diagnostic prints,
+//     because everything downstream joins and joining cleans -- so it is the
+//     message that pins it. A user told protopc searched three directories
+//     goes looking for three directories.
+//   - search's seen[abs], which is what keeps `one` and an absolute spelling of
+//     `one` -- which no amount of cleaning makes equal -- from providing one
+//     file twice. Without it this is a spurious PROTOP0108 on a command line
+//     that named one directory.
 func TestOneRootGivenTwiceIsNotAnAmbiguity(t *testing.T) {
 	dir := plant(t,
-		file{"a.protop", src("A", "b.protop")},
+		file{"a.protop", src("A", "b.protop", "gone.protop")},
 		file{"one/b.protop", src("One")},
 	)
-	_, bag, err := loadIn(t, dir, []string{"one", "one/", "./one"}, []string{"a.protop"})
+	// Resolved, so that the relative spelling below and the absolute one are
+	// the same directory to filepath.Abs -- on macOS the temp directory is
+	// reached through a symlink and Getwd returns the resolved path.
+	dir, err := filepath.EvalSymlinks(dir)
 	if err != nil {
 		t.Fatal(err)
 	}
+	t.Chdir(dir)
+
+	var bag diag.Bag
+	roots := []string{"one", "one/", filepath.Join(dir, "one")}
+	if _, err := Load([]string{"a.protop"}, roots, &bag); err != nil {
+		t.Fatal(err)
+	}
+
+	// The import that is there resolved once: no PROTOP0108.
+	if got, want := codes(&bag), []string{"PROTOP0107"}; !slices.Equal(got, want) {
+		t.Fatalf("codes = %v, want %v -- three spellings of one directory are one root", got, want)
+	}
+	// And the import that is not there says it looked in one directory, twice
+	// over: `one` and its absolute spelling are two roots to resolveRoots and
+	// `one/` is not a third.
+	msg := bag.All()[0].Message
+	_, searched, ok := strings.Cut(msg, "searched ")
+	if !ok {
+		t.Fatalf("the message does not say where it looked:\n%s", msg)
+	}
+	if got, want := strings.Count(searched, `"`)/2, 2; got != want {
+		t.Errorf("the message names %d roots, want %d:\n%s", got, want, msg)
+	}
+}
+
+// Two roots that both provide the import: which file is opened is the first
+// root's, and the ambiguity is reported beside it.
+//
+// This is not a ruling on #48, which is about which root *should* win -- the
+// diagnostic is what says that is unsettled. It is that -I is an ordered list
+// and the order has to be the whole of what it means: a loader that sorted its
+// roots, or took the last candidate rather than the first, would answer #48 by
+// accident and in the direction nobody chose. Both orders are run, because one
+// order alone passes for a loader that always takes `one`.
+func TestTheFirstRootThatProvidesAnImportIsTheOneOpened(t *testing.T) {
+	for _, first := range []string{"one", "two"} {
+		t.Run(first, func(t *testing.T) {
+			second := "two"
+			if first == "two" {
+				second = "one"
+			}
+			dir := plant(t,
+				file{"a.protop", src("A", "b.protop")},
+				file{"one/b.protop", src("One")},
+				file{"two/b.protop", src("Two")},
+			)
+			res, bag, err := loadIn(t, dir, []string{first, second, "."}, []string{"a.protop"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got, want := codes(bag), []string{"PROTOP0108"}; !slices.Equal(got, want) {
+				t.Fatalf("codes = %v, want %v", got, want)
+			}
+			want := filepath.Join(first, "b.protop")
+			if got := res.Set["b.protop"].Source.Name; !strings.HasSuffix(got, want) {
+				t.Errorf("b.protop was opened from %q, want the first root's %q", got, want)
+			}
+		})
+	}
+}
+
+// A root that is a prefix of another root: the input is keyed against the first
+// root that contains it, not the most specific one, so the same file on the
+// same disk is `nested/a.protop` under `-I schemas -I schemas/nested` and
+// `a.protop` under the two flags reversed.
+//
+// Neither of those is ruled right here. What is ruled is that the order the
+// user gave decides it: a loader that preferred the longest matching root would
+// be making `-I` unordered for inputs while it stays ordered for imports, and a
+// file's key is what every import of it has to spell.
+func TestANestedRootKeysAgainstTheFirstRootGiven(t *testing.T) {
+	for _, tc := range []struct {
+		roots []string
+		want  string
+	}{
+		{[]string{"schemas", "schemas/nested"}, "nested/a.protop"},
+		{[]string{"schemas/nested", "schemas"}, "a.protop"},
+	} {
+		t.Run(strings.Join(tc.roots, ","), func(t *testing.T) {
+			dir := plant(t,
+				file{"schemas/nested/a.protop", src("A")},
+			)
+			res, _, err := loadIn(t, dir, tc.roots, []string{"schemas/nested/a.protop"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got, want := keys(res.Set), []string{tc.want}; !slices.Equal(got, want) {
+				t.Errorf("set keys = %v, want %v", got, want)
+			}
+		})
+	}
+}
+
+// A directory whose name is an import string does not provide that import. An
+// include root full of directories named for the files that used to be in them
+// is not exotic, and a root that "has" the import shadows every root behind it:
+// the loader would open a directory, fail, and return an error where the next
+// root held the file all along.
+func TestADirectoryNamedLikeAnImportDoesNotProvideIt(t *testing.T) {
+	dir := plant(t,
+		file{"a.protop", src("A", "b.protop")},
+		file{"one/b.protop/.keep", ""},
+		file{"two/b.protop", src("Two")},
+	)
+	res, bag, err := loadIn(t, dir, []string{"one", "two"}, []string{"a.protop"})
+	if err != nil {
+		t.Fatalf("a directory in the way of an import must not be an error: %v", err)
+	}
 	if got := codes(bag); len(got) != 0 {
-		t.Errorf("codes = %v, want none", got)
+		t.Fatalf("codes = %v, want none", got)
+	}
+	if got, want := res.Set["b.protop"].Source.Name, filepath.Join("two", "b.protop"); !strings.HasSuffix(got, want) {
+		t.Errorf("b.protop was opened from %q, want %q", got, want)
 	}
 }
 
@@ -515,27 +654,74 @@ func TestAnInputUnderNoRootKeepsItsOwnPath(t *testing.T) {
 // against the map keys, so a loader that keyed them differently would produce
 // PROTOP0107 for a file it had just opened. This is the seam M4 left and M6
 // fills, and nothing else in either suite crosses it.
+//
+// The invariant is not "the canonical spelling is in the set". It is that
+// *every* import string the loader resolved is, because the checker has no
+// other index: it holds the string the user wrote and looks it up, and the
+// loader is the only stage that knows the string it looked up is a file that
+// is already open.
 func TestTheSetTheLoaderBuildsIsTheSetTheCheckerReads(t *testing.T) {
-	dir := plant(t,
-		file{"schemas/nested/a.protop", src("A", "nested/b.protop")},
-		file{"schemas/nested/b.protop", src("B")},
-	)
-	res, bag, err := loadIn(t, dir, []string{"schemas"}, []string{"schemas/nested/a.protop"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	schema := check.Check(res.Set, bag)
-	if got := codes(bag); len(got) != 0 {
-		t.Fatalf("diagnostics %v", got)
-	}
-	if schema == nil || len(schema.Files) != 2 {
-		t.Fatalf("schema = %v, want two files", schema)
-	}
-	a := schema.File("nested/a.protop")
-	if a == nil {
-		t.Fatal("the checker does not know the file by the key the loader used")
-	}
-	if len(a.Imports) != 1 {
-		t.Errorf("a.protop has %d imports, want 1", len(a.Imports))
-	}
+	t.Run("one spelling", func(t *testing.T) {
+		dir := plant(t,
+			file{"schemas/nested/a.protop", src("A", "nested/b.protop")},
+			file{"schemas/nested/b.protop", src("B")},
+		)
+		res, bag, err := loadIn(t, dir, []string{"schemas"}, []string{"schemas/nested/a.protop"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		schema := check.Check(res.Set, bag)
+		if got := codes(bag); len(got) != 0 {
+			t.Fatalf("diagnostics %v", got)
+		}
+		if schema == nil || len(schema.Files) != 2 {
+			t.Fatalf("schema = %v, want two files", schema)
+		}
+		a := schema.File("nested/a.protop")
+		if a == nil {
+			t.Fatal("the checker does not know the file by the key the loader used")
+		}
+		if len(a.Imports) != 1 {
+			t.Errorf("a.protop has %d imports, want 1", len(a.Imports))
+		}
+	})
+
+	// Two spellings of one path, in two files of one compile. Each file alone
+	// loads and checks clean; the pair is what breaks a loader whose set only
+	// answers for the spelling that reached the file first. `./b.protop`
+	// resolves -- filepath.Join cleans it on the way to the disk -- and then
+	// `b.protop` resolves to the same file and finds it already open, and a
+	// loader that stops there has resolved an import it cannot hand over.
+	//
+	// Nothing here says `./b.protop` is a legal import string. Whether a
+	// non-canonical spelling should be rejected outright is a language
+	// question, unruled; what is ruled is that a *resolved* import is in the
+	// set, so that the answer to that question is never "PROTOP0107, for a
+	// file that is on disk and already loaded".
+	t.Run("two spellings of one path", func(t *testing.T) {
+		for _, alias := range []string{"./b.protop", "sub/../b.protop"} {
+			t.Run(alias, func(t *testing.T) {
+				dir := plant(t,
+					file{"s/a.protop", src("A", alias)},
+					file{"s/c.protop", src("C", "b.protop")},
+					file{"s/b.protop", src("B")},
+					file{"s/sub/.keep", ""},
+				)
+				res, bag, err := loadIn(t, dir, []string{"s"}, []string{"s/a.protop", "s/c.protop"})
+				if err != nil {
+					t.Fatal(err)
+				}
+				if got := codes(bag); len(got) != 0 {
+					t.Fatalf("the loader raised %v", got)
+				}
+				if _, ok := res.Set["b.protop"]; !ok {
+					t.Fatalf("%q resolved and %q did not reach the set: %v", alias, "b.protop", keys(res.Set))
+				}
+				check.Check(res.Set, bag)
+				if got := codes(bag); len(got) != 0 {
+					t.Fatalf("checking a set the loader built raised %v", got)
+				}
+			})
+		}
+	})
 }

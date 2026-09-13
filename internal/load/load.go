@@ -115,9 +115,10 @@ type loader struct {
 	queue []unit
 
 	// keyByPath is the same file reached twice -- once as an input and once as
-	// somebody's import, say. One file must be one entry in the set: two
-	// entries would be two files to the checker, and every declaration in it
-	// would be emitted twice under two names.
+	// somebody's import, say. One file must be one *unit*: reading and parsing
+	// it twice would make it two files to the checker, and every declaration in
+	// it would be emitted twice under two names. It may be in the set under
+	// more than one key, because two import strings may name it; see load.
 	keyByPath map[string]string
 
 	// nameByKey is the reverse, for the message when two different files claim
@@ -134,6 +135,35 @@ func (l *loader) load(path, key string) (string, error) {
 		return "", fmt.Errorf("%s: %w", path, err)
 	}
 	if had, ok := l.keyByPath[abs]; ok {
+		if had != key {
+			// One file, two import strings. `import "./b.protop"` and `import
+			// "b.protop"` are two keys -- the key is the import string as
+			// written, which is check.FileSet's contract and not this
+			// package's to change -- and both of them resolved, here, to this
+			// file. So both of them have to be in the set: the set is the
+			// whole of the checker's index, and a resolved import missing
+			// from it is PROTOP0107 raised against a file the loader has
+			// already opened and parsed.
+			//
+			// One unit under two keys, and not a second load: the file is
+			// read once and parsed once, so its *parse* diagnostics are raised
+			// once. Whether a non-canonical import string should be legal at
+			// all is a language question -- protoc rejects it, buf cleans it --
+			// and aliasing rules on neither. It says only that the loader
+			// answers for everything it resolved.
+			//
+			// What it does leave is a residue downstream: check.Check walks the
+			// set, so a file under two keys is declared twice and its *checker*
+			// diagnostics come out twice. Emission is not doubled -- every input
+			// is loaded before any import is followed, so a target's key is
+			// always the first one and an alias is never a target -- and the
+			// residue is a duplicated message, not a duplicated file. Collapsing
+			// it belongs wherever the canonicality question is answered: doing it
+			// here would mean picking one of the two keys as the real one, which
+			// is the ruling this fix exists not to take.
+			l.set[key] = l.set[had]
+			l.nameByKey[key] = path
+		}
 		return had, nil
 	}
 	if other, ok := l.nameByKey[key]; ok {
@@ -201,6 +231,15 @@ func (l *loader) follow(u unit) error {
 // search returns every include root that provides key, in the user's root
 // order. It returns paths rather than roots because the caller opens one of
 // them and reports the rest.
+//
+// An include root is a starting point here and not a boundary: filepath.Join
+// cleans, so `import "../secret/b.protop"` under `-I inc` resolves to
+// inc/../secret/b.protop, loads, keys as written, and the compile is clean.
+// Recorded rather than fixed. Whether a root fences the import graph is a
+// language question adjacent to #48 and #31 -- protoc rejects a `..` import
+// string outright at the syntax level, which is the same unruled question as
+// `./b.protop`, and a loader that started refusing paths would be answering it
+// -- so the behaviour stands and is written down instead.
 func (l *loader) search(key string) []string {
 	var found []string
 	seen := make(map[string]bool, len(l.roots))
@@ -210,8 +249,19 @@ func (l *loader) search(key string) []string {
 		if err != nil || !st.Mode().IsRegular() {
 			continue
 		}
-		// Two roots that are two spellings of one directory provide one file,
-		// not two, and that is not an ambiguity worth a diagnostic.
+		// Two roots that are two *lexical* spellings of one directory -- "inc",
+		// "inc/", and the absolute form of either -- provide one file, not two,
+		// and that is not an ambiguity worth a diagnostic.
+		//
+		// Lexical is the whole of it: this compares filepath.Abs, which does not
+		// touch the filesystem, so `-I real -I link` where link is a symlink to
+		// real is two paths here and raises a spurious PROTOP0108. Known, and
+		// left as it is. EvalSymlinks would resolve it, but it is a stat per
+		// root per import that can fail, on a machine where a root may be a
+		// network mount, and it would make which root "wins" depend on what the
+		// filesystem does rather than on what the user typed -- which is #48's
+		// question, not this function's. Narrowed to what the code does, so the
+		// gap is visible to whoever rules on it.
 		abs, err := filepath.Abs(path)
 		if err == nil {
 			if seen[abs] {
