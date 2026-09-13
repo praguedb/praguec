@@ -806,6 +806,111 @@ view SlimOuter of Outer {
 	}
 }
 
+// Every diagnostic about a view member, with a rename on the member that
+// earns it. Section 5 rules `SlimOdd odds as o;` in, and the risk a new
+// spelling brings is not that it fails -- it is that the checks the old
+// spellings answer to stop being asked when the new one is present. A rename
+// is a branch above all five of these, and each one of them would go silent
+// under a guard as small as `mw.view.As != nil` with the rest of the suite
+// green.
+//
+// The fixture is one set of declarations with the view's body substituted, so
+// that what differs between the cases is the member and nothing else.
+func TestAViewMemberDiagnosticSurvivesARename(t *testing.T) {
+	const decls = `revision 1;
+namespace A;
+record Inner {
+  int64 id = 1;
+}
+view SlimInner of Inner {
+  id;
+}
+record Other {
+  int64 y = 1;
+}
+view SlimOther of Other {
+  y;
+}
+record Plain {
+  int64 z = 1;
+}
+table Outer {
+  key int64 id = 1;
+  Inner odds = 7;
+  int64 other = 8;
+  Plain p = 9;
+}
+view V of Outer {
+`
+	for _, tc := range []struct {
+		name   string
+		member string
+		want   diag.Code
+	}{
+		// Two members under one name, one of them arriving at that name by
+		// narrowing and renaming at once.
+		{"a duplicate name", "  SlimInner odds as o;\n  other as o;\n", diag.DuplicateMember},
+		// A narrowing to a name that is nothing at all.
+		{"a narrowing to nothing", "  Nope odds as o;\n", diag.UnknownType},
+		// The diagnostic the design exists to produce, on a renamed member:
+		// the rename is what the consumer calls it, and calling it something
+		// does not make the source declare it.
+		{"a member the source does not declare", "  missing as o;\n", diag.NoSuchMember},
+		// A narrowing to a declaration that is not a view.
+		{"a narrowing to a record", "  Plain p as x;\n", diag.NarrowingNotAView},
+		// A narrowing to a view of something else entirely, which is the
+		// mistake the construct exists to catch.
+		{"a narrowing to a view of another type", "  SlimOther odds as o;\n", diag.NarrowingSourceMismatch},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			set, _, bag := checkSet(t, map[string]string{
+				"a.protop": decls + tc.member + "}\n",
+			})
+			assertCodes(t, set, bag, tc.want)
+		})
+	}
+}
+
+// A narrowing that was rejected leaves the member's type alone. The two halves
+// of PROTOP0314 are the message and the retyping that does not happen, and only
+// the first of them is visible to anything that gates on HasErrors -- protopc
+// does, so the driver's tests cannot see this and the CLI never would. A
+// narrowing that reported the mismatch and then applied it anyway would hand
+// the member a view of a declaration it has nothing to do with, which is the
+// whole of what the diagnostic says must not happen.
+func TestARejectedNarrowingLeavesTheMembersTypeAlone(t *testing.T) {
+	set, schema, bag := checkSet(t, map[string]string{
+		"a.protop": `revision 1;
+namespace A;
+record Inner {
+  int64 id = 1;
+}
+record Other {
+  int64 y = 1;
+}
+view SlimOther of Other {
+  y;
+}
+table Outer {
+  key int64 id = 1;
+  Inner odds = 7;
+}
+view V of Outer {
+  SlimOther odds as o;
+}
+`,
+	})
+	assertCodes(t, set, bag, diag.NarrowingSourceMismatch)
+
+	m := schema.File("a.protop").Decl("V").Member("o")
+	if m == nil {
+		t.Fatalf("the view has no member `o`:\n%s", dump(schema))
+	}
+	if got := typeString(m.Type); got != "record:Inner" {
+		t.Errorf("the member is %s after a rejected narrowing, want the record:Inner its source lends it", got)
+	}
+}
+
 // A view member that selects an alias keeps what the alias passes through to.
 // An alias is nothing but that passthrough -- it has no wire slot and no value
 // of its own -- so a view member that selects one and forgot its target is a
