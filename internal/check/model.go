@@ -304,6 +304,14 @@ type Type struct {
 //
 // A map's element is its value. Nothing reaches that yet: `map` is
 // PROTOP0900 at the parser, so a file containing one never gets here.
+//
+// Which is also why taking the last argument rather than the first is
+// untestable today. Every collection that arrives here is a `list`, which has
+// exactly one argument, so the two read the same value and no fixture can tell
+// them apart. It is written the right way round anyway, because the day `map`
+// lands the difference between its last argument and its first is the
+// difference between narrowing what the map holds and narrowing what it is
+// indexed by.
 func (t Type) Element() Type {
 	if t.Kind == TypeCollection && len(t.Args) > 0 {
 		return t.Args[len(t.Args)-1].Element()

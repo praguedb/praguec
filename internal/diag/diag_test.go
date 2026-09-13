@@ -164,9 +164,10 @@ func TestRenderOfAnEmptyLineIsTheHeadlineAlone(t *testing.T) {
 }
 
 // The severity is rendered, and a warning says so. Nothing in the repo raises
-// one today -- NotYetImplemented is the only Warnf caller and no test renders it
-// -- so Severity.String could return "error" for both and every golden would
-// still pass. The word is the only thing in the line that tells a reader whether
+// one today -- no production code calls Warnf at all, `map` included: the
+// parser reports NotYetImplemented with Errorf, which is what makes Check bail
+// on a file holding one -- so Severity.String could return "error" for both and
+// every golden would still pass. The word is the only thing in the line that tells a reader whether
 // the build stopped, and a warning that prints as an error is a build someone
 // goes looking for a reason to have failed.
 func TestRenderSaysWhichSeverityItIs(t *testing.T) {
