@@ -282,10 +282,28 @@ func (c *checker) resolveDecls(w *fileWork) {
 			c.resolveViewSource(w, dw)
 			continue
 		}
+		// Two passes over the body, and the order is the point. An alias takes
+		// its target's type by value, so every field has to have one before any
+		// alias is resolved -- otherwise `alias bet_type_id = id;` written
+		// *above* `int64 id = 3;` silently takes the zero type and emits a
+		// member with no type at all. Section 1 happens to write the alias
+		// below its target and the corpus writes it above, which is how this
+		// was found: corpus/prague/payloads/BPBetTypeCacheItem.cs opens with
+		// its alias.
+		//
+		// A composite key does not need the second pass -- its parts are
+		// members rather than copies of them, so a part resolved before its own
+		// type is filled in still sees the type later -- but it is in it
+		// anyway, because "everything that reads another member runs after
+		// everything that defines one" is a rule, and "aliases second, keys
+		// wherever" is a coincidence.
+		for _, mw := range dw.members {
+			if m, ok := mw.ast.(*syntax.Field); ok {
+				mw.member.Type = c.resolveType(w, m.Type)
+			}
+		}
 		for _, mw := range dw.members {
 			switch m := mw.ast.(type) {
-			case *syntax.Field:
-				mw.member.Type = c.resolveType(w, m.Type)
 			case *syntax.CompositeKey:
 				c.resolveKeyParts(w, dw, mw, m)
 			case *syntax.Alias:

@@ -796,6 +796,58 @@ view V of T {
 	})
 }
 
+// An alias takes its target's type by value, so the order the two are written
+// in must not matter. Section 1 writes the alias below its target and the
+// corpus writes it above -- corpus/prague/payloads/BPBetTypeCacheItem.cs opens
+// with `[IgnoreMember] public long BetTypeId` and declares `Id` twenty lines
+// later -- and a single source-order resolution pass gives the second of those
+// the zero Type, which reaches the backend as `public  BetTypeId` with no type
+// at all. That compiles nowhere and is diagnosed nothing, which is the worst
+// kind of bug for a compiler to have.
+func TestAnAliasResolvesItsTypeWhereverItsTargetIsWritten(t *testing.T) {
+	for _, tt := range []struct{ name, body string }{
+		{"below", "  int64 id = 1;\n  alias other = id;\n"},
+		{"above", "  alias other = id;\n  int64 id = 1;\n"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			schema := checkClean(t, map[string]string{
+				"a.protop": "revision 1;\nnamespace A;\ntable T {\n" + tt.body + "}\n",
+			})
+			m := schema.File("a.protop").Decl("T").Member("other")
+			if got := typeString(m.Type); got != "int64" {
+				t.Errorf("the alias has type %q, want int64", got)
+			}
+		})
+	}
+}
+
+// A composite key's parts are the members themselves rather than copies of
+// them, so a part named before its own field is declared still sees the type
+// once the field has one. That is a different mechanism from the alias above
+// and is pinned separately, because "both orders work" is true of each for its
+// own reason.
+func TestACompositeKeyPartResolvesWhereverItsFieldIsWritten(t *testing.T) {
+	for _, tt := range []struct{ name, body string }{
+		{"below", "  int64 a = 2;\n  int64 b = 3;\n  key k = 1 (a, b);\n"},
+		{"above", "  key k = 1 (a, b);\n  int64 a = 2;\n  int64 b = 3;\n"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			schema := checkClean(t, map[string]string{
+				"a.protop": "revision 1;\nnamespace A;\ntable T {\n" + tt.body + "}\n",
+			})
+			m := schema.File("a.protop").Decl("T").Member("k")
+			if len(m.Parts) != 2 {
+				t.Fatalf("the key has %d parts, want 2", len(m.Parts))
+			}
+			for _, p := range m.Parts {
+				if got := typeString(p.Type); got != "int64" {
+					t.Errorf("key part %s has type %q, want int64", p.Name, got)
+				}
+			}
+		})
+	}
+}
+
 // --- declarations ------------------------------------------------------------
 
 // An alias is a get and set passthrough and needs something to pass through to.
