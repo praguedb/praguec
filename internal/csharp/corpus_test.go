@@ -206,6 +206,65 @@ func exampleUnits(t *testing.T) map[string]Unit {
 	return out
 }
 
+// exampleReservations is the `reserved` lists of examples/prague, by
+// declaration name, as a set of retired tags.
+//
+// It reads the AST rather than the checked model, because `reserved` is not in
+// the checked model at all -- it names nothing and holds nothing, so the
+// checker records the ranges and drops them. That is the right shape for a
+// backend and the wrong shape for this one assertion, which is about what the
+// protop says rather than about what it emits.
+//
+// A view has no reserved list. A view selects, and a member it does not select
+// is not a retired tag: the source still owns it.
+func exampleReservations(t *testing.T) map[string]map[uint64]bool {
+	t.Helper()
+	ents, err := os.ReadDir(examplesDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	out := map[string]map[uint64]bool{}
+	for _, e := range ents {
+		if !strings.HasSuffix(e.Name(), ".protop") {
+			continue
+		}
+		b, err := os.ReadFile(filepath.Join(examplesDir, e.Name()))
+		if err != nil {
+			t.Fatal(err)
+		}
+		var bag diag.Bag
+		f := syntax.Parse(source.NewFile(e.Name(), string(b)), &bag)
+		for _, d := range f.Decls {
+			var name string
+			var members []syntax.Member
+			switch d := d.(type) {
+			case *syntax.Struct:
+				name, members = d.Name.Text, d.Members
+			case *syntax.Record:
+				name, members = d.Name.Text, d.Members
+			case *syntax.Table:
+				name, members = d.Name.Text, d.Members
+			default:
+				continue
+			}
+			tags := map[uint64]bool{}
+			for _, m := range members {
+				r, ok := m.(*syntax.Reserved)
+				if !ok {
+					continue
+				}
+				for _, rng := range r.Ranges {
+					for tag := rng.Lo.Value; tag <= rng.Hi.Value; tag++ {
+						tags[tag] = true
+					}
+				}
+			}
+			out[name] = tags
+		}
+	}
+	return out
+}
+
 func readCorpus(t *testing.T, path string) *csDecl {
 	t.Helper()
 	b, err := os.ReadFile(filepath.Join(corpusRoot, path))
@@ -429,6 +488,66 @@ func TestCorpusKeyOrder(t *testing.T) {
 					fmtInts(got.Keys()), fmtInts(trimmed))
 			}
 		})
+	}
+}
+
+// TestEveryMissingKeyIsReservedInTheProtop closes the coverage table's one
+// remaining silence.
+//
+// Every other assertion here is about emitted text, and `reserved` emits
+// nothing -- so deleting a tag from a `reserved` list changes no output and
+// fails nothing. What it does change is the language's cross-repo guarantee:
+// section 7 retires a tag where it was declared, and a tag that is not retired
+// is a tag the next member may take. Tag 51 of BPSportGameCacheItem is the
+// corpus's `DateTime? BetDataLastUpdateAt`; dropping it from the reserved list
+// leaves the slot free for a future field to silently collide with a member of
+// a running system.
+//
+// So: a key listed Missing must be reserved in the declaration that claims it.
+// Views are exempt, and the exemption is the definition of a view -- it selects
+// from its source, and not selecting is not retiring.
+func TestEveryMissingKeyIsReservedInTheProtop(t *testing.T) {
+	reserved := exampleReservations(t)
+	for _, r := range coverage {
+		if r.Decl == "" || len(r.Missing) == 0 {
+			continue
+		}
+		tags, isDecl := reserved[r.Decl]
+		if !isDecl {
+			continue // a view
+		}
+		for key, why := range r.Missing {
+			tag := uint64(key) + 1
+			if !tags[tag] {
+				t.Errorf("%s: key %d is listed Missing (%s) but tag %d is not reserved; the slot is free for the next member to take",
+					r.Decl, key, why, tag)
+			}
+		}
+	}
+}
+
+// The other direction: a reserved tag that is not listed Missing is a tag
+// retired for no recorded reason. `reserved` is cheap to write and the coverage
+// table is where the reason lives, so the two are held to each other -- a
+// reservation with no row is a gap nobody can look up.
+func TestEveryReservedTagIsListedMissing(t *testing.T) {
+	reserved := exampleReservations(t)
+	byDecl := map[string]corpusRow{}
+	for _, r := range coverage {
+		if r.Decl != "" {
+			byDecl[r.Decl] = r
+		}
+	}
+	for decl, tags := range reserved {
+		r, ok := byDecl[decl]
+		if !ok {
+			continue
+		}
+		for tag := range tags {
+			if _, listed := r.Missing[int(tag)-1]; !listed {
+				t.Errorf("%s reserves tag %d, and the coverage table gives no reason for it", decl, tag)
+			}
+		}
 	}
 }
 

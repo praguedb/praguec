@@ -50,12 +50,17 @@ func (d *csDecl) Keys() []int {
 }
 
 var (
-	reUsing    = regexp.MustCompile(`^using ([\w.]+);$`)
-	reNs       = regexp.MustCompile(`^namespace ([\w.]+);$`)
-	reAttr     = regexp.MustCompile(`^\[(.+)\]$`)
-	reKey      = regexp.MustCompile(`^\[Key\((\d+)\)\]$`)
-	reHead     = regexp.MustCompile(`^public [\w ]*(class|struct|enum|interface) (\w+)`)
-	reProperty = regexp.MustCompile(`^public (.+?) (\w+) \{ get; (?:get|set|init); \}(.*)$`)
+	reUsing = regexp.MustCompile(`^using ([\w.]+);$`)
+	reNs    = regexp.MustCompile(`^namespace ([\w.]+);$`)
+	reAttr  = regexp.MustCompile(`^\[(.+)\]$`)
+	reKey   = regexp.MustCompile(`^\[Key\((\d+)\)\]$`)
+	reHead  = regexp.MustCompile(`^public [\w ]*(class|struct|enum|interface) (\w+)`)
+	// `{ get; set; }` only. An `init` accessor is rewritten to `set` a few
+	// lines above, with its site recorded; letting this regex accept `init`
+	// too would normalise it a second time and silently, which is one rule in
+	// two places and a site that stops being counted the day the explicit
+	// replacement is removed.
+	reProperty = regexp.MustCompile(`^public (.+?) (\w+) \{ get; set; \}(.*)$`)
 	reTuple    = regexp.MustCompile(`^public (\(.+\)) (\w+) => (.+);$`)
 	reBare     = regexp.MustCompile(`^public ([\w.<>?\[\], ]+) (\w+)$`)
 	reComputed = regexp.MustCompile(`^public ([\w.<>?\[\], ]+) (\w+) => (.+);$`)
@@ -187,7 +192,7 @@ func readMember(name string, lines []string, i int, id string, attrs []string, d
 		if id == "" {
 			return "", "", 0, fmt.Errorf("%s: member %q has no [Key]", name, m[2])
 		}
-		return fmt.Sprintf("public %s %s { get; set; }", m[1], m[2]), memberID(id, m[2]), 1, nil
+		return attrsJoin(attrs, fmt.Sprintf("public %s %s { get; set; }", m[1], m[2])), memberID(id, m[2]), 1, nil
 	}
 	if m := reTuple.FindStringSubmatch(s); m != nil {
 		if id == "" {

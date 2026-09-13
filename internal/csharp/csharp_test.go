@@ -189,6 +189,124 @@ func TestOwnNamespaceIsNeverAUsing(t *testing.T) {
 	assertGoldens(t, "messagepack", emitFixtures(t, "messagepack.protop"))
 }
 
+// Emit returns units in the schema's own order: file order, then source order
+// within a file. Nothing downstream of a backend sorts them, and #25 is going
+// to build file names out of these, so an emission whose order depends on a map
+// iteration would give a generator a different diff on every run for no change
+// at all. The goldens cannot see this -- assertGoldens keys by declaration name
+// -- so it is pinned here.
+func TestEmitKeepsTheSchemasOrder(t *testing.T) {
+	schema := schemaOf(t, map[string]string{
+		"a.protop": `revision 1;
+namespace A;
+struct First { int64 a = 1; }
+struct Second { int64 a = 1; }
+struct Third { int64 a = 1; }
+`,
+	})
+	var got []string
+	for _, u := range Emit(schema) {
+		got = append(got, u.TypeName)
+	}
+	want := []string{"First", "Second", "Third"}
+	if strings.Join(got, ",") != strings.Join(want, ",") {
+		t.Errorf("Emit returned %v, want %v -- source order, not any other order", got, want)
+	}
+}
+
+// Section 3 gives every member one annotation position, and "every member"
+// includes the two that are not fields. The corpus cannot check this: it never
+// annotates a composite key -- all five of its keys carry `[DataCacheKey]` and
+// nothing else -- so the passthrough on that branch has no oracle and is pinned
+// here instead.
+//
+// The three branches of writeMember each copy annotations with their own line
+// of code, which is three places for one rule to be forgotten in. This asserts
+// on all three at once for that reason.
+func TestEveryMemberKindCarriesItsAnnotations(t *testing.T) {
+	units := emitSource(t, map[string]string{
+		"a.protop": `revision 1;
+namespace A;
+table T {
+  int64 event_id = 2 [cs: OnAField];
+  int64 id       = 3;
+  alias other    = id [cs: OnAnAlias];
+  key k = 1 (event_id, other) [cs: OnACompositeKey];
+}
+`,
+	})
+	src := units[0].Source
+	for _, want := range []string{"[OnAField]", "[OnAnAlias]", "[OnACompositeKey]"} {
+		if !strings.Contains(src, want) {
+			t.Errorf("the emission does not carry %s:\n%s", want, src)
+		}
+	}
+}
+
+// A Unit points back at the declaration it came from. Namespace and TypeName
+// are convenience copies; Decl is the model, and #25 is going to need it to
+// decide what a file is called and where it goes. An emission that forgot it
+// would pass every text comparison in this package.
+func TestEveryUnitCarriesItsDeclaration(t *testing.T) {
+	schema := schemaOf(t, map[string]string{
+		"a.protop": `revision 1;
+namespace A;
+struct S { int64 a = 1; }
+enum E { UNKNOWN = 0; }
+`,
+	})
+	for _, u := range Emit(schema) {
+		if u.Decl == nil {
+			t.Errorf("%s emitted a Unit with no Decl", u.TypeName)
+			continue
+		}
+		if u.Decl.Name != u.TypeName {
+			t.Errorf("Unit %q carries Decl %q", u.TypeName, u.Decl.Name)
+		}
+		if u.Decl.File.Namespace != u.Namespace {
+			t.Errorf("Unit %q has namespace %q and its Decl has %q", u.TypeName, u.Namespace, u.Decl.File.Namespace)
+		}
+	}
+}
+
+// The emitter's three defensive branches, called directly.
+//
+// None is reachable from a schema: a backend runs only on a bag with no
+// errors, and each of these states is an error the checker has already
+// reported -- an unresolved view source is PROTOP0205, an unresolved alias
+// target and an unresolved type name are diagnosed the same way. They exist so
+// the functions are total rather than to describe a real case, and they are
+// pinned because a branch nobody exercises is a branch nobody notices going
+// wrong -- a missing nil guard here is a compiler panic on input the compiler
+// had already rejected, which is the worst possible way to report a known
+// error.
+func TestTheEmittersTotalityGuards(t *testing.T) {
+	if got := aliasTarget(&check.Member{Name: "other"}); got != "" {
+		t.Errorf("aliasTarget(unresolved) = %q, want the empty string; anything else names a member that is not there", got)
+	}
+	if got := typeNamespaces(check.Type{Kind: check.TypeDecl}); len(got) != 0 {
+		t.Errorf("typeNamespaces(unresolved decl type) = %v, want none", got)
+	}
+	if got := typeNamespaces(check.Type{Kind: check.TypeDecl, Decl: &check.Decl{}}); len(got) != 0 {
+		t.Errorf("typeNamespaces(decl with no file) = %v, want none", got)
+	}
+}
+
+// modifiers is total: a view whose source did not resolve still returns a
+// shape. No schema reaches a backend in that state -- an unresolved view source
+// is PROTOP0205, an error, and bag.HasErrors stops emission -- so no fixture
+// can produce it and the branch is called directly.
+//
+// A defensive branch nobody exercises is a branch nobody notices going wrong.
+// What it returns is the table shape, because a view of nothing is still a view
+// and `sealed partial` is the shape that has a hand-written half to fall back
+// on.
+func TestAViewWithNoSourceStillHasAShape(t *testing.T) {
+	if got := modifiers(&check.Decl{Kind: check.DeclView}); got != "public sealed partial class" {
+		t.Errorf("modifiers(view with no source) = %q, want the table shape", got)
+	}
+}
+
 // --- the rows, pinned as facts rather than as text ---------------------------
 
 // TestScalarRowsAreClosed is the guard the whole mapping table hangs on.
@@ -307,11 +425,40 @@ func TestPascalIsOneRuleForMembersAndEnumArms(t *testing.T) {
 		{"UNKNOWN", "Unknown"},
 		{"t", "T"},
 		{"events_hub_received_timestamp_ms", "EventsHubReceivedTimestampMs"},
+
+		// Empty parts vanish rather than becoming empty parts of the output.
+		// No corpus name and no spec name has a doubled or edge underscore, so
+		// these are here precisely because nothing else reaches them -- a rule
+		// checked only where its input is well-formed is a rule with an
+		// unchecked half.
+		{"a__b", "AB"},
+		{"_leading", "Leading"},
+		{"trailing_", "Trailing"},
+		{"_", ""},
+		{"", ""},
 	}
 	for _, c := range cases {
 		if got := pascal(c.in); got != c.want {
 			t.Errorf("pascal(%q) = %q, want %q", c.in, got, c.want)
 		}
+	}
+}
+
+// The scalar fallback: a protop scalar with no row in csScalars emits the
+// protop keyword, so the generated C# fails at the C# compiler rather than
+// emitting a member with no type at all.
+//
+// Nothing can reach it today -- csScalars and syntax.scalarTypes hold the same
+// six keywords, which TestScalarRowsAreClosed pins -- so the branch is called
+// directly with the one scalar #32 is actually about. If #32 rules that the set
+// widens, this test is the thing that says what the half-widened state does.
+func TestAScalarWithNoRowEmitsItsProtopKeyword(t *testing.T) {
+	got := TypeName(check.Type{Kind: check.TypeScalar, Name: "byte"})
+	if got != "byte" {
+		t.Errorf("TypeName(unmapped scalar) = %q, want the protop keyword back", got)
+	}
+	if got == "" {
+		t.Error("an empty type name emits `public  Name`, which compiles nowhere and is diagnosed nothing")
 	}
 }
 
