@@ -2700,6 +2700,36 @@ func TestANarrowedViewMemberMayAlsoBeRenamed(t *testing.T) {
 	assertDump(t, file, "revision 1\nnamespace A\nview V of T\n  SlimOdd odds as o\n")
 }
 
+// The same two diagnostics this file already reports on a view member, with a
+// rename on the member that earns them. A rename is the last thing read before
+// either check runs -- the `= 3` is looked for after it, and the narrowing is
+// checked with the parser already sitting on the `as` -- so both are one
+// condition away from being asked only when no rename is present. Section 5
+// rules the combination in; it does not exempt it from anything.
+func TestAViewMemberDiagnosticSurvivesARename(t *testing.T) {
+	// A tag is a tag whatever the member is called. Gating the `=` on the
+	// absence of a rename reports a missing `;` instead, and the milestone's
+	// best-worded diagnostic never gets said.
+	f, _, bag := parse(t, "revision 1;\nnamespace A;\nview V of T {\n  SlimOdd odds as o = 3;\n}\n")
+	if bag.Len() != 1 || bag.All()[0].Code != diag.TagInViewMember {
+		t.Fatalf("got %d diagnostics, want one TagInViewMember:\n%s", bag.Len(), diag.RenderAll(f, bag))
+	}
+	if got := f.Slice(bag.All()[0].Span); got != "=" {
+		t.Errorf("the diagnostic underlines %q, want the tag's `=`", got)
+	}
+
+	// And a scalar in the narrowing position is a scalar whatever the member
+	// is called. The rename is read after the narrowing and says nothing about
+	// what the leading word is allowed to be.
+	f, _, bag = parse(t, "revision 1;\nnamespace A;\nview V of T {\n  int64 odds as o;\n}\n")
+	if bag.Len() != 1 || bag.All()[0].Code != diag.ScalarInViewMember {
+		t.Fatalf("got %d diagnostics, want one ScalarInViewMember:\n%s", bag.Len(), diag.RenderAll(f, bag))
+	}
+	if got := f.Slice(bag.All()[0].Span); got != "int64" {
+		t.Errorf("the diagnostic underlines %q, want the scalar in the narrowing position", got)
+	}
+}
+
 // A view member's name carries the span of the name itself, on both the plain
 // and the narrowed path. That is the span the next stage underlines for "no
 // such member `odds` on `SportGame`", and a resolver has no other way to point
