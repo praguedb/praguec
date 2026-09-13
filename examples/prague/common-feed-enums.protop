@@ -1,0 +1,25 @@
+revision 1;
+
+// CommonFeedModels.Enums holds the feed's own enums.
+//
+// Every one of them is declared here with no arms. That is not an oversight and
+// it is not a stub: corpus/prague/SOURCE.md lists the enum declarations among
+// the types deliberately not copied, so the corpus carries every *use* of these
+// names and not one of their definitions. Inventing arms would put numbers on
+// the wire that nothing checks -- and the numbers are the whole of an enum's
+// wire contract. What these declarations exist for is to make the names
+// resolve, so that the members that use them carry a type and the files that
+// use them carry a using.
+namespace CommonFeedModels.Enums;
+
+enum BetTypeStatus {
+}
+
+enum OddStatus {
+}
+
+enum WinStatus {
+}
+
+enum WatchDogAction {
+}

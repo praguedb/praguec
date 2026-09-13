@@ -1,0 +1,23 @@
+revision 1;
+
+// Common.IntegratedEventApi.Models.Enums, the other half of the corpus's enums.
+//
+// Which of the two enum namespaces holds which name is not derivable from the
+// corpus: the corpus gives, per file, a set of usings and a set of type names,
+// and several assignments satisfy every file at once. This one does. What the
+// golden harness checks is therefore the *derivation* -- that a file's usings
+// are exactly the namespaces of the types it names, deduplicated and without
+// its own -- and not the assignment, which is under-determined and said so
+// here rather than left to look like a measurement.
+//
+// Arms are absent for the reason given in common-feed-enums.protop.
+namespace Common.IntegratedEventApi.Models.Enums;
+
+enum EventStatus {
+}
+
+enum BookingStatus {
+}
+
+enum Channel {
+}
