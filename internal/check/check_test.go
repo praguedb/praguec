@@ -827,6 +827,130 @@ func TestACompositeKeysPartsNameMembersOfItsDeclaration(t *testing.T) {
 	}
 }
 
+// An alias cannot pass through to itself. Accepting one would put a member in
+// the model pointing at the member it is, and every reader that follows an
+// alias to the field behind it follows this one forever.
+func TestAnAliasCannotNameItself(t *testing.T) {
+	set, _, bag := checkSet(t, map[string]string{
+		"a.protop": "revision 1;\nnamespace A;\ntable T {\n  key int64 id = 1;\n  alias x = x;\n}\n",
+	})
+	assertCodes(t, set, bag, diag.AliasTargetNotFound)
+	assertAt(t, set, bag, 0, "a.protop:5:13", "x")
+}
+
+// An alias takes its target's type only when the target is a field, because a
+// field is the only member that has one to lend. An alias of an alias is legal
+// and is left without a type: following the chain would be the checker deciding
+// what a construct the spec says nothing about means, and taking the type
+// anyway would copy whatever the target's zero value happened to be.
+func TestAnAliasOfAnAliasTakesNoType(t *testing.T) {
+	schema := checkClean(t, map[string]string{
+		"a.protop": `revision 1;
+namespace A;
+table T {
+  key int64 id = 1;
+  alias first = id;
+  alias second = first;
+}
+`,
+	})
+	d := schema.File("a.protop").Decl("T")
+	if got := typeString(d.Member("first").Type); got != "int64" {
+		t.Errorf("the alias of a field is %s, want the int64 the field lends it", got)
+	}
+	if got := typeString(d.Member("second").Type); got != "?" {
+		t.Errorf("the alias of an alias is %s, want it left unresolved: only a field lends a type", got)
+	}
+	if d.Member("second").Aliased != d.Member("first") {
+		t.Error("the alias of an alias does not point at the alias it names")
+	}
+}
+
+// A composite key's part cannot be the key itself. The parts are what the
+// identity is made of and the key is what they make, so a key naming itself is
+// an identity derived from its own derivation -- and cardinality, which
+// compares a foreign key against the parts, would be reading off that cycle.
+func TestACompositeKeyCannotNameItselfAsAPart(t *testing.T) {
+	set, _, bag := checkSet(t, map[string]string{
+		"a.protop": "revision 1;\nnamespace A;\ntable T {\n  key key = 1 (key, b);\n  int64 b = 2;\n}\n",
+	})
+	assertCodes(t, set, bag, diag.CompositeKeyPartNotFound)
+	assertAt(t, set, bag, 0, "a.protop:4:16", "key")
+}
+
+// A message that says where a declaration is says where the declaration begins,
+// keyword and all, rather than where its name happens to sit. The position is
+// printed inside the message text and not at the caret, so nothing about the
+// diagnostic's own span moves when this one does.
+func TestAMessageQuotesADeclarationAtItsKeyword(t *testing.T) {
+	t.Run("a duplicate declaration", func(t *testing.T) {
+		set, _, bag := checkSet(t, map[string]string{
+			"a.protop": "revision 1;\nnamespace A;\nstruct S {\n  int64 x = 1;\n}\nrecord S {\n  int64 y = 1;\n}\n",
+		})
+		assertCodes(t, set, bag, diag.DuplicateDeclaration)
+		assertMessageMentions(t, bag, 0, "a.protop:3:1")
+	})
+	t.Run("a view member naming nothing its source declares", func(t *testing.T) {
+		set, _, bag := checkSet(t, map[string]string{
+			"a.protop": "revision 1;\nnamespace A;\ntable T {\n  key int64 id = 1;\n}\nview V of T {\n  gone;\n}\n",
+		})
+		assertCodes(t, set, bag, diag.NoSuchMember)
+		assertMessageMentions(t, bag, 0, "a.protop:3:1")
+	})
+}
+
+// Every shape that can carry an annotation carries it into the model. protopc
+// does not know what a backend's annotation means and is not entitled to an
+// opinion, so dropping one is not the cautious choice: it is the generated code
+// silently losing an attribute, which nobody notices until the backend that
+// reads it ships.
+func TestAnnotationsAreCarriedOnEveryShapeThatHoldsThem(t *testing.T) {
+	schema := checkClean(t, map[string]string{
+		"a.protop": `revision 1;
+namespace A;
+struct S [cs: OnStruct] {
+  int64 x = 1;
+}
+record R [cs: OnRecord] {
+  int64 x = 1;
+}
+table T [cs: OnTable] {
+  key key = 1 (part) [cs: OnKey];
+  int64 part = 2 [cs: OnField];
+  alias other = part [cs: OnAlias];
+}
+view V of T [cs: OnView] {
+  part [cs: OnViewMember];
+}
+`,
+	})
+	f := schema.File("a.protop")
+
+	decls := []struct{ decl, want string }{
+		{"S", "OnStruct"},
+		{"R", "OnRecord"},
+		{"T", "OnTable"},
+		{"V", "OnView"},
+	}
+	for _, tt := range decls {
+		t.Run(tt.decl, func(t *testing.T) {
+			assertAnnotation(t, f.Decl(tt.decl).Annotations, tt.want)
+		})
+	}
+
+	members := []struct{ decl, member, want string }{
+		{"T", "key", "OnKey"},
+		{"T", "part", "OnField"},
+		{"T", "other", "OnAlias"},
+		{"V", "part", "OnViewMember"},
+	}
+	for _, tt := range members {
+		t.Run(tt.decl+"."+tt.member, func(t *testing.T) {
+			assertAnnotation(t, f.Decl(tt.decl).Member(tt.member).Annotations, tt.want)
+		})
+	}
+}
+
 // --- relations ---------------------------------------------------------------
 
 // `references(T)` names a table. A record has no identity, so there is nothing
@@ -1076,6 +1200,30 @@ func assertAt(t *testing.T, set FileSet, bag *diag.Bag, i int, wantPos, wantText
 	}
 	if got := d.File.Slice(d.Span); got != wantText {
 		t.Errorf("diagnostic %d underlines %q, want %q", i, got, wantText)
+	}
+}
+
+// assertMessageMentions holds a diagnostic's message text against something it
+// has to name. What a message says is not the diagnostic's own span, so assertAt
+// cannot see it and a position printed inside one can move with nothing noticing.
+func assertMessageMentions(t *testing.T, bag *diag.Bag, i int, want string) {
+	t.Helper()
+	if msg := bag.All()[i].Message; !strings.Contains(msg, want) {
+		t.Errorf("diagnostic %d reads:\n%s\nwant it to name %s", i, msg, want)
+	}
+}
+
+// assertAnnotation holds what a declaration or a member carries against the one
+// annotation it was written with. The text is the whole of what a backend
+// reads, so the assertion is that the text arrived and not merely that
+// something did.
+func assertAnnotation(t *testing.T, anns []*syntax.Annotation, want string) {
+	t.Helper()
+	if len(anns) != 1 {
+		t.Fatalf("%d annotations carried, want the one that was written", len(anns))
+	}
+	if got := anns[0].Text; got != want {
+		t.Errorf("annotation reads %q, want %q", got, want)
 	}
 }
 
