@@ -629,6 +629,83 @@ func TestNormalisationSitesAreEnumerated(t *testing.T) {
 	}
 }
 
+// TestMemberAttributesAreEnumerated holds the member-level attribute surface
+// against a checked-in census, for the same reason the normalisation sites are
+// held against one.
+//
+// TestCorpusMembers compares attributes only as part of a member's canonical
+// text, and that text is built by attrsJoin on both sides of the comparison. An
+// attrsJoin that returned the body alone therefore agrees with itself: 11
+// `[DataCacheKey]` sites, 29 `[DataCacheIndex...]`, the two `[JsonIgnore]` and
+// every future `[cs: ...]` passthrough stop being compared at all, and no test
+// in this package says a word. The census is read back out of the joined text
+// for exactly that reason -- it is empty the moment the join stops carrying
+// them.
+//
+// `[Key(N)]` and `[IgnoreMember]` are not in the list: the reader takes those
+// as the member's identity and TestCorpusMembers compares them as the key and
+// the `alias:` id. The one attribute missing from the census that the corpus
+// does write on a member is the `[DataCacheIndex]` on
+// payloads/BOSportGameCacheItem.cs:61 -- it sits on the computed
+// `FixtureIdIndex`, which the reader skips on both sides and records as
+// `computed:FixtureIdIndex` above.
+func TestMemberAttributesAreEnumerated(t *testing.T) {
+	want := []string{
+		// protop's `key` is the only thing that produces a [DataCacheKey], and
+		// the 11 sites are the census types.go quotes: 11 of the 14 payload
+		// types have a key, on a field in seven of them and on the composite in
+		// four.
+		"DataCacheKey on EventId", "DataCacheKey on EventId", "DataCacheKey on EventId",
+		"DataCacheKey on EventId", "DataCacheKey on EventId",
+		"DataCacheKey on Id", "DataCacheKey on Id",
+		"DataCacheKey on Key", "DataCacheKey on Key", "DataCacheKey on Key", "DataCacheKey on Key",
+
+		// The index attributes, which protopc never derives and only ever
+		// copies: dropping `index` from the language moved these into the
+		// annotation passthrough, and this list is what that passthrough is
+		// carrying today.
+		"DataCacheIndex on BetTypeId",
+		"DataCacheIndex on BookingStatus",
+		"DataCacheIndex on ChannelId", "DataCacheIndex on ChannelId",
+		"DataCacheIndex on CountryId",
+		"DataCacheIndex on EventId", "DataCacheIndex on EventId", "DataCacheIndex on EventId",
+		"DataCacheIndex on EventId", "DataCacheIndex on EventId",
+		"DataCacheIndex on EventStatus", "DataCacheIndex on EventStatus", "DataCacheIndex on EventStatus",
+		"DataCacheIndex on EventTypeId",
+		"DataCacheIndex on IsLive", "DataCacheIndex on IsLive",
+		"DataCacheIndex on LeagueId",
+		"DataCacheIndex on SportTypeId",
+		"DataCacheIndex on Status",
+		"DataCacheIndex on WatchDogAction", "DataCacheIndex on WatchDogAction", "DataCacheIndex on WatchDogAction",
+		"DataCacheIndex(DataCacheIndexType.Range) on EventDate",
+		"DataCacheIndex(DataCacheIndexType.Range) on EventDate",
+		"DataCacheIndex(DataCacheIndexType.Range) on EventDate",
+		"DataCacheIndex(DataCacheIndexType.Range) on InternalTimestamp",
+		"DataCacheIndex(DataCacheIndexType.Range) on ProviderTimestamp",
+		"DataCacheIndex(DataCacheIndexType.Range) on ProviderTimestamp",
+		"DataCacheIndex(DataCacheIndexType.Range) on Timestamp",
+		"DataCacheFromTimestamp on Timestamp",
+
+		// The two aliases that are also hidden from System.Text.Json, and the
+		// only member attribute in the corpus that belongs to neither
+		// MessagePack nor the cache generator.
+		"JsonIgnore on BetTypeId", "JsonIgnore on BetTypeId",
+	}
+	var got []string
+	for _, r := range coverage {
+		if r.Decl == "" {
+			continue
+		}
+		got = append(got, readCorpus(t, r.Path).MemberAttrs...)
+	}
+	sort.Strings(got)
+	sort.Strings(want)
+	if strings.Join(got, "\n") != strings.Join(want, "\n") {
+		t.Errorf("the member attributes being compared changed.\nnot in the list: %v\nno longer compared: %v",
+			missingFrom(got, want), missingFrom(want, got))
+	}
+}
+
 // --- the census ---------------------------------------------------------------
 
 // TestCorpusCensus pins the counts the provisional rows of the mapping table

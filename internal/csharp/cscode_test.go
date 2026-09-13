@@ -7,6 +7,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"testing"
 )
 
 // A very small C# reader, used on both sides of every corpus comparison.
@@ -36,6 +37,31 @@ type csDecl struct {
 
 	// Sites are the normalisations that fired, as "<what>:<member>".
 	Sites []string
+
+	// MemberAttrs are the member-level attributes that survived into the
+	// canonical text, as "<attr> on <member>". `[Key(N)]` and `[IgnoreMember]`
+	// are not here: they are read as the member's identity above and compared
+	// as such. What is left is the passthrough surface -- `[DataCacheKey]`,
+	// `[DataCacheIndex(...)]`, `[JsonIgnore]` -- which TestCorpusMembers
+	// compares only as part of a member's text, so a comparison that stopped
+	// carrying attributes at all would agree on both sides and say nothing.
+	// TestMemberAttributesAreEnumerated holds this against a checked-in census
+	// for that reason.
+	MemberAttrs []string
+}
+
+// noteAttrs records the attributes of one canonical member.
+//
+// It reads them back out of the text attrsJoin produced rather than off the
+// list that went in, so that an attrsJoin which returned the body alone empties
+// this census instead of quietly dropping 11 `[DataCacheKey]` sites on both
+// sides of every comparison.
+func (d *csDecl) noteAttrs(body, member string) {
+	for _, ln := range strings.Split(body, "\n") {
+		if m := reAttr.FindStringSubmatch(ln); m != nil {
+			d.MemberAttrs = append(d.MemberAttrs, m[1]+" on "+member)
+		}
+	}
 }
 
 // Keys are the member ids that are wire slots, as integers, in source order.
@@ -192,13 +218,17 @@ func readMember(name string, lines []string, i int, id string, attrs []string, d
 		if id == "" {
 			return "", "", 0, fmt.Errorf("%s: member %q has no [Key]", name, m[2])
 		}
-		return attrsJoin(attrs, fmt.Sprintf("public %s %s { get; set; }", m[1], m[2])), memberID(id, m[2]), 1, nil
+		body := attrsJoin(attrs, fmt.Sprintf("public %s %s { get; set; }", m[1], m[2]))
+		d.noteAttrs(body, m[2])
+		return body, memberID(id, m[2]), 1, nil
 	}
 	if m := reTuple.FindStringSubmatch(s); m != nil {
 		if id == "" {
 			return "", "", 0, fmt.Errorf("%s: member %q has no [Key]", name, m[2])
 		}
-		return attrsJoin(attrs, fmt.Sprintf("public %s %s => %s;", m[1], m[2], m[3])), memberID(id, m[2]), 1, nil
+		body := attrsJoin(attrs, fmt.Sprintf("public %s %s => %s;", m[1], m[2], m[3]))
+		d.noteAttrs(body, m[2])
+		return body, memberID(id, m[2]), 1, nil
 	}
 	// N-computed: an expression-bodied member with no wire slot is a computed
 	// member, and section 5 puts those in the hand-written partial half. One
@@ -219,8 +249,9 @@ func readMember(name string, lines []string, i int, id string, attrs []string, d
 	if m := reBare.FindStringSubmatch(s); m != nil && i+4 < len(lines) && lines[i+1] == "{" {
 		get := strings.TrimSpace(lines[i+2])
 		set := strings.TrimSpace(lines[i+3])
-		return attrsJoin(attrs, fmt.Sprintf("public %s %s { %s %s }", m[1], m[2], get, set)),
-			memberID(id, m[2]), 5, nil
+		body := attrsJoin(attrs, fmt.Sprintf("public %s %s { %s %s }", m[1], m[2], get, set))
+		d.noteAttrs(body, m[2])
+		return body, memberID(id, m[2]), 5, nil
 	}
 	return "", "", 0, fmt.Errorf("%s:%d: unrecognised member %q", name, i, s)
 }
@@ -302,4 +333,147 @@ func missingFrom(want, got []string) []string {
 	}
 	sort.Strings(out)
 	return out
+}
+
+// --- the reader, held against itself -------------------------------------------
+//
+// Everything above is harness rather than product, and a harness is where a
+// defect hides best: a reader that silently reads nothing makes every
+// comparison in corpus_test.go pass. These are the assertions that keep the
+// reader from being able to agree with the corpus by saying less about it.
+
+// missingFrom is a multiset difference and its own comment argues why. A set
+// difference passes every corpus test in this package -- and so does returning
+// nil unconditionally, which switches both using-assertions in TestCorpusHeaders
+// off at once. Both are pinned here because neither is visible anywhere else.
+func TestMissingFromIsAMultisetDifference(t *testing.T) {
+	for _, c := range []struct {
+		what      string
+		want, got []string
+		missing   []string
+		whyItPins string
+	}{
+		{
+			what:      "a second occurrence is a second element",
+			want:      []string{"a", "a", "b"},
+			got:       []string{"a", "b"},
+			missing:   []string{"a"},
+			whyItPins: "a set difference reports nothing here, and a normalisation site that starts firing one extra time is exactly what this is for",
+		},
+		{
+			what:      "nothing on the other side is everything missing",
+			want:      []string{"a"},
+			got:       nil,
+			missing:   []string{"a"},
+			whyItPins: "a missingFrom that returns nil reports no missing using, no extra using and no corpus-file disagreement",
+		},
+		{
+			what:      "a matched element is consumed once",
+			want:      []string{"a", "a"},
+			got:       []string{"a", "a"},
+			missing:   nil,
+			whyItPins: "counting rather than matching would report the second `a` against itself",
+		},
+		{
+			what:      "the result is sorted, since both callers compare it by eye",
+			want:      []string{"c", "b", "a"},
+			got:       nil,
+			missing:   []string{"a", "b", "c"},
+			whyItPins: "an unsorted diff reads as a different diff on every run",
+		},
+	} {
+		t.Run(c.what, func(t *testing.T) {
+			got := missingFrom(c.want, c.got)
+			if strings.Join(got, ",") != strings.Join(c.missing, ",") {
+				t.Errorf("missingFrom(%v, %v) = %v, want %v (%s)", c.want, c.got, got, c.missing, c.whyItPins)
+			}
+		})
+	}
+}
+
+// The duplicate-member guard. Two members at one key is a corpus file the
+// reader cannot represent -- Members is keyed by id, so the second overwrites
+// the first and Order lists it twice -- and half-reading it quietly is the one
+// failure mode a structural reader must not have.
+func TestReadCSRejectsTwoMembersAtOneKey(t *testing.T) {
+	_, err := readCS("dup.cs", `namespace N;
+
+[MessagePackObject]
+public sealed partial class T
+{
+    [Key(0)]
+    public long Id { get; set; }
+
+    [Key(0)]
+    public string Name { get; set; }
+}
+`)
+	if err == nil {
+		t.Fatal("readCS accepted two members at key 0; the second silently replaces the first and the file is half-read")
+	}
+	if !strings.Contains(err.Error(), "twice") {
+		t.Errorf("readCS error = %v, want it to name the duplicate", err)
+	}
+}
+
+// The alias block, read as one canonical line.
+//
+// The five-line shape is the only member the reader assembles from more than
+// one line, and it is assembled positionally: the accessor bodies are lines i+2
+// and i+3 with no regex to say which is which. So blanking them reads every
+// alias in the corpus as the same empty passthrough, and swapping them reads
+// `get => Id; set => Id = value;` as `set => Id = value; get => Id;` -- which is
+// still a get and a set, still matches the corpus after the same swap is applied
+// to it, and is the half of an emitter that writes `get => BetTypeId;` into
+// BetTypeId's own body. Neither is visible from a corpus comparison, so the
+// canonical text is written out here.
+func TestReadCSReadsAnAliasAsAPassthrough(t *testing.T) {
+	d, err := readCS("alias.cs", `namespace N;
+
+[MessagePackObject]
+public sealed partial class T
+{
+    [IgnoreMember]
+    [JsonIgnore]
+    public long BetTypeId
+    {
+        get => Id;
+        set => Id = value;
+    }
+
+    [Key(0)]
+    public long Id { get; set; }
+}
+`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := strings.Join(d.Order, ","), "alias:BetTypeId,0"; got != want {
+		t.Fatalf("members = %s, want %s -- an alias has no wire slot and is keyed by name", got, want)
+	}
+	const want = "[JsonIgnore]\npublic long BetTypeId { get => Id; set => Id = value; }"
+	if got := d.Members["alias:BetTypeId"]; got != want {
+		t.Errorf("the alias reads as\n%s\nwant\n%s", got, want)
+	}
+}
+
+// attrsJoin is what puts a member's attributes into the text that gets
+// compared, and it runs on both sides -- so dropping them is invisible from any
+// corpus assertion, and takes `[DataCacheKey]`, `[DataCacheIndex(...)]` and
+// every `[cs: ...]` passthrough with it.
+func TestAttrsJoinKeepsEveryAttribute(t *testing.T) {
+	const body = "public long Id { get; set; }"
+	for _, c := range []struct {
+		attrs []string
+		want  string
+	}{
+		{nil, body},
+		{[]string{"DataCacheKey"}, "[DataCacheKey]\n" + body},
+		{[]string{"DataCacheKey", "DataCacheIndex(DataCacheIndexType.Range)"},
+			"[DataCacheKey]\n[DataCacheIndex(DataCacheIndexType.Range)]\n" + body},
+	} {
+		if got := attrsJoin(c.attrs, body); got != c.want {
+			t.Errorf("attrsJoin(%v, ...) = %q, want %q", c.attrs, got, c.want)
+		}
+	}
 }
