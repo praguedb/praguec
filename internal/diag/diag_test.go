@@ -439,6 +439,38 @@ func TestWithinStampsTheFileOnWhatItAdds(t *testing.T) {
 	}
 }
 
+// Within stamps every diagnostic the stage added, not the first one.
+//
+// A stage that sees one file at a time is a parser, and a parser that finds one
+// mistake finds several: recovery is what the frontend does instead of
+// stopping. A stamp that reached only as far as the first would leave the rest
+// rendering their snippets against whichever file the printer was handed --
+// which is real source at a real position in the wrong file, the hardest kind
+// of wrong output to disbelieve.
+func TestWithinStampsEveryDiagnosticTheStageAdded(t *testing.T) {
+	first := source.NewFile("first.protop", "revision 1;\n")
+	fourth := source.NewFile("fourth.protop", "revision 1;\n")
+
+	var b Bag
+	b.Within(first, func(bag *Bag) {
+		bag.Errorf(MissingNamespace, source.SpanAt(0), "one")
+	})
+	b.Within(fourth, func(bag *Bag) {
+		for _, msg := range []string{"one", "two", "three", "four"} {
+			bag.Errorf(MissingNamespace, source.SpanAt(0), "%s", msg)
+		}
+	})
+
+	if b.Len() != 5 {
+		t.Fatalf("%d diagnostics, want 5", b.Len())
+	}
+	for i, d := range b.All()[1:] {
+		if d.File != fourth {
+			t.Errorf("diagnostic %d of the second file names %v, want fourth.protop", i, d.File)
+		}
+	}
+}
+
 // Within does not overwrite a file a diagnostic already names. A stage that
 // knows which file it is talking about -- the checker, reporting a view in one
 // file against its source in another -- is more right than the driver is.

@@ -1425,3 +1425,33 @@ func protopBlocks(t *testing.T, specPath string) []string {
 	}
 	return blocks
 }
+
+// ImportPath strips the quotes and does nothing else, which is the whole of
+// what it promises and the reason it is exported: the stage that builds a
+// FileSet keys it with this and the stage that reads one looks names up with
+// this, and they are two packages. One normalisation that is no normalisation,
+// in one place -- two spellings of "the literal's contents" would put a file in
+// the map under a name nothing can find it by.
+//
+// What is *not* here is deliberate. Nothing case-folds, so `import
+// "B.protop"` opens `b.protop` on a case-insensitive filesystem and fails on
+// Linux; nothing cleans, so `./b.protop` and `b.protop` are two keys. Both are
+// language questions -- protoc rejects a non-canonical import string outright,
+// buf cleans it silently -- and neither is answered here. This test pins what
+// the function does so that answering them is a deliberate edit with a failing
+// test under it.
+func TestImportPathStripsTheQuotesAndNothingElse(t *testing.T) {
+	for _, tc := range []struct{ lit, want string }{
+		{`"b.protop"`, "b.protop"},
+		{`"./b.protop"`, "./b.protop"},
+		{`"sub/../b.protop"`, "sub/../b.protop"},
+		{`"B.Protop"`, "B.Protop"},
+		{`"Sub/B.protop"`, "Sub/B.protop"},
+		{`"sub\b.protop"`, `sub\b.protop`},
+		{`""`, ""},
+	} {
+		if got := ImportPath(syntax.StringLit{Text: tc.lit}); got != tc.want {
+			t.Errorf("ImportPath(%s) = %q, want %q", tc.lit, got, tc.want)
+		}
+	}
+}
