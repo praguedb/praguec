@@ -417,6 +417,56 @@ func TestDecimalCarriesItsPrecision(t *testing.T) {
 	}
 }
 
+// The caret underlines the name that is unknown and stops there. `Missing?` is
+// a type written in two pieces and only one of them is the mistake: a caret
+// that swallowed the `?` would tell the reader the presence marker is part of
+// what protopc could not find, and the caret's width is the whole reason spans
+// are carried instead of positions.
+func TestAnUnknownTypeUnderlinesTheNameAndNotTheWholeTypeReference(t *testing.T) {
+	set, _, bag := checkSet(t, map[string]string{
+		"a.protop": "revision 1;\nnamespace A;\nstruct S {\n  Missing? x = 1;\n}\n",
+	})
+	assertCodes(t, set, bag, diag.UnknownType)
+	assertAt(t, set, bag, 0, "a.protop:4:3", "Missing")
+}
+
+// What a file declares and what a file can see are two questions, and `Decl`
+// answers the first one. They differ for exactly the names an import brings,
+// which is why an accessor that quietly answered the second would be right on
+// every file that imports nothing -- and on none of the ones this language
+// exists for.
+func TestAFilesDeclarationsAreItsOwnAndNotItsImports(t *testing.T) {
+	schema := checkClean(t, map[string]string{
+		"a.protop": "revision 1;\nnamespace A;\nimport \"b.protop\";\nstruct S {\n  T t = 1;\n}\n",
+		"b.protop": "revision 1;\nnamespace B;\ntable T {\n  key int64 id = 1;\n}\n",
+	})
+	a, b := schema.File("a.protop"), schema.File("b.protop")
+	if a.Decl("T") != nil {
+		t.Error("a.protop declares `T`; it imports the file that declares it, and an import is not a declaration")
+	}
+	// The name is in scope all the same, and resolved to the declaration the
+	// imported file owns. Scope is the wider answer, asked where a name is
+	// resolved rather than here.
+	if got := a.Decl("S").Member("t").Type.Decl; got != b.Decl("T") {
+		t.Error("`T` did not resolve to the declaration b.protop owns")
+	}
+}
+
+// An import that resolved to nothing leaves nothing behind. `Imports` is the
+// list of files this one can see, and an entry for a file that was never found
+// is a file every later reader of the model would walk into.
+func TestAnImportThatNamesNoFileAddsNoImport(t *testing.T) {
+	_, schema, bag := checkSet(t, map[string]string{
+		"a.protop": "revision 1;\nnamespace A;\nimport \"missing.protop\";\n",
+	})
+	if !bag.HasErrors() {
+		t.Fatal("the import resolved; it is supposed to name no file in the set")
+	}
+	if got := schema.File("a.protop").Imports; len(got) != 0 {
+		t.Errorf("the file lists %d imports, want none: the only one it writes was not found", len(got))
+	}
+}
+
 // --- views -------------------------------------------------------------------
 
 func TestAViewSourceMustResolve(t *testing.T) {
