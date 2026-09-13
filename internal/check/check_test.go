@@ -690,6 +690,112 @@ func TestAViewInheritsItsSourcesIdentity(t *testing.T) {
 	}
 }
 
+// A narrowing narrows the type and leaves the presence alone: an optional
+// member stays optional, and `Odd? odd;` narrowed to `SlimOdd` is a `SlimOdd?`.
+// Presence is a promise about whether the slot can be absent on the wire, and a
+// view is not entitled to make that promise stronger than the source's.
+func TestANarrowingKeepsTheMembersPresence(t *testing.T) {
+	schema := checkClean(t, map[string]string{
+		"a.protop": `revision 1;
+namespace A;
+record Odd {
+  int64 id = 1;
+}
+view SlimOdd of Odd {
+  id;
+}
+table T {
+  key int64 id = 1;
+  Odd? odd = 2;
+}
+view V of T {
+  SlimOdd odd;
+}
+`,
+	})
+	if got := typeString(schema.File("a.protop").Decl("V").Member("odd").Type); got != "view:SlimOdd?" {
+		t.Errorf("narrowed type is %s, want view:SlimOdd?: the source member is optional and a narrowing does not make it required", got)
+	}
+}
+
+// A narrowing reaches the element however deeply a collection holds it. What is
+// narrowed is what is finally stored; the collections around it are structure,
+// and one of them is as much structure as two. Stopping at the outermost
+// argument would compare a `list` against the declaration the view is a view of
+// and reject code the language allows.
+func TestANarrowingReachesThroughNestedCollections(t *testing.T) {
+	schema := checkClean(t, map[string]string{
+		"a.protop": `revision 1;
+namespace A;
+record Odd {
+  int64 id = 1;
+}
+view SlimOdd of Odd {
+  id;
+}
+table T {
+  key int64 id = 1;
+  list<list<Odd>> odds = 2;
+}
+view V of T {
+  SlimOdd odds;
+}
+`,
+	})
+	if got := typeString(schema.File("a.protop").Decl("V").Member("odds").Type); got != "list<list<view:SlimOdd>>" {
+		t.Errorf("narrowed type is %s, want list<list<view:SlimOdd>>", got)
+	}
+}
+
+// A view member that selects an alias keeps what the alias passes through to.
+// An alias is nothing but that passthrough -- it has no wire slot and no value
+// of its own -- so a view member that selects one and forgot its target is a
+// property with nothing behind it, and following `From` into the source to find
+// out is a hop every reader of the model would have to know to take.
+func TestAViewMemberThatSelectsAnAliasKeepsWhatItPassesThroughTo(t *testing.T) {
+	schema := checkClean(t, map[string]string{
+		"a.protop": `revision 1;
+namespace A;
+table T {
+  key int64 id = 1;
+  alias other = id;
+}
+view V of T {
+  other;
+}
+`,
+	})
+	f := schema.File("a.protop")
+	m := f.Decl("V").Member("other")
+	if m.Kind != MemberAlias {
+		t.Fatalf("the view member is a %s, want the alias kind it selects", m.Kind)
+	}
+	if m.Aliased != f.Decl("T").Member("id") {
+		t.Error("the view's alias does not pass through to the source's `id`; an alias that forgot its target passes through to nothing")
+	}
+}
+
+// Two view members may both hold tag 0, because an alias holds no wire slot and
+// two of them collide over nothing. A tag is a position in the MessagePack
+// array and 0 is not one, so a duplicate-tag check that counted zeros would
+// report a collision on the one thing a view is free to select twice.
+func TestTwoUntaggedViewMembersDoNotCollide(t *testing.T) {
+	checkClean(t, map[string]string{
+		"a.protop": `revision 1;
+namespace A;
+table T {
+  key int64 id = 1;
+  alias a = id;
+  alias b = id;
+}
+view V of T {
+  a;
+  b;
+}
+`,
+	})
+}
+
 // --- declarations ------------------------------------------------------------
 
 // An alias is a get and set passthrough and needs something to pass through to.
