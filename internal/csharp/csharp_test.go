@@ -182,11 +182,62 @@ func TestPresenceComposes(t *testing.T) {
 	assertGoldens(t, "presence", emitFixtures(t, "presence.protop"))
 }
 
-// A file whose own namespace is MessagePack needs no using for it. The branch
-// is defensive -- no corpus file does this -- and it is pinned rather than left
-// unexercised, because an unpinned branch is one nobody notices going wrong.
+// A declaration never writes a using for the namespace it is already in.
+//
+// The rule and the special case are two different lines of `usings`, and only
+// one of them is about MessagePack. This is the rule: an ordinary namespace,
+// one declaration naming another in the same file, and the only using emitted
+// is the MessagePack one. Deleting the own-namespace seed at csharp.go:112
+// emits `using A;` from inside namespace A -- legal C#, and noise in every file
+// protopc writes.
+//
+// It is asserted directly rather than through a golden because a golden is
+// regenerable: `-update` would rewrite the expectation to match the defect and
+// say nothing. The corpus cannot reach this either -- every cross-namespace
+// reference it makes is genuinely cross-namespace.
 func TestOwnNamespaceIsNeverAUsing(t *testing.T) {
+	units := emitSource(t, map[string]string{
+		"a.protop": `revision 1;
+namespace A;
+record Inner { int64 id = 1; }
+table Outer {
+  int64 id = 1;
+  Inner inner = 2;
+  key k = 3 (id);
+}
+`,
+	})
+	for _, u := range units {
+		got := usingsOf(u.Source)
+		if want := []string{"MessagePack"}; strings.Join(got, ",") != strings.Join(want, ",") {
+			t.Errorf("%s emits usings %v, want %v -- A is the namespace it is declared in", u.TypeName, got, want)
+		}
+	}
+}
+
+// And the special case: a file whose own namespace *is* MessagePack needs no
+// using at all, so the list is empty rather than one short. No corpus file does
+// this; the branch is defensive and pinned rather than left unexercised.
+func TestTheMessagePackNamespaceNeedsNoUsingOfItself(t *testing.T) {
 	assertGoldens(t, "messagepack", emitFixtures(t, "messagepack.protop"))
+	for _, u := range emitFixtures(t, "messagepack.protop") {
+		if got := usingsOf(u.Source); len(got) != 0 {
+			t.Errorf("%s emits usings %v from inside namespace MessagePack, want none", u.TypeName, got)
+		}
+	}
+}
+
+// usingsOf is the using list of an emitted unit, read off the text so that the
+// assertion is about what a C# compiler sees rather than about an internal.
+func usingsOf(src string) []string {
+	var out []string
+	for _, ln := range strings.Split(src, "\n") {
+		if !strings.HasPrefix(ln, "using ") {
+			continue
+		}
+		out = append(out, strings.TrimSuffix(strings.TrimPrefix(ln, "using "), ";"))
+	}
+	return out
 }
 
 // Emit returns units in the schema's own order: file order, then source order
