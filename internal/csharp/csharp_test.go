@@ -454,6 +454,59 @@ func keyAttributes(src string) []string {
 	return out
 }
 
+// A view member that narrows and renames at once -- section 5's `SlimOdd odds
+// as o;` -- emits the narrowing view's type under the rename's name, at the
+// source's key.
+//
+// Its anchor is the corpus in two halves, because no corpus member does both:
+//
+//   - the narrowing half is corpus/prague/payloads/SlimBetType.cs key 25, where
+//     `SlimOdd` -- the narrowing view's type -- sits at BetType's tag 26;
+//   - the rename half is corpus/prague/payloads/SlimSportGame.cs key 0, where
+//     section 2's `event_id as id;` emits `Id` and keeps SportGame's tag 1.
+//
+// The expectation below is those two anchored rules applied to one member,
+// written out rather than regenerated: a golden for a member the corpus does
+// not write would agree only with the emitter that produced it, which is what
+// #45's review broke. The source tag is 7, so a key read off the member's
+// position, off the narrowing view, or without the tag-minus-one offset is a
+// different number and not this one.
+func TestANarrowedAndRenamedMemberEmitsAtItsSourcesKey(t *testing.T) {
+	units := emitSource(t, map[string]string{
+		"a.protop": `revision 1;
+namespace A;
+record Inner {
+  int64 id = 1;
+}
+view SlimInner of Inner {
+  id;
+}
+table Outer {
+  key int64 id = 1;
+  Inner odds = 7;
+}
+view SlimOuter of Outer {
+  SlimInner odds as o;
+}
+`,
+	})
+	for _, u := range units {
+		if u.TypeName != "SlimOuter" {
+			continue
+		}
+		d, err := readCS(u.TypeName, u.Source)
+		if err != nil {
+			t.Fatalf("the emission does not read back: %v\n%s", err, u.Source)
+		}
+		const want = "public SlimInner O { get; set; }"
+		if got := d.Members["6"]; got != want {
+			t.Errorf("SlimOuter at [Key(6)] is %q, want %q -- the narrowing types it, the rename names it, and tag 7 keys it:\n%s", got, want, u.Source)
+		}
+		return
+	}
+	t.Fatal("nothing emitted SlimOuter")
+}
+
 // protop's own annotations are read by the checker and are not C# attributes.
 // `[references(SportGame)]` is a fact about the schema; emitting it would
 // produce an attribute no corpus file has and no C# project defines.
