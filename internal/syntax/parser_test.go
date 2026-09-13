@@ -2626,15 +2626,20 @@ func TestLookaheadPastTheEndOfTheFileDoesNotPanic(t *testing.T) {
 }
 
 // A view member is idents and a `;`, and the count of them is what tells the
-// three shapes apart: one name selects, two narrow, and three are a rename only
-// when the middle one is the word `as` with a name after it. Nothing wrote a
-// member with the wrong number of words, so the arithmetic was free -- and
-// getting it wrong does not produce a diagnostic, it produces a DIFFERENT
-// PROGRAM. With the `as` test dropped from the rename lookahead, `event_id ass
-// id;` compiles as a rename and carries the wrong name into every backend;
-// with the narrowing read in a loop, `a b c d;` collapses to a member named `d`
-// and the rest is thrown away in silence.
-func TestAViewMemberIsOneOfThreeShapes(t *testing.T) {
+// four shapes apart: one name selects, two narrow, three are a rename when the
+// middle one is the word `as` with a name after it, and four narrow and rename
+// at once on that same condition read one word along. Nothing wrote a member
+// with the wrong number of words, so the arithmetic was free -- and getting it
+// wrong does not produce a diagnostic, it produces a DIFFERENT PROGRAM. With
+// the `as` test dropped from the rename lookahead, `event_id ass id;` compiles
+// as a rename and carries the wrong name into every backend; with the narrowing
+// read in a loop, `a b c d;` collapses to a member named `d` and the rest is
+// thrown away in silence.
+//
+// The fourth shape itself is `SlimOdd odds as o;` and is held by
+// TestANarrowedViewMemberMayAlsoBeRenamed. What is here is the arithmetic that
+// tells it apart from the four-ident line that is not one.
+func TestAViewMemberIsOneOfFourShapes(t *testing.T) {
 	// Three names where a rename would have `as` in the middle. The third word
 	// is where the line stops making sense, so that is where it is reported.
 	f, file, bag := parse(t, `revision 1;
@@ -2663,7 +2668,9 @@ struct S
   int64 x = 1
 `)
 
-	// Four, which is what a narrowing read in a loop would swallow whole.
+	// Four idents that are not the fourth shape: the third word is not `as`,
+	// so this is a narrowing and then a word too many. It is also what a
+	// narrowing read in a loop would swallow whole.
 	f, file, bag = parse(t, `revision 1;
 namespace A;
 view V of T {

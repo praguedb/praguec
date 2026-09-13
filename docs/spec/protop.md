@@ -40,7 +40,7 @@ resolves.
 | 2 | [`import-resolution.md`](protop/import-resolution.md) | where `import "prague.protop";` resolves from — git, by tag | you are working on module resolution, the lock file or distribution |
 | 3 | [`annotations.md`](protop/annotations.md) | one position, one form; the prefix rule and passthrough | you are parsing or emitting `[...]` |
 | 4 | [`declaration-keywords.md`](protop/declaration-keywords.md) | `struct` / `record` / `table` / `view`: identity, emission, referenceability | you need to know what a declaration keyword means |
-| 5 | [`views.md`](protop/views.md) | field subsets, narrowing, computed members, composite identity, aliases | you are working on views, `key` or `alias` |
+| 5 | [`views.md`](protop/views.md) | field subsets, narrowing, narrowing with a rename, computed members, composite identity, aliases | you are working on views, `key` or `alias` |
 | 6 | [`relations.md`](protop/relations.md) | `references(T)` and derived cardinality | you are working on relations or name resolution |
 | 7 | [`tag-ownership.md`](protop/tag-ownership.md) | `reserved`, and why single ownership is what makes it safe | you are working on `reserved` or cross-repo skew |
 | TBD | [`versioning.md`](protop/versioning.md) | sketched, not decided: two hashes, per-table versions, `protop.lock` | you are working on versioning or the breaking check |

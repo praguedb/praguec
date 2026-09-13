@@ -361,11 +361,12 @@ func (p *parser) parseViewSource() (Ident, bool) {
 	return Ident{}, false
 }
 
-// parseViewMember reads one line of a view body, in all three of its spellings:
+// parseViewMember reads one line of a view body, in all four of its spellings:
 //
 //	sport_type_id;      a plain selection
 //	event_id as id;     the same, renamed
 //	SlimOdd odds;       narrowed to another view
+//	SlimOdd odds as o;  narrowed and renamed
 //
 // Each is idents and a `;`, so the shape is told by arity and by position and
 // by nothing else. Two idents in a row are a narrowing -- unless the second is
