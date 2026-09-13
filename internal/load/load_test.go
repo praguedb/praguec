@@ -11,6 +11,7 @@ import (
 
 	"github.com/nanov/protobuf-to-messagepack-sharp/internal/check"
 	"github.com/nanov/protobuf-to-messagepack-sharp/internal/diag"
+	"github.com/nanov/protobuf-to-messagepack-sharp/internal/syntax"
 )
 
 // The fixtures are written here rather than read from testdata because what
@@ -235,6 +236,70 @@ func TestTwoRootsProvidingOneImportIsDiagnosed(t *testing.T) {
 		if !strings.Contains(msg, want) {
 			t.Errorf("message does not name %q:\n%s", want, msg)
 		}
+	}
+}
+
+// An ambiguity is a fact about the include roots, not about the line that
+// tripped over it, so two files importing one ambiguous name report it once.
+//
+// This is what the memoisation in follow is for, and the cycle tests do not
+// reach it: termination is held independently by the abs-path guard in load, so
+// removing follow's guard leaves every cycle test green and only doubles this
+// diagnostic. A user told twice that two roots disagree would go looking for
+// two disagreements.
+func TestAnAmbiguousImportIsReportedOnce(t *testing.T) {
+	dir := plant(t,
+		file{"a.protop", src("A", "b.protop")},
+		file{"c.protop", src("C", "b.protop")},
+		file{"one/b.protop", src("One")},
+		file{"two/b.protop", src("Two")},
+	)
+	_, bag, err := loadIn(t, dir, []string{"one", "two", "."}, []string{"a.protop", "c.protop"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := codes(bag), []string{"PROTOP0108"}; !slices.Equal(got, want) {
+		t.Fatalf("codes = %v, want %v; the ambiguity is one fact about the roots", got, want)
+	}
+}
+
+// One file reached under two import strings is one entry in the set.
+//
+// The two strings are real: with roots `lib` and `.`, the file `lib/b.protop`
+// is `b.protop` to anything searching the first root and `lib/b.protop` to
+// anything searching the second, and a schema may well contain both spellings.
+// Keying alone cannot collapse them -- they are different keys by construction
+// -- so the loader also remembers which absolute paths it has opened. Without
+// that, the file parses twice, the checker sees two files, and every
+// declaration in it is emitted twice under two names.
+func TestOneFileReachedUnderTwoImportStringsIsOneEntry(t *testing.T) {
+	dir := plant(t,
+		file{"a.protop", src("A", "b.protop")},
+		file{"c.protop", src("C", "lib/b.protop")},
+		file{"lib/b.protop", src("B")},
+	)
+	res, bag, err := loadIn(t, dir, []string{"lib", "."}, []string{"a.protop", "c.protop"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := codes(bag); len(got) != 0 {
+		t.Fatalf("codes = %v, want none", got)
+	}
+	// Three files on disk, three entries: b.protop is in the set once, under
+	// whichever of its two names reached it first.
+	if got, want := len(res.Set), 3; got != want {
+		t.Errorf("the set has %d entries, want %d: %v", got, want, keys(res.Set))
+	}
+	var bs int
+	for _, u := range res.Set {
+		for _, d := range u.File.Decls {
+			if st, ok := d.(*syntax.Struct); ok && st.Name.Text == "B" {
+				bs++
+			}
+		}
+	}
+	if bs != 1 {
+		t.Errorf("B is declared by %d entries of the set, want 1: %v", bs, keys(res.Set))
 	}
 }
 
