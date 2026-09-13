@@ -912,6 +912,14 @@ view V of Outer {
 		{"a narrowing to a view of another type", "  SlimOther odds as o;\n", diag.NarrowingSourceMismatch},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			// The case is only the case its name claims while the rename is
+			// on the member. Strip it and every one of these becomes a
+			// diagnostic the un-renamed spellings already answer for, tested
+			// twice under two names -- and the guard this test exists to
+			// catch goes back to surviving with the suite green.
+			if !strings.Contains(tc.member, " as ") {
+				t.Fatalf("the member %q carries no rename, so the case no longer asks what the test is named for", tc.member)
+			}
 			set, _, bag := checkSet(t, map[string]string{
 				"a.protop": decls + tc.member + "}\n",
 			})

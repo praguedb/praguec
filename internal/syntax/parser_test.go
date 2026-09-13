@@ -2758,6 +2758,19 @@ func TestANarrowedViewMemberMayAlsoBeRenamed(t *testing.T) {
 	assertDump(t, file, "revision 1\nnamespace A\nview V of T\n  SlimOdd odds as o\n")
 }
 
+// assertRenamed holds a fixture to the thing it was written to ask about. Each
+// of these fixtures is a bad view member with a rename on it, and the rename is
+// the whole point: without it the fixture is a mistake the un-renamed spellings
+// already diagnose and already test, so the case would keep its name while
+// asking a question answered elsewhere -- and the one-token guard it exists to
+// catch would survive again with the suite green.
+func assertRenamed(t *testing.T, src string) {
+	t.Helper()
+	if !strings.Contains(src, " as o") {
+		t.Fatalf("the fixture carries no rename, so it no longer asks what the test is named for:\n%s", src)
+	}
+}
+
 // The same two diagnostics this file already reports on a view member, with a
 // rename on the member that earns them. A rename is the last thing read before
 // either check runs -- the `= 3` is looked for after it, and the narrowing is
@@ -2768,7 +2781,9 @@ func TestAViewMemberDiagnosticSurvivesARename(t *testing.T) {
 	// A tag is a tag whatever the member is called. Gating the `=` on the
 	// absence of a rename reports a missing `;` instead, and the milestone's
 	// best-worded diagnostic never gets said.
-	f, _, bag := parse(t, "revision 1;\nnamespace A;\nview V of T {\n  SlimOdd odds as o = 3;\n}\n")
+	const tagged = "revision 1;\nnamespace A;\nview V of T {\n  SlimOdd odds as o = 3;\n}\n"
+	assertRenamed(t, tagged)
+	f, _, bag := parse(t, tagged)
 	if bag.Len() != 1 || bag.All()[0].Code != diag.TagInViewMember {
 		t.Fatalf("got %d diagnostics, want one TagInViewMember:\n%s", bag.Len(), diag.RenderAll(f, bag))
 	}
@@ -2779,7 +2794,9 @@ func TestAViewMemberDiagnosticSurvivesARename(t *testing.T) {
 	// And a scalar in the narrowing position is a scalar whatever the member
 	// is called. The rename is read after the narrowing and says nothing about
 	// what the leading word is allowed to be.
-	f, _, bag = parse(t, "revision 1;\nnamespace A;\nview V of T {\n  int64 odds as o;\n}\n")
+	const scalar = "revision 1;\nnamespace A;\nview V of T {\n  int64 odds as o;\n}\n"
+	assertRenamed(t, scalar)
+	f, _, bag = parse(t, scalar)
 	if bag.Len() != 1 || bag.All()[0].Code != diag.ScalarInViewMember {
 		t.Fatalf("got %d diagnostics, want one ScalarInViewMember:\n%s", bag.Len(), diag.RenderAll(f, bag))
 	}
