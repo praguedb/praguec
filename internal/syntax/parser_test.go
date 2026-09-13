@@ -2679,15 +2679,22 @@ view V of T
 	}
 }
 
-// Narrowing and renaming at once. Section 5 writes each on its own and says
-// nothing about the two together, so the parser accepts it: the shapes compose
-// by construction -- a narrowing is two idents, a rename is `as` and a third --
-// and refusing a combination the spec does not forbid would be this file
-// deciding a question that is not its to decide.
+// Narrowing and renaming at once, which section 5 now rules in: "A view may
+// narrow and rename in one member. `SlimOdd odds as o;` is still tag 26: the
+// leading type says what the member holds, `as o` says what the consumer calls
+// it, and the tag is the source's as it is on every other view line."
 //
-// This test records what the parser does today so that a change to it is a
-// change someone made on purpose. The spec's silence is the reason there is no
-// diagnostic here, not an oversight in the grammar.
+// The parser accepted the combination before the section said so, because the
+// shapes compose by construction -- a narrowing is two idents, a rename is `as`
+// and a third -- and refusing a combination the spec did not forbid would have
+// been this file deciding a question that was not its to decide. The question
+// is decided now, and decided the same way, so the absence of a diagnostic here
+// is a rule rather than a silence.
+//
+// What this test holds is the shape the parser read. What the line resolves to
+// -- the name from the rename, the type from the narrowing, the tag from the
+// source -- is held on the model by internal/check's
+// TestAViewMemberMayNarrowAndRenameAtOnce.
 func TestANarrowedViewMemberMayAlsoBeRenamed(t *testing.T) {
 	_, file := parseClean(t, "revision 1;\nnamespace A;\nview V of T {\n  SlimOdd odds as o;\n}\n")
 	assertDump(t, file, "revision 1\nnamespace A\nview V of T\n  SlimOdd odds as o\n")
