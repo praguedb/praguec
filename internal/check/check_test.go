@@ -1119,6 +1119,54 @@ func TestFilesComeOutInAStableOrder(t *testing.T) {
 	}
 }
 
+// A prefixed annotation is a backend's language and protop does not read it,
+// whatever word it happens to open with. `references` is a word protop has
+// spent, not a word it has taken away: a C# annotation that spells it means
+// whatever the C# backend says it means, and a checker that resolved it would
+// report a protop diagnostic about a sentence written in another language.
+func TestAPrefixedAnnotationIsNotProtopsRelation(t *testing.T) {
+	schema := checkClean(t, map[string]string{
+		"a.protop": `revision 1;
+namespace A;
+table T {
+  key int64 id = 1;
+  int64 other = 2 [cs: references(Nowhere)];
+}
+`,
+	})
+	if got := schema.File("a.protop").Decl("T").Member("other").Relations; len(got) != 0 {
+		t.Errorf("the member carries %d relations, want none: a prefixed annotation is not protop's to interpret", len(got))
+	}
+}
+
+// `references(T)` is one name inside a matched pair of parentheses, and
+// anything else is malformed rather than nearly right. The annotation's
+// contents are raw text with no span inside them, so a reading that salvaged
+// part of a broken one would report an unknown name the user never typed,
+// underlined at a bracket that looks fine.
+func TestARelationsTargetIsOneNameInsideMatchedParentheses(t *testing.T) {
+	const decls = `table SportGame {
+  key int64 event_id = 1;
+}
+`
+	// Both spellings are a name away from resolving, which is the point: the
+	// first loses its last character to the missing `)` and the second keeps
+	// only its first word, and either one would resolve to something.
+	tests := []struct{ name, annotation string }{
+		{"a closing parenthesis that is not there", "[references(SportGame]"},
+		{"two names where one goes", "[references(SportGame Odd)]"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			set, _, bag := checkSet(t, map[string]string{
+				"a.protop": "revision 1;\nnamespace A;\n" + decls +
+					"table U {\n  key int64 id = 1;\n  int64 game_id = 2 " + tt.annotation + ";\n}\n",
+			})
+			assertCodes(t, set, bag, diag.MalformedRelation)
+		})
+	}
+}
+
 // --- the contract with the parser --------------------------------------------
 
 // The parser's contract, inherited: a tree is best-effort and bag.HasErrors is
