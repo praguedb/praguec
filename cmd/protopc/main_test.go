@@ -6,7 +6,9 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -149,11 +151,13 @@ func fold(s string) string {
 // TestTheExclusionRulesAreTheOnesTheResearchRecorded is what holds the
 // constants above to the record.
 //
-// The pair is the point, and it is the lesson from M5: a rule that is only held
-// by other copies of itself can be regenerated past. Nothing here can be
-// rewritten by a flag -- the right-hand side of every assertion is a line of a
-// document nobody regenerates, and if that document is corrected the
-// transcription fails until somebody reads the correction.
+// It does not check that the document still says something; it *derives* the
+// rule from the document and compares it to the constants, so neither side can
+// move without the other. That is the lesson from M5: a rule held only by other
+// copies of itself can be regenerated past. There is no golden here and no
+// -update path -- the right-hand side of every assertion is three lines of a
+// research document nobody regenerates, and correcting the record fails this
+// test until somebody reads the correction.
 func TestTheExclusionRulesAreTheOnesTheResearchRecorded(t *testing.T) {
 	b, err := os.ReadFile(researchDoc)
 	if err != nil {
@@ -161,23 +165,91 @@ func TestTheExclusionRulesAreTheOnesTheResearchRecorded(t *testing.T) {
 	}
 	doc := string(b)
 
-	// §8.1's rule, lifted verbatim. Three lines, and every literal the
-	// constants above are built from appears in them.
-	for _, line := range []string{
-		`filePath contains  "\obj\"  "/obj/"  "\bin\"  "/bin/"  "\Generated\"  "/Generated/"`,
-		`filePath ends with ".g.cs"  or  ".generated.cs"`,
-		"the first 500 characters of the file text contain \"auto-generated\"",
-	} {
-		if !strings.Contains(doc, line) {
-			t.Errorf("the research no longer records:\n%s", line)
+	// §8.1's rule is three lines in a fenced block. They are found by their
+	// opening words rather than by line number so that an edit above them does
+	// not silently stop this test from finding anything.
+	segLine := findLine(t, doc, "filePath contains ")
+	sufLine := findLine(t, doc, "filePath ends with ")
+	banLine := findLine(t, doc, "the first ")
+
+	// The directory rule is written as separator-wrapped fragments -- "\obj\",
+	// "/obj/" -- because the generator matches a path substring. A segment is
+	// what is left when the separators come off.
+	var wantSegments []string
+	for _, tok := range quoted(segLine) {
+		seg := strings.ToLower(strings.Trim(tok, `\/`))
+		if seg != "" && !slices.Contains(wantSegments, seg) {
+			wantSegments = append(wantSegments, seg)
 		}
 	}
-
-	// And the ambiguity this file resolves, so that a correction to either
-	// reading shows up here rather than quietly agreeing with the code.
-	if !strings.Contains(doc, "in the first 500 bytes are hard requirements") {
-		t.Error("the research no longer says 500 bytes at :432; the window in this file was chosen against that line")
+	if !slices.Equal(excludedSegments, wantSegments) {
+		t.Errorf("excludedSegments = %v, but the research records %v\n  %s", excludedSegments, wantSegments, segLine)
 	}
+
+	if wantSuffixes := quoted(sufLine); !slices.Equal(excludedSuffixes, wantSuffixes) {
+		t.Errorf("excludedSuffixes = %v, but the research records %v\n  %s", excludedSuffixes, wantSuffixes, sufLine)
+	}
+
+	if want := quoted(banLine); len(want) != 1 || want[0] != excludedBanner {
+		t.Errorf("excludedBanner = %q, but the research records %v\n  %s", excludedBanner, want, banLine)
+	}
+	if want := number(t, banLine); want != bannerWindow {
+		t.Errorf("bannerWindow = %d, but the research records %d\n  %s", bannerWindow, want, banLine)
+	}
+
+	// And the ambiguity this file resolves. :352 above says characters; this
+	// line says bytes, and bytes is the reading taken. A correction to either
+	// has to come through here.
+	if !strings.Contains(doc, "in the first 500 bytes are hard requirements") {
+		t.Error("the research no longer says 500 bytes at §11.H; the window in this file was chosen against that line")
+	}
+	if !strings.Contains(banLine, "characters") {
+		t.Errorf("§8.1 no longer says characters, so the ambiguity noted on bannerWindow may be gone:\n  %s", banLine)
+	}
+}
+
+// findLine returns the one line of doc beginning with prefix, and fails if
+// there is not exactly one. Exactly one, because two would mean the rule was
+// restated somewhere and this test would be reading whichever came first.
+func findLine(t *testing.T, doc, prefix string) string {
+	t.Helper()
+	var found []string
+	for _, line := range strings.Split(doc, "\n") {
+		if strings.HasPrefix(line, prefix) {
+			found = append(found, line)
+		}
+	}
+	if len(found) != 1 {
+		t.Fatalf("%d lines of the research begin %q, want exactly 1", len(found), prefix)
+	}
+	return found[0]
+}
+
+var quotedRE = regexp.MustCompile(`"([^"]*)"`)
+
+// quoted is every double-quoted token of a line, in order.
+func quoted(line string) []string {
+	var out []string
+	for _, m := range quotedRE.FindAllStringSubmatch(line, -1) {
+		out = append(out, m[1])
+	}
+	return out
+}
+
+var numberRE = regexp.MustCompile(`\b(\d+)\b`)
+
+// number is the one integer on a line.
+func number(t *testing.T, line string) int {
+	t.Helper()
+	m := numberRE.FindAllString(line, -1)
+	if len(m) != 1 {
+		t.Fatalf("%d numbers on %q, want exactly 1", len(m), line)
+	}
+	n, err := strconv.Atoi(m[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	return n
 }
 
 // ---------------------------------------------------------------------------
