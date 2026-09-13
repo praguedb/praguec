@@ -763,3 +763,45 @@ func slicesContains(hay []string, needle string) bool {
 	}
 	return false
 }
+
+// TestTheEmissionNeedsNoNormalisation is the other half of the census above,
+// and without it that census is only half an oracle.
+//
+// readCS normalises on *both* sides, and TestNormalisationSitesAreEnumerated
+// harvests its sites from the corpus side alone. So a construct introduced on
+// the emission side is normalised into agreement and counted nowhere: emitting
+// `{ get; init; }` -- which #20 forbids outright, tag 1 being key 0 and
+// MessagePack needing a settable member -- passes every corpus assertion in
+// this file, and the goldens that do fail are rewritten by -update.
+//
+// Each of the seven sites names a construct protopc does not emit and must not.
+// `init`, `required` and `virtual` are #20, #12 and #11 ruling; `base` is #11's
+// flattening; `ctor` and `computed` are the hand-written half (#25); and
+// `initialiser` is a default-value syntax protop does not have. So the emitted
+// side's list is empty, and empty is the assertion -- a normalisation firing on
+// protopc's own output is either a construct it was ruled out of or a defect
+// being normalised into agreement with the corpus, and neither may pass.
+func TestTheEmissionNeedsNoNormalisation(t *testing.T) {
+	units := exampleUnits(t)
+	read := 0
+	for _, r := range coverage {
+		if r.Decl == "" {
+			continue
+		}
+		u, ok := units[r.Decl]
+		if !ok {
+			t.Fatalf("examples/prague declares no %s", r.Decl)
+		}
+		got, err := readCS(r.Decl, u.Source)
+		if err != nil {
+			t.Fatal(err)
+		}
+		read++
+		if len(got.Sites) > 0 {
+			t.Errorf("%s: the emission needs normalising to match the corpus: %v", r.Decl, got.Sites)
+		}
+	}
+	if read == 0 {
+		t.Fatal("no emission was read; the coverage table stopped naming a reproduced declaration")
+	}
+}
