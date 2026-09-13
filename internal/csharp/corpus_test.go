@@ -3,6 +3,7 @@ package csharp
 import (
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"testing"
@@ -163,6 +164,34 @@ var coverage = []corpusRow{
 
 const shellBlocked = "#25, the hand-written half. Not a [MessagePackObject] type and not protopc's output."
 
+// blockedPaths is the corpus this milestone does not reproduce, written out
+// rather than counted.
+//
+// TestCoverageTableNamesEveryCorpusFile holds the table against the tree, and a
+// row that moves from reproduced to blocked satisfies it just as well: the file
+// is still listed, still carries a reason, and stops being compared against
+// anything. That is how coverage is lost -- not by deleting a row but by
+// demoting one -- and a type that contributes no normalisation site can be
+// demoted today with nothing failing at all. So the blocked set is a list: it
+// takes an edit here, next to the eleven shells and the three deps, to stop
+// measuring a payload.
+var blockedPaths = []string{
+	"deps/IBaseLiveData.cs",
+	"deps/SportGameSlimExtensions.cs",
+	"deps/StaticDataRef.cs",
+	"shells/BOBetTypeCache.cs",
+	"shells/BOLiveObjectCache.cs",
+	"shells/BOSearchCache.cs",
+	"shells/BOSportGameCache.cs",
+	"shells/BPBetTypeCache.cs",
+	"shells/BPLiveObjectCache.cs",
+	"shells/BPSearchCache.cs",
+	"shells/BPSportGameCache.cs",
+	"shells/LiveObjectCache.cs",
+	"shells/SlimBetTypeCache.cs",
+	"shells/SlimSportGameCache.cs",
+}
+
 // --- loading -----------------------------------------------------------------
 
 // exampleUnits compiles every file of examples/prague and returns the emission
@@ -206,24 +235,32 @@ func exampleUnits(t *testing.T) map[string]Unit {
 	return out
 }
 
-// exampleReservations is the `reserved` lists of examples/prague, by
-// declaration name, as a set of retired tags.
+// exampleDecl is one declaration of examples/prague as the AST has it.
+type exampleDecl struct {
+	// Kind is the keyword it was written with.
+	Kind string
+
+	// Reserved is the tags its `reserved` lists retire. A view has none, and
+	// the nil is the point rather than an omission: a view selects, and a
+	// member it does not select is not a retired tag, because the source still
+	// owns it.
+	Reserved map[uint64]bool
+}
+
+// exampleDeclarations is every declaration in examples/prague, by name.
 //
 // It reads the AST rather than the checked model, because `reserved` is not in
 // the checked model at all -- it names nothing and holds nothing, so the
 // checker records the ranges and drops them. That is the right shape for a
-// backend and the wrong shape for this one assertion, which is about what the
+// backend and the wrong shape for these assertions, which are about what the
 // protop says rather than about what it emits.
-//
-// A view has no reserved list. A view selects, and a member it does not select
-// is not a retired tag: the source still owns it.
-func exampleReservations(t *testing.T) map[string]map[uint64]bool {
+func exampleDeclarations(t *testing.T) map[string]exampleDecl {
 	t.Helper()
 	ents, err := os.ReadDir(examplesDir)
 	if err != nil {
 		t.Fatal(err)
 	}
-	out := map[string]map[uint64]bool{}
+	out := map[string]exampleDecl{}
 	for _, e := range ents {
 		if !strings.HasSuffix(e.Name(), ".protop") {
 			continue
@@ -235,17 +272,24 @@ func exampleReservations(t *testing.T) map[string]map[uint64]bool {
 		var bag diag.Bag
 		f := syntax.Parse(source.NewFile(e.Name(), string(b)), &bag)
 		for _, d := range f.Decls {
-			var name string
+			var name, kind string
 			var members []syntax.Member
 			switch d := d.(type) {
 			case *syntax.Struct:
-				name, members = d.Name.Text, d.Members
+				name, kind, members = d.Name.Text, "struct", d.Members
 			case *syntax.Record:
-				name, members = d.Name.Text, d.Members
+				name, kind, members = d.Name.Text, "record", d.Members
 			case *syntax.Table:
-				name, members = d.Name.Text, d.Members
+				name, kind, members = d.Name.Text, "table", d.Members
+			case *syntax.View:
+				name, kind = d.Name.Text, "view"
+			case *syntax.Enum:
+				name, kind = d.Name.Text, "enum"
 			default:
-				continue
+				t.Fatalf("%s declares a %T, which this census does not know how to read", e.Name(), d)
+			}
+			if _, dup := out[name]; dup {
+				t.Fatalf("examples/prague declares %s twice", name)
 			}
 			tags := map[uint64]bool{}
 			for _, m := range members {
@@ -259,8 +303,14 @@ func exampleReservations(t *testing.T) map[string]map[uint64]bool {
 					}
 				}
 			}
-			out[name] = tags
+			if kind == "view" {
+				tags = nil
+			}
+			out[name] = exampleDecl{Kind: kind, Reserved: tags}
 		}
+	}
+	if len(out) == 0 {
+		t.Fatal("examples/prague declares nothing at all")
 	}
 	return out
 }
@@ -320,6 +370,20 @@ func TestCoverageTableNamesEveryCorpusFile(t *testing.T) {
 		t.Errorf("the coverage table and corpus/prague/ disagree.\nonly on disk: %v\nonly in table: %v",
 			missingFrom(onDisk, listed), missingFrom(listed, onDisk))
 	}
+
+	var blocked []string
+	for _, r := range coverage {
+		if r.Decl == "" {
+			blocked = append(blocked, r.Path)
+		}
+	}
+	sort.Strings(blocked)
+	want := slices.Clone(blockedPaths)
+	sort.Strings(want)
+	if strings.Join(blocked, "\n") != strings.Join(want, "\n") {
+		t.Errorf("the blocked set changed.\nnewly blocked: %v\nnewly reproduced: %v",
+			missingFrom(blocked, want), missingFrom(want, blocked))
+	}
 }
 
 // TestBlockedCorpusFilesNameATicket keeps the blocked column from decaying into
@@ -372,6 +436,17 @@ func TestCorpusHeaders(t *testing.T) {
 			}
 			if strings.Join(got.Attrs, "\n") != strings.Join(want.Attrs, "\n") {
 				t.Errorf("type attributes =\n%v\ncorpus has\n%v", got.Attrs, want.Attrs)
+			}
+			// The comparison above is two empty lists when the reader stops
+			// recording type-level attributes, and then `[MessagePackObject]`
+			// and every `[cs: DataCache(...)]` passthrough agree by being
+			// absent from both sides. All 15 covered corpus files carry
+			// `[MessagePackObject]` and protopc writes it on every non-enum
+			// declaration, so both lists are non-empty and both name it.
+			for what, attrs := range map[string][]string{r.Path: want.Attrs, "the emission": got.Attrs} {
+				if !slicesContains(attrs, "MessagePackObject") {
+					t.Errorf("%s carries no [MessagePackObject]: type attributes are %v", what, attrs)
+				}
 			}
 
 			derivable := missingFrom(want.Usings, r.Extra)
@@ -444,6 +519,16 @@ func TestCorpusMembers(t *testing.T) {
 					t.Errorf("member %s is emitted and is not in the corpus", id)
 				}
 			}
+			// And the count, which is the same claim as the loop above made
+			// arithmetic: the emission writes the corpus's members, minus the
+			// ones listed Missing, and nothing else. Without it the reverse
+			// direction is one deletable loop -- delete it and the test stops
+			// checking that emission invents nothing, while every remaining
+			// assertion still passes.
+			if n, w := len(got.Order), len(want.Members)-len(r.Missing); n != w {
+				t.Errorf("the emission writes %d members; %s has %d, of which %d are listed Missing",
+					n, r.Path, len(want.Members), len(r.Missing))
+			}
 			for n := range r.Missing {
 				if _, ok := want.Members[itoa(n)]; !ok {
 					t.Errorf("Missing lists key %d, which %s does not have", n, r.Path)
@@ -491,6 +576,40 @@ func TestCorpusKeyOrder(t *testing.T) {
 	}
 }
 
+// assertTheCensusReachesTheCoverageTable is what keeps the two tests above from
+// being switched off by the thing they read.
+//
+// Both of them iterate exampleDeclarations, one over the rows and one over the
+// census itself, and neither can tell "this declaration retires nothing" from
+// "this declaration was never read". An exampleDeclarations returning an empty
+// map, or one that stopped reading `table`, makes the whole Missing <-> reserved
+// cross-check vacuous with nothing failing -- so the census is held to the
+// coverage table first, and every reproduced declaration has to be in it.
+func assertTheCensusReachesTheCoverageTable(t *testing.T, decls map[string]exampleDecl) {
+	t.Helper()
+	reached := 0
+	for _, r := range coverage {
+		if r.Decl == "" {
+			continue
+		}
+		d, ok := decls[r.Decl]
+		if !ok {
+			t.Errorf("%s is reproduced by %s and the declaration census does not reach it", r.Path, r.Decl)
+			continue
+		}
+		if d.Kind == "view" && d.Reserved != nil {
+			t.Errorf("%s is a view and the census gave it a reserved list", r.Decl)
+		}
+		if d.Kind != "view" && d.Reserved == nil {
+			t.Errorf("%s is a %s and the census gave it no reserved list", r.Decl, d.Kind)
+		}
+		reached++
+	}
+	if reached == 0 {
+		t.Fatal("the coverage table names no reproduced declaration at all")
+	}
+}
+
 // TestEveryMissingKeyIsReservedInTheProtop closes the coverage table's one
 // remaining silence.
 //
@@ -507,15 +626,21 @@ func TestCorpusKeyOrder(t *testing.T) {
 // Views are exempt, and the exemption is the definition of a view -- it selects
 // from its source, and not selecting is not retiring.
 func TestEveryMissingKeyIsReservedInTheProtop(t *testing.T) {
-	reserved := exampleReservations(t)
+	decls := exampleDeclarations(t)
+	assertTheCensusReachesTheCoverageTable(t, decls)
 	for _, r := range coverage {
 		if r.Decl == "" || len(r.Missing) == 0 {
 			continue
 		}
-		tags, isDecl := reserved[r.Decl]
-		if !isDecl {
-			continue // a view
+		// The exemption is a view *being* a view, not a declaration being
+		// absent from the census. Read the other way round -- "no entry, so
+		// nothing to check" -- this test skips every row the moment the census
+		// stops reading `table`, and skips all of them the moment it returns
+		// nothing.
+		if decls[r.Decl].Kind == "view" {
+			continue
 		}
+		tags := decls[r.Decl].Reserved
 		for key, why := range r.Missing {
 			tag := uint64(key) + 1
 			if !tags[tag] {
@@ -531,22 +656,102 @@ func TestEveryMissingKeyIsReservedInTheProtop(t *testing.T) {
 // table is where the reason lives, so the two are held to each other -- a
 // reservation with no row is a gap nobody can look up.
 func TestEveryReservedTagIsListedMissing(t *testing.T) {
-	reserved := exampleReservations(t)
+	decls := exampleDeclarations(t)
+	assertTheCensusReachesTheCoverageTable(t, decls)
 	byDecl := map[string]corpusRow{}
 	for _, r := range coverage {
 		if r.Decl != "" {
 			byDecl[r.Decl] = r
 		}
 	}
-	for decl, tags := range reserved {
+	for decl, d := range decls {
 		r, ok := byDecl[decl]
 		if !ok {
 			continue
 		}
-		for tag := range tags {
+		for tag := range d.Reserved {
 			if _, listed := r.Missing[int(tag)-1]; !listed {
 				t.Errorf("%s reserves tag %d, and the coverage table gives no reason for it", decl, tag)
 			}
+		}
+	}
+}
+
+// --- the input side of the oracle ---------------------------------------------
+
+// exampleSupport is every declaration in examples/prague that no coverage row
+// reproduces, and the reason it is written anyway.
+//
+// The coverage table makes the *output* side exhaustive: a corpus file is
+// reproduced or it names a ticket. Nothing made the input side exhaustive, so a
+// declaration could be added to examples/prague -- reviewed by nobody, compared
+// against nothing, emitting whatever it liked -- and the whole suite stayed
+// green. This map is the other half: a name here is a declaration the corpus
+// cannot check and that has a written reason for existing.
+var exampleSupport = map[string]string{
+	// SOURCE.md lists the enum declarations among the types deliberately not
+	// copied, so the corpus carries every use of these names and not one of
+	// their definitions. They are declared with no arms for that reason: the
+	// numbers are the whole of an enum's wire contract and inventing them would
+	// put unchecked values on the wire. What they exist for is to make the
+	// names resolve, so members carry a type and files carry a using.
+	"EventStatus":    "CommonIntegratedEventApi enum; SOURCE.md does not copy the declaration",
+	"BookingStatus":  "CommonIntegratedEventApi enum; SOURCE.md does not copy the declaration",
+	"Channel":        "CommonIntegratedEventApi enum; SOURCE.md does not copy the declaration",
+	"BetTypeStatus":  "CommonFeedModels enum; SOURCE.md does not copy the declaration",
+	"OddStatus":      "CommonFeedModels enum; SOURCE.md does not copy the declaration",
+	"WinStatus":      "CommonFeedModels enum; SOURCE.md does not copy the declaration",
+	"WatchDogAction": "CommonFeedModels enum; SOURCE.md does not copy the declaration",
+
+	// deps/StaticDataRef.cs is in the coverage table and is blocked by #11:
+	// the corpus writes `class StaticDataRef : BaseProviderObject` with an
+	// empty body and protop flattens. So the row names no declaration, and the
+	// declaration is still needed -- both SportGame twins carry eight members
+	// typed by it.
+	"StaticDataRef": "#11; the corpus file is blocked and the type is still referenced",
+
+	// Not copied by SOURCE.md at all, and referenced by members that are:
+	// `Odd` is what SlimOdd is a view of and what the corpus's six `List<Odd>`
+	// members hold, and `Runner` is the element type of `List<Runner>` at key
+	// 46 of both SportGame twins. Odd's tags are recoverable from SlimOdd,
+	// which is a view of it; Runner's are not, so Runner is empty.
+	"Odd":    "SOURCE.md does not copy it; SlimOdd is a view of it and six members hold it",
+	"Runner": "SOURCE.md does not copy it; `List<Runner>` at key 46 of both SportGame twins",
+}
+
+// TestTheExamplesDeclareNothingUnreviewed makes the input side of the oracle
+// exhaustive, the way the coverage table makes the output side exhaustive.
+//
+// examples/prague is what protopc compiles to produce everything this file
+// measures, and until this test existed an `table UnreviewedJunk { ... }`
+// appended to any of its six files emitted C# that no assertion in the package
+// so much as read. Every declaration is now either a corpus row's Decl or a
+// line of exampleSupport with a reason.
+func TestTheExamplesDeclareNothingUnreviewed(t *testing.T) {
+	declared := exampleDeclarations(t)
+
+	want := map[string]string{}
+	for name, why := range exampleSupport {
+		want[name] = why
+	}
+	for _, r := range coverage {
+		if r.Decl == "" {
+			continue
+		}
+		if why, support := exampleSupport[r.Decl]; support {
+			t.Errorf("%s is both reproduced by %s and listed as support (%s)", r.Decl, r.Path, why)
+		}
+		want[r.Decl] = "corpus/prague/" + r.Path
+	}
+
+	for name := range declared {
+		if _, ok := want[name]; !ok {
+			t.Errorf("examples/prague declares %s, which no coverage row reproduces and exampleSupport does not explain", name)
+		}
+	}
+	for name, why := range want {
+		if _, ok := declared[name]; !ok {
+			t.Errorf("%s is expected in examples/prague (%s) and is not declared there", name, why)
 		}
 	}
 }
