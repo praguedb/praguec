@@ -18,12 +18,31 @@ import (
 
 // update rewrites every golden from the emitter's current output.
 //
-// The flag exists because hand-maintaining C# by hand in a Go string is worse
-// than reviewing a diff, and it is dangerous for exactly the same reason: a
-// regenerated golden proves only that the emitter agrees with itself. What
-// makes these goldens evidence is that they are small and reviewed -- and that
-// the oracle they ultimately answer to is corpus/prague/, which -update cannot
-// touch.
+// The flag exists because maintaining C# by hand in a Go string is worse than
+// reviewing a diff, and it is dangerous for exactly the same reason: a
+// regenerated golden proves only that the emitter agrees with itself.
+//
+// What -update is and is not backstopped by, stated exactly, because the
+// previous version of this comment overclaimed and a mutation run caught it:
+//
+//   - -update writes nothing outside testdata/golden. So it cannot turn a red
+//     corpus assertion green, and every assertion in corpus_test.go is a corpus
+//     assertion. Emitting `{ get; init; }` -- the #20 defect the reviewer used
+//     to break the old claim -- now fails TestTheEmissionNeedsNoNormalisation
+//     before any golden is consulted, because normalisation sites are harvested
+//     from the *emission* side as well as the corpus side and the emission's
+//     must be empty. Emitting an alias that reads its own name fails
+//     TestCorpusMembers. Neither is reachable by regenerating anything.
+//
+//   - That backstop reaches exactly as far as the coverage table does. A
+//     declaration no corpus row reproduces -- presence.protop, the MessagePack
+//     namespace fixture, the spec sections beyond the reproduced set -- has no
+//     oracle at all, and for those a regenerated golden is a record of what the
+//     emitter did, not evidence that it was right. They are small and reviewed,
+//     and that is the whole of their warrant.
+//
+// So: run -update, then read the diff as a proposal rather than as a result.
+// The suite failing after it is the signal; the suite passing after it is not.
 var update = flag.Bool("update", false, "rewrite the goldens in testdata/golden")
 
 // The two spec sections, under the names the program knows them by. They are

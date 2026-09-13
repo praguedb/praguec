@@ -32,8 +32,17 @@ var csScalars = map[string]string{
 
 	// PROVISIONAL -- #13, the scaled-decimal option.
 	//
-	// The corpus has 30 `decimal` members and zero `[MessagePackFormatter]`
+	// The corpus has 27 `decimal` members and zero `[MessagePackFormatter]`
 	// attributes, so `decimal(4)?` emits `decimal?` and no attribute at all.
+	// (TestCorpusCensus counts 30, and 30 is right as a *text* count: the other
+	// three are the constructor parameters at
+	// corpus/prague/payloads/SlimBetType.cs:25-27, inside the `ctor:` block the
+	// reader skips. The census counts text and the noun here is members.)
+	//
+	// All 30 are `decimal?`. There is not one non-nullable `decimal` anywhere in
+	// the corpus, so this row is only ever exercised with the `?` that
+	// t.Optional adds, and a defect in the non-nullable spelling would have no
+	// oracle at all.
 	// #13's end state is a scaled representation carried by
 	// `ScaledDecimalFormatter<TScale>`, and #13's own comments say that scaling
 	// the corpus's money members is a wire migration rather than a recompile.

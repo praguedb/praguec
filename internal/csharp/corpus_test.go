@@ -944,7 +944,12 @@ func TestCorpusCensus(t *testing.T) {
 		{"[MessagePackFormatter", "corpus", 0,
 			"#13's scaled decimal would arrive as a formatter attribute; there are none anywhere, so `decimal(N)` drops its scale"},
 		{"Dictionary<", "corpus", 0,
-			"#24: there is no map anywhere in the corpus, so protopc has no Dictionary row to check"},
+			"#24: the corpus *cannot check* a Dictionary row, which is not the same as saying no map is needed. " +
+				"corpus/prague/INVARIANTS.md:85-87 records that a `Dictionary<,>` does appear, transitively and " +
+				"string-keyed, via `Odd.Specifiers`; corpus/prague/SOURCE.md:48-51 records that `Odd` was " +
+				"deliberately not copied. So the zero is an artefact of where the copy stopped, and " +
+				"examples/prague/branded.protop's stand-in `record Odd` omits the member that would have needed " +
+				"one. Evidence for #24, which is human-in-the-loop and unruled"},
 		{"enum ", "corpus", 0,
 			"SOURCE.md does not copy the enum declarations, so writeEnum has no oracle at all"},
 
