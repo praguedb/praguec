@@ -1224,6 +1224,49 @@ func TestADiagnosticNamesTheFileItIsAbout(t *testing.T) {
 	}
 }
 
+// Every diagnostic in a set names its own file, not the file the last one was
+// raised against. One diagnostic cannot tell the difference -- it is both the
+// first and the last -- and a run with one mistake in it is not the run this
+// matters for. With two, a stamp that landed on the wrong diagnostic renders
+// the second file's caret into the first file's text and leaves the second
+// naming no file at all.
+func TestEveryDiagnosticInASetNamesItsOwnFile(t *testing.T) {
+	set, _, bag := checkSet(t, map[string]string{
+		"a.protop": "revision 1;\nnamespace A;\nstruct S {\n  Missing x = 1;\n}\n",
+		"b.protop": "revision 1;\nnamespace B;\nstruct S {\n  Absent y = 2;\n}\n",
+	})
+	assertCodes(t, set, bag, diag.UnknownType, diag.UnknownType)
+	assertAt(t, set, bag, 0, "a.protop:4:3", "Missing")
+	assertAt(t, set, bag, 1, "b.protop:4:3", "Absent")
+}
+
+// Diagnostics come out in pass order, then file order, then source order. The
+// view's mistake is written below the relation's and is reported above it,
+// because expanding the views is a pass that finishes before any relation is
+// resolved. Source order is the obvious order and is the wrong one here, which
+// is what makes this worth pinning: a compiler whose output moved when a pass
+// was reordered has no order to diff against.
+func TestDiagnosticsComeOutInPassOrderBeforeSourceOrder(t *testing.T) {
+	set, _, bag := checkSet(t, map[string]string{
+		"a.protop": `revision 1;
+namespace A;
+table T {
+  key int64 id = 1;
+  int64 other = 2 [references(Nowhere)];
+}
+view V of T {
+  gone;
+}
+`,
+	})
+	// Which diagnostic is which comes off the message rather than off the span,
+	// so that this test says nothing about the file a diagnostic names and
+	// fails for one reason only.
+	assertCodes(t, set, bag, diag.NoSuchMember, diag.RelationTargetNotFound)
+	assertMessageMentions(t, bag, 0, "`gone`")
+	assertMessageMentions(t, bag, 1, "`Nowhere`")
+}
+
 // --- helpers -----------------------------------------------------------------
 
 func assertDump(t *testing.T, s *Schema, want string) {
