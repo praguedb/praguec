@@ -245,10 +245,19 @@ func TestADiagnosticRaisedOnTheBagNamesNoFile(t *testing.T) {
 }
 
 // The MSVS form is the one shape MSBuild's canonical error parser reads, and
-// the literal below is what that parser expects -- `path(line,col): category
-// code: text`, one line, no snippet. Nothing generates it and no flag can
-// rewrite it: it is written out here because the format is a contract with a
-// program protopc does not own.
+// the literal below is what that parser expects, character for character.
+//
+// The authority is dotnet/msbuild, src/Shared/CanonicalError.cs, and its
+// OriginCategoryCodeTextExpressionPattern: `Origin : Subcategory Category Code
+// : Text`, in that order, with the location one of `(line)`, `(line,col)`,
+// `(line,col,line,col)` or `(line,col-col)`. **The comma between line and
+// column is load-bearing** -- the `(line-col)` in Microsoft's own documentation
+// is a typo with no regex behind it, and a build that got it wrong would log
+// protopc's errors as plain messages and pass.
+//
+// Nothing generates this literal and no flag can rewrite it. It is written out
+// because the format is a contract with a program protopc does not own, and the
+// only way to hold a contract like that is to write down the other side of it.
 func TestRenderMSVSIsTheShapeMSBuildParses(t *testing.T) {
 	f := source.NewFile("prague.protop", "revision 1;\nstruct S {\n  int64 id = 0;\n}\n")
 
@@ -265,6 +274,36 @@ func TestRenderMSVSIsTheShapeMSBuildParses(t *testing.T) {
 	// two are held apart by something other than which function was called.
 	if gcc := RenderAs(GCC, f, b.All()[0]); !strings.HasPrefix(gcc, "prague.protop:3:14: error PROTOP0300: ") {
 		t.Errorf("RenderAs(GCC) = %q, want the colon form", gcc)
+	}
+}
+
+// A diagnostic about no particular file takes the tool name as its origin, with
+// a space before the colon, which is the spelling CanonicalError accepts for a
+// message about no particular place. protopc raises none today -- every
+// diagnostic carries a span on purpose -- so this pins the spelling before the
+// first one exists rather than after a build has silently swallowed it.
+func TestRenderMSVSOfADiagnosticWithNoFile(t *testing.T) {
+	var b Bag
+	b.Errorf(ImportNotFound, source.SpanAt(0), "no file named %q was found", "gone.protop")
+
+	got := RenderAs(MSVS, nil, b.All()[0])
+	want := `protopc : error PROTOP0107: no file named "gone.protop" was found`
+	if got != want {
+		t.Errorf("RenderAs(MSVS) = %q\nwant %q", got, want)
+	}
+}
+
+// The caret form has no positionless spelling of its own -- there is no line to
+// quote and no column to point at -- so it is the headline under the same
+// origin. Asserted because the alternative, until now, was a nil dereference.
+func TestRenderGCCOfADiagnosticWithNoFile(t *testing.T) {
+	var b Bag
+	b.Errorf(ImportNotFound, source.SpanAt(0), "no file named %q was found", "gone.protop")
+
+	got := Render(nil, b.All()[0])
+	want := `protopc: error PROTOP0107: no file named "gone.protop" was found`
+	if got != want {
+		t.Errorf("Render = %q\nwant %q", got, want)
 	}
 }
 

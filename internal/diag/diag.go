@@ -163,6 +163,11 @@ func Render(f *source.File, d Diagnostic) string {
 	if d.File != nil {
 		f = d.File
 	}
+	if f == nil {
+		// No file, so no position and no snippet: the headline alone, under
+		// the tool's name. See renderMSVS on why the branch exists at all.
+		return fmt.Sprintf("%s: %s %s: %s", toolName, d.Severity, d.Code, d.Message)
+	}
 	pos := f.Position(d.Span.Start)
 	head := fmt.Sprintf("%s: %s %s: %s", pos, d.Severity, d.Code, d.Message)
 
@@ -210,6 +215,12 @@ func RenderAll(f *source.File, b *Bag) string {
 // error parser recognises -- and recognising it is what lights up Visual
 // Studio's error list, `dotnet build`'s summary and GitHub Actions'
 // annotations, none of which read the GCC form at all.
+//
+// The GCC form is for a terminal and for nothing else. Verified: MSBuild's GCC
+// fallback pattern wants the colon immediately after the severity, so protopc's
+// code between the two kills the match and the line is logged as a plain
+// message -- the build passes with an error in it. Anything reading protopc's
+// output mechanically wants MSVS.
 //
 // The default is GCC, and it is provisional. docs/research/
 // proto-to-messagepack-csharp.md:924 and :1292 both say the MSVS-shaped form
@@ -272,6 +283,27 @@ func RenderAllAs(format Format, f *source.File, b *Bag) string {
 //
 //	prague.protop(3,14): error PROTOP0300: field tag must be greater than 0
 //
+// The authority is dotnet/msbuild, src/Shared/CanonicalError.cs, and its
+// OriginCategoryCodeTextExpressionPattern. The grammar is
+// `Origin : Subcategory Category Code : Text` in that order; the location is
+// `(line)`, `(line,col)`, `(line,col,line,col)` or `(line,col-col)`, one-based;
+// the category is `error` or `warning`; and the code may contain neither a
+// space nor a colon. The **comma** between line and column is load-bearing --
+// the `(line-col)` that appears in Microsoft's own documentation is a typo with
+// no matching regex behind it.
+//
+// This is not protoc's `--error_format=msvs`, which is `f.proto(14) : error in
+// column=10: msg` -- line only, column in prose, and no code at all. MSBuild
+// logs that as a plain message rather than as an error, which is why Grpc.Tools
+// passes the flag and then overrides LogEventsFromTextOutput with six bespoke
+// regexes. Copying protoc here would be copying a shape that does not work.
+//
+// A diagnostic with no file to report against takes the tool name as its
+// origin, which is the spelling CanonicalError accepts for a message about no
+// particular place. protopc raises none today -- every diagnostic carries a
+// span, deliberately -- and the branch is here so that the first one to be
+// raised is still parseable rather than a crash.
+//
 // The message is flattened to one line because that parser is line-based: a
 // diagnostic whose text wrapped would have its tail read as an unrelated line
 // of build output, and protopc's messages are long enough that this is not
@@ -280,10 +312,16 @@ func renderMSVS(f *source.File, d Diagnostic) string {
 	if d.File != nil {
 		f = d.File
 	}
+	if f == nil {
+		return fmt.Sprintf("%s : %s %s: %s", toolName, d.Severity, d.Code, oneLine(d.Message))
+	}
 	pos := f.Position(d.Span.Start)
 	return fmt.Sprintf("%s(%d,%d): %s %s: %s",
 		pos.File, pos.Line, pos.Column, d.Severity, d.Code, oneLine(d.Message))
 }
+
+// toolName is the origin a diagnostic about no particular file reports under.
+const toolName = "protopc"
 
 // oneLine collapses every line break in a message to a single space.
 func oneLine(s string) string {
