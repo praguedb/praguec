@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"encoding/json"
 	"io"
 	"io/fs"
 	"os"
@@ -250,6 +251,101 @@ func number(t *testing.T, line string) int {
 		t.Fatal(err)
 	}
 	return n
+}
+
+// ---------------------------------------------------------------------------
+// The manifest.
+
+// The manifest is wired to no build target on purpose -- when protopc runs is
+// #44 and unruled -- so its *shape* is the whole of what this milestone
+// delivers, and a shape nothing asserts is not delivered. The literal below is
+// written out rather than round-tripped through encoding/json, because a
+// round-trip would only ask the encoder whether it agrees with itself; what a
+// reader on the other end parses is bytes.
+//
+// Its anchor is manifest.go's own doc comment, which is the specification: the
+// second test reads the example out of the comment and requires the writer to
+// produce it. Neither half can move alone, and nothing regenerates either.
+func TestTheManifestIsTheShapeItSpecifies(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "protopc.manifest.json")
+	if err := writeManifest(path, []string{filepath.Join(dir, "Odd.cs"), filepath.Join(dir, "SportGame.cs")}); err != nil {
+		t.Fatal(err)
+	}
+	got, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "{\n  \"version\": 1,\n  \"files\": [\n    \"Odd.cs\",\n    \"SportGame.cs\"\n  ]\n}\n"
+	if string(got) != want {
+		t.Errorf("manifest =\n%s\nwant\n%s", got, want)
+	}
+}
+
+// The example in manifest.go's doc comment is a manifest writeManifest writes.
+// A specification that drifts from its implementation documents a format
+// nothing produces, and the manifest exists to be read by a tool nobody has
+// written yet -- which is exactly the case where the comment is all there is.
+func TestTheManifestMatchesTheShapeItsDocumentationShows(t *testing.T) {
+	b, err := os.ReadFile("manifest.go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The example is the fenced-by-indentation block in the doc comment: the
+	// run of comment lines from the opening brace to the closing one.
+	var lines []string
+	in := false
+	for _, line := range strings.Split(string(b), "\n") {
+		if !strings.HasPrefix(line, "//") {
+			continue
+		}
+		text := strings.TrimPrefix(strings.TrimPrefix(line, "//"), "\t")
+		trimmed := strings.TrimSpace(text)
+		switch {
+		case trimmed == "{":
+			in = true
+		case !in:
+			continue
+		}
+		if in {
+			lines = append(lines, trimmed)
+		}
+		if trimmed == "}" {
+			break
+		}
+	}
+	if len(lines) == 0 {
+		t.Fatal("manifest.go's doc comment no longer shows an example manifest; it is the format's only specification")
+	}
+
+	var documented Manifest
+	if err := json.Unmarshal([]byte(strings.Join(lines, "\n")), &documented); err != nil {
+		t.Fatalf("the example in manifest.go is not valid JSON: %v\n%s", err, strings.Join(lines, "\n"))
+	}
+	if documented.Version != manifestVersion {
+		t.Errorf("manifest.go documents version %d and writes version %d", documented.Version, manifestVersion)
+	}
+
+	dir := t.TempDir()
+	path := filepath.Join(dir, "m.json")
+	inputs := make([]string, len(documented.Files))
+	for i, f := range documented.Files {
+		inputs[i] = filepath.Join(dir, filepath.FromSlash(f))
+	}
+	if err := writeManifest(path, inputs); err != nil {
+		t.Fatal(err)
+	}
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var written Manifest
+	if err := json.Unmarshal(raw, &written); err != nil {
+		t.Fatal(err)
+	}
+	if written.Version != documented.Version || !slices.Equal(written.Files, documented.Files) {
+		t.Errorf("writeManifest produced %+v, the documentation shows %+v", written, documented)
+	}
 }
 
 // ---------------------------------------------------------------------------
