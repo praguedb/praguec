@@ -10,6 +10,8 @@ Protobuf's answer to the same pressure is extension ranges: an owner reserves `e
 
 **A view may narrow a member to another view.** `SlimOdd odds;` takes tag 26 and requires `SlimOdd` to be a view of `Odd`. A leading type asks for the narrowing; a bare name takes the source's type unchanged. A view of a view stays pinned to the original tags, so `SlimOdd` cannot quietly renumber and desync tag 26.
 
+**A view may narrow and rename in one member.** `SlimOdd odds as o;` is still tag 26: the leading type says what the member holds, `as o` says what the consumer calls it, and the tag is the source's as it is on every other view line — neither half is about the tag. The two rules are written apart above only because they are separately motivated; refusing them together would deny a consumer a name for the subset it just took, and would buy nothing back, since the one thing a view must not invent is the number that neither half touches.
+
 **A view's source is a table or a record.** `SlimOdd of Odd` narrows a record, because a view is about tags and members rather than identity.
 
 ### Computed members
