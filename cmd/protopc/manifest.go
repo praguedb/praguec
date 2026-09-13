@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"sort"
 )
 
 // Manifest is the ledger of what one `protopc generate` wrote.
@@ -43,6 +44,13 @@ type Manifest struct {
 const manifestVersion = 1
 
 // writeManifest records paths in a manifest at path.
+//
+// All three of the properties the comment above claims are made here, by the
+// writer, rather than assumed of the caller: relative to the manifest's own
+// directory, slash-separated, and sorted. Sorted last and not by the caller,
+// because the sort has to be over the names as they are written down -- a
+// caller that sorted absolute paths would produce a manifest that is sorted by
+// something the reader cannot see.
 func writeManifest(path string, paths []string) error {
 	dir := filepath.Dir(path)
 	m := Manifest{Version: manifestVersion, Files: make([]string, 0, len(paths))}
@@ -53,6 +61,7 @@ func writeManifest(path string, paths []string) error {
 		}
 		m.Files = append(m.Files, filepath.ToSlash(rel))
 	}
+	sort.Strings(m.Files)
 
 	text, err := json.MarshalIndent(m, "", "  ")
 	if err != nil {

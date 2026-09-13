@@ -49,12 +49,25 @@ const excludedBanner = "auto-generated"
 
 // bannerWindow is how far in the generator looks for it.
 //
-// The record is ambiguous and this is the stricter reading taken deliberately.
-// b2tech-feed-cache.md:352 says the first 500 *characters*; the same document
-// at :432 and #25 both say the first 500 *bytes*. The two windows coincide for
-// ASCII, which is what protopc emits today, and the byte reading is the one
-// taken here. If protopc's output ever carries non-ASCII in its first lines the
-// character window is the wider of the two and this constant has to become one.
+// The record is ambiguous: b2tech-feed-cache.md:352 says the first 500
+// *characters*; the same document at :432 and #25 both say the first 500
+// *bytes*. The reading taken here is bytes, and it is the *looser* of the two,
+// which is the opposite of what this comment used to claim.
+//
+// Which way strict runs turns on the direction of the assertion. The predicate
+// makes the downstream generator *skip* the file, so what protopc asserts is
+// that the banner is absent -- and an absence over a wider window is the harder
+// thing to prove. 500 characters spans up to four times the content of 500
+// bytes in UTF-8, so characters is the wider window and characters is the
+// stricter test. Bytes can pass while the generator, counting characters,
+// reaches further in and finds the banner.
+//
+// Nothing is wrong today: the two windows coincide for ASCII, and ASCII is what
+// the C# backend emits. The constant is left at bytes because it is what the
+// two later sources of the record say and because moving it is a change to
+// which reading protopc holds itself to. If protopc's output ever carries
+// non-ASCII in its first lines, this has to become a character count -- the
+// comparison below slices a byte prefix, so it would become a rune slice too.
 const bannerWindow = 500
 
 // caseInsensitive says how the path comparisons above are made, and is the
@@ -326,11 +339,19 @@ func TestTheManifestMatchesTheShapeItsDocumentationShows(t *testing.T) {
 		t.Errorf("manifest.go documents version %d and writes version %d", documented.Version, manifestVersion)
 	}
 
+	// The inputs are the documented names *reversed*, as absolute paths. Built
+	// in the documented order this comparison is an identity -- whatever the
+	// comment listed comes back, in whatever order, under whatever names, and
+	// only Version is ever asserted. Reversed, the writer has to do all three
+	// of the things the comment claims for the result to come back equal:
+	// relativise against the manifest's directory, slash-separate, and sort.
+	// An example that is not itself sorted now fails here, which is what the
+	// word "sorted" in that comment is worth.
 	dir := t.TempDir()
 	path := filepath.Join(dir, "m.json")
 	inputs := make([]string, len(documented.Files))
 	for i, f := range documented.Files {
-		inputs[i] = filepath.Join(dir, filepath.FromSlash(f))
+		inputs[len(inputs)-1-i] = filepath.Join(dir, filepath.FromSlash(f))
 	}
 	if err := writeManifest(path, inputs); err != nil {
 		t.Fatal(err)
@@ -390,6 +411,44 @@ func TestTheSameFileIsCleanOnceItsRootIsGiven(t *testing.T) {
 	f := filepath.Join(examplesDir, "bo-models.protop")
 	if got := runCLI(t, "check", "-I", examplesDir, f); got != exitOK {
 		t.Errorf("exit %d with the root, want 0", got)
+	}
+	// And says nothing while doing it. A clean run that writes so much as a
+	// newline to stderr is a clean run that a build log records as output, and
+	// a CI job that greps stderr for trouble finds some.
+	if got := stderrOf(t, "check", "-I", examplesDir, f); got != "" {
+		t.Errorf("a clean check wrote to stderr: %q", got)
+	}
+}
+
+// The exit code is read from the bag check.Check filled.
+//
+// Every other exit-1 case above is raised by the parser or by the loader, so
+// without this one nothing in the suite says the checker's diagnostics reach
+// the exit code at all -- and a `check` command that runs the checker and
+// throws its findings away is a `check` command that passes everything. Two
+// codes from two different passes of the checker, because one would pass for a
+// driver that happened to keep the bag of the first pass.
+func TestACheckerDiagnosticIsWhatDecidesTheExitCode(t *testing.T) {
+	for _, tc := range []struct{ name, code, text string }{
+		{
+			"a type that resolves to nothing", "PROTOP0311",
+			"revision 1;\nnamespace A;\nstruct S {\n  Nope id = 1;\n}\n",
+		},
+		{
+			"a view selecting one member twice", "PROTOP0303",
+			"revision 1;\nnamespace A;\ntable T {\n  key int64 id = 1;\n  string s = 2;\n}\nview V of T {\n  s as a;\n  s as b;\n}\n",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			f := writeTemp(t, "checker.protop", tc.text)
+			var stderr bytes.Buffer
+			if got := run([]string{"check", f}, io.Discard, &stderr); got != exitDiags {
+				t.Errorf("exit %d, want %d\n%s", got, exitDiags, stderr.String())
+			}
+			if !strings.Contains(stderr.String(), tc.code) {
+				t.Errorf("%s was not reported:\n%s", tc.code, stderr.String())
+			}
+		})
 	}
 }
 
@@ -557,6 +616,181 @@ func TestADiagnosticInAnImportedFileNamesThatFile(t *testing.T) {
 
 // ---------------------------------------------------------------------------
 // Helpers.
+
+// The listing on stdout is exactly what was written, in sorted order.
+//
+// That listing is the machine-readable half of `generate`: it is what a script
+// pipes into a compile, and it is deletable today with the suite green. Sorted
+// is asserted against a sort this test does itself rather than against a
+// literal, so the assertion is the property and not a transcription of one
+// run's output -- and the run has to produce more than one file for the order
+// to mean anything, which is why it is the examples and not a fixture.
+func TestGenerateListsExactlyTheFilesItWroteInSortedOrder(t *testing.T) {
+	out := t.TempDir()
+	var stdout bytes.Buffer
+	args := append([]string{"generate", "-I", examplesDir, "-o", out}, exampleFiles(t)...)
+	if code := run(args, &stdout, io.Discard); code != exitOK {
+		t.Fatalf("generate exited %d", code)
+	}
+
+	listed := strings.Split(strings.TrimSuffix(stdout.String(), "\n"), "\n")
+	if len(listed) < 2 {
+		t.Fatalf("only %d file listed, which cannot show an order:\n%s", len(listed), stdout.String())
+	}
+
+	onDisk := make([]string, 0, len(listed))
+	for _, n := range names(t, out) {
+		onDisk = append(onDisk, filepath.Join(out, n))
+	}
+	if !slices.Equal(listed, onDisk) {
+		t.Errorf("listed\n  %v\nbut the directory holds, sorted,\n  %v", listed, onDisk)
+	}
+	if !slices.IsSorted(listed) {
+		t.Errorf("the listing is not sorted:\n  %v", listed)
+	}
+}
+
+// --manifest writes one where the flag points, and nothing anywhere when it is
+// not given.
+//
+// Both halves. Accepting the flag and dropping it passes every other test in
+// this file, and so does giving it a default -- which is worse than dropping
+// it, because then every run leaves a file in a directory nobody asked it to
+// write into. The manifest read here is one a real generate produced, which is
+// the only place the sort in writeManifest and the paths emit chose are ever
+// seen together.
+func TestTheManifestIsWrittenWhereTheFlagSaysAndNowhereWhenItIsNotGiven(t *testing.T) {
+	out := t.TempDir()
+	path := filepath.Join(out, "protopc.manifest.json")
+	args := append([]string{"generate", "-I", examplesDir, "-o", out, "--manifest", path}, exampleFiles(t)...)
+	if code := runCLI(t, args...); code != exitOK {
+		t.Fatalf("generate exited %d", code)
+	}
+
+	b, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("--manifest %s wrote no manifest: %v", path, err)
+	}
+	var m Manifest
+	if err := json.Unmarshal(b, &m); err != nil {
+		t.Fatal(err)
+	}
+	if m.Version != manifestVersion {
+		t.Errorf("version %d, want %d", m.Version, manifestVersion)
+	}
+
+	// Everything generate wrote beside the manifest, and the manifest does not
+	// list itself: it is a record of the emitted files, not of the directory.
+	var want []string
+	for _, n := range names(t, out) {
+		if n != filepath.Base(path) {
+			want = append(want, n)
+		}
+	}
+	if len(want) < 2 {
+		t.Fatalf("generate wrote %d files, too few to say anything about order", len(want))
+	}
+	if !slices.Equal(m.Files, want) {
+		t.Errorf("the manifest lists\n  %v\nbut the directory holds\n  %v", m.Files, want)
+	}
+
+	// And with no --manifest, no manifest -- not here, not in the working
+	// directory, not anywhere.
+	bare := t.TempDir()
+	// Resolved before the chdir, because both are relative to the package
+	// directory and this test is about to stop being in it.
+	root, inputs := absExamples(t), absExampleFiles(t)
+	cwd := chdirTemp(t)
+	args = append([]string{"generate", "-I", root, "-o", bare}, inputs...)
+	if code := runCLI(t, args...); code != exitOK {
+		t.Fatalf("generate exited %d", code)
+	}
+	for _, dir := range []string{bare, cwd} {
+		for _, n := range names(t, dir) {
+			if strings.HasSuffix(n, ".json") {
+				t.Errorf("generate with no --manifest wrote %s", filepath.Join(dir, n))
+			}
+		}
+	}
+}
+
+// With no -o, generate writes into the working directory.
+//
+// The default is the string "." and nothing else in the suite passes through
+// it: every other generate test names -o explicitly, so a default of "out" or
+// of os.TempDir() would go unnoticed until a user ran the command the usage
+// text describes. Asserted by running in a directory of this test's own, which
+// is also what makes the no-manifest half above safe to check.
+func TestGenerateWithNoOutputFlagWritesIntoTheWorkingDirectory(t *testing.T) {
+	root, inputs := absExamples(t), absExampleFiles(t)
+	dir := chdirTemp(t)
+	args := append([]string{"generate", "-I", root}, inputs...)
+	if code := runCLI(t, args...); code != exitOK {
+		t.Fatalf("generate exited %d", code)
+	}
+	got := names(t, dir)
+	if len(got) == 0 {
+		t.Fatal("generate with no -o wrote nothing into the working directory")
+	}
+	for _, n := range got {
+		if !strings.HasSuffix(n, ".cs") {
+			t.Errorf("wrote %s, which is not C#", n)
+		}
+	}
+}
+
+// A file that parses, checks and declares nothing is an error rather than a
+// silent no-op.
+//
+// `generate` that writes nothing and exits 0 is indistinguishable from a
+// generate whose output went somewhere the caller was not looking, and the
+// caller finds out at the C# compile. Exit 2 and not 1: the schema is not
+// wrong, the command is -- it named a file there is nothing to generate from.
+func TestAProgramThatDeclaresNothingIsAnError(t *testing.T) {
+	f := writeTemp(t, "empty.protop", "revision 1;\nnamespace A;\n")
+	out := t.TempDir()
+	var stderr bytes.Buffer
+	if got := run([]string{"generate", "-o", out, f}, io.Discard, &stderr); got != exitUsage {
+		t.Errorf("exit %d, want %d", got, exitUsage)
+	}
+	if !strings.Contains(stderr.String(), "nothing to write") {
+		t.Errorf("the message does not say nothing was written:\n%s", stderr.String())
+	}
+	if got := names(t, out); len(got) != 0 {
+		t.Errorf("the failed generate left %v behind", got)
+	}
+}
+
+// chdirTemp moves the test into an empty directory of its own and returns it.
+//
+// EvalSymlinks because t.TempDir under macOS is /var/folders/..., which is a
+// symlink to /private/var/folders/...: a test that chdir'd into the unresolved
+// spelling would compare paths against a working directory the process reports
+// under the other one.
+func chdirTemp(t *testing.T) string {
+	t.Helper()
+	dir, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Chdir(dir)
+	return dir
+}
+
+// absExampleFiles is exampleFiles as absolute paths, for the tests that run
+// from somewhere other than the package directory.
+func absExampleFiles(t *testing.T) []string {
+	t.Helper()
+	out := make([]string, 0)
+	for _, p := range exampleFiles(t) {
+		abs, err := filepath.Abs(p)
+		if err != nil {
+			t.Fatal(err)
+		}
+		out = append(out, abs)
+	}
+	return out
+}
 
 func runCLI(t *testing.T, args ...string) int {
 	t.Helper()
