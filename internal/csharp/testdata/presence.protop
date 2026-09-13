@@ -1,0 +1,19 @@
+revision 1;
+
+namespace Presence;
+
+record Odd {
+  bool live = 1;
+}
+
+record Shapes {
+  bool           flag       = 1;
+  bool?          maybe_flag = 2;
+  list<Odd>      odds       = 3;
+  list<Odd>?     maybe_odds = 4;
+  list<Odd?>     odd_maybes = 5;
+  list<Odd?>?    both       = 6;
+  list<string>   groups     = 7;
+  decimal(4)     money      = 8;
+  decimal(2)?    maybe_money = 9;
+}
