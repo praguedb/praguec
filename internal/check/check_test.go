@@ -30,6 +30,10 @@ const (
 var (
 	specSection1 = filepath.Join("..", "..", "docs", "spec", "protop", "shared-repository.md")
 	specSection2 = filepath.Join("..", "..", "docs", "spec", "protop", "service-repository.md")
+	// Section 5 lends this package no fixture, only rules. One of them is
+	// pinned, the same way and for the same reason a fixture is -- see
+	// assertSpecStates.
+	specSection5 = filepath.Join("..", "..", "docs", "spec", "protop", "views.md")
 )
 
 func readFixture(t *testing.T, name string) string {
@@ -303,6 +307,51 @@ file prague.protop
 func TestSpecFixturesAreVerbatim(t *testing.T) {
 	assertVerbatim(t, specSection1, pragueFixture)
 	assertVerbatim(t, specSection2, consumerFixture)
+}
+
+// assertSpecStates is assertVerbatim for prose. A fenced block is a fixture and
+// can be held byte for byte; a paragraph is written to be read, and a pin that
+// failed on a rewrap would teach the next reader to delete it. Runs of
+// whitespace are collapsed on both sides and nothing else is -- not the words,
+// not the emphasis, not the backticks and not the numbers -- so a reflow passes
+// and an inversion does not.
+//
+// This package carries its own copy for the same reason it carries its own
+// fixtures: what a package rests on belongs to the package that rests on it,
+// and the syntax suite pinning a rule would not fail when the checker's own
+// test for that rule goes on asserting the opposite of what the spec says.
+func assertSpecStates(t *testing.T, specPath, claim string) {
+	t.Helper()
+	spec, err := os.ReadFile(specPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(collapseSpace(string(spec)), collapseSpace(claim)) {
+		t.Errorf("%s no longer states:\n%s", specPath, claim)
+	}
+}
+
+// collapseSpace renders every run of whitespace as one space, which is the
+// whole of what a prose pin is allowed to forgive.
+func collapseSpace(s string) string {
+	return strings.Join(strings.Fields(s), " ")
+}
+
+// section5NarrowAndRename is the rule TestAViewMemberMayNarrowAndRenameAtOnce
+// rests on, quoted out of section 5. It is the three facts that test asserts
+// apart, said by the authority for them: the rule itself, the example, and the
+// tag being the source's and neither half's. The number is in the span on
+// purpose -- `26` changed to `1` reads as a spec that lets the member invent a
+// number after all, and nothing else in this suite would notice.
+const section5NarrowAndRename = "**A view may narrow and rename in one member.** " +
+	"`SlimOdd odds as o;` is still tag 26: the leading type says what the member holds, " +
+	"`as o` says what the consumer calls it, and the tag is the source's as it is on " +
+	"every other view line — neither half is about the tag."
+
+// The citation, checked. A comment may quote the spec; only a test can say the
+// spec still reads that way.
+func TestSection5StatesTheNarrowAndRename(t *testing.T) {
+	assertSpecStates(t, specSection5, section5NarrowAndRename)
 }
 
 // --- resolution --------------------------------------------------------------

@@ -28,6 +28,9 @@ const (
 var (
 	specSection1 = filepath.Join("..", "..", "docs", "spec", "protop", "shared-repository.md")
 	specSection2 = filepath.Join("..", "..", "docs", "spec", "protop", "service-repository.md")
+	// Section 5 lends this file no fixture. It lends it a rule, in prose, and
+	// a rule is pinned the same way a fixture is -- see assertSpecStates.
+	specSection5 = filepath.Join("..", "..", "docs", "spec", "protop", "views.md")
 )
 
 // parse runs the whole frontend -- lexer and parser -- over src.
@@ -348,6 +351,34 @@ func assertVerbatim(t *testing.T, specPath, fixtureName string) {
 	}
 	t.Errorf("testdata/%s appears in %s but is no whole ```protop block of it; "+
 		"a fixture that is part of a block is a paraphrase by omission", fixtureName, specPath)
+}
+
+// assertSpecStates is assertVerbatim for prose. A fenced block is a fixture
+// and can be held byte for byte; a paragraph is written to be read, and a pin
+// that failed on a rewrap would teach the next reader to delete it. Runs of
+// whitespace are collapsed on both sides and nothing else is -- not the words,
+// not the emphasis, not the backticks and not the numbers -- so a reflow
+// passes and an inversion does not.
+//
+// A test whose comment cites a rule and whose behaviour rests on it is resting
+// on an authority nothing checks. The spec can be edited to say the opposite
+// with every package green, and the citation then reads as license for the
+// behaviour the spec now forbids.
+func assertSpecStates(t *testing.T, specPath, claim string) {
+	t.Helper()
+	spec, err := os.ReadFile(specPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(collapseSpace(string(spec)), collapseSpace(claim)) {
+		t.Errorf("%s no longer states:\n%s", specPath, claim)
+	}
+}
+
+// collapseSpace renders every run of whitespace as one space, which is the
+// whole of what a prose pin is allowed to forgive.
+func collapseSpace(s string) string {
+	return strings.Join(strings.Fields(s), " ")
 }
 
 // What keeps "parses verbatim out of the spec" honest: the fixture is not a
@@ -2679,10 +2710,30 @@ view V of T
 	}
 }
 
-// Narrowing and renaming at once, which section 5 now rules in: "A view may
-// narrow and rename in one member. `SlimOdd odds as o;` is still tag 26: the
-// leading type says what the member holds, `as o` says what the consumer calls
-// it, and the tag is the source's as it is on every other view line."
+// section5NarrowAndRename is the rule the test below rests on, quoted out of
+// section 5 and held against it by TestSection5StatesTheNarrowAndRename. The
+// span is chosen for what it carries rather than for its length: the rule
+// itself, the example this file parses, and the tag -- 26, BetType's, and
+// neither half of the member's doing. Each of the three can be falsified on its
+// own, and nothing else in the suite would notice; `26` changed to `1` reads as
+// a spec that says the member may invent a number after all.
+//
+// It is quoted once, here, rather than in the comment below it as well. Two
+// copies of a sentence in one file are two things to keep true, and the one
+// that is not compared to anything is the one that goes stale.
+const section5NarrowAndRename = "**A view may narrow and rename in one member.** " +
+	"`SlimOdd odds as o;` is still tag 26: the leading type says what the member holds, " +
+	"`as o` says what the consumer calls it, and the tag is the source's as it is on " +
+	"every other view line — neither half is about the tag."
+
+// The citation, checked. A comment may quote the spec; only a test can say the
+// spec still reads that way.
+func TestSection5StatesTheNarrowAndRename(t *testing.T) {
+	assertSpecStates(t, specSection5, section5NarrowAndRename)
+}
+
+// Narrowing and renaming at once, which section 5 now rules in -- the rule is
+// section5NarrowAndRename above, quoted from the section and pinned to it.
 //
 // The parser accepted the combination before the section said so, because the
 // shapes compose by construction -- a narrowing is two idents, a rename is `as`
