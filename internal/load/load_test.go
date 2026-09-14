@@ -150,6 +150,39 @@ func assertCodes(t *testing.T, bag *diag.Bag, want ...diag.Code) {
 	}
 }
 
+// assertUnderlines holds a loader diagnostic against the source it points at:
+// where its span starts, and what that span covers.
+//
+// The loader was the one stage in the frontend with no way to say either. Both
+// of its codes are raised at an import's span, and a span that is wrong --
+// collapsed to nothing, or sitting on the import above the one at fault --
+// paints the caret under the wrong line while every code sequence in this file
+// stays green. Measured: collapsing PROTOP0108's span inside Bag.add failed
+// nothing in the repo before this existed.
+//
+// The file comes off the diagnostic and not off the fixture. The loader is the
+// first stage that holds several files at once, so which file a span indexes
+// into is the diagnostic's own answer to give.
+//
+// The position is a line and a column rather than the printed `path:line:col`
+// because the path is a fresh temp directory: the only part of it a fixture
+// could write down is the suffix, and which file the stamp names is already
+// held by TestADiagnosticNamesTheFileThatWroteTheImport.
+func assertUnderlines(t *testing.T, bag *diag.Bag, i, wantLine, wantCol int, wantText string) {
+	t.Helper()
+	d := bag.All()[i]
+	if d.File == nil {
+		t.Fatalf("diagnostic %d names no file, so there is nothing to slice its span out of", i)
+	}
+	pos := d.File.Position(d.Span.Start)
+	if pos.Line != wantLine || pos.Column != wantCol {
+		t.Errorf("diagnostic %d starts at %d:%d, want %d:%d", i, pos.Line, pos.Column, wantLine, wantCol)
+	}
+	if got := d.File.Slice(d.Span); got != wantText {
+		t.Errorf("diagnostic %d underlines %q, want %q", i, got, wantText)
+	}
+}
+
 func loadIn(t *testing.T, dir string, roots, inputs []string) (*Result, *diag.Bag, error) {
 	t.Helper()
 	abs := func(paths []string) []string {
@@ -660,6 +693,66 @@ func TestADiagnosticNamesTheFileThatWroteTheImport(t *testing.T) {
 	f := bag.All()[0].File
 	if f == nil || !strings.HasSuffix(f.Name, "b.protop") {
 		t.Errorf("the diagnostic names %v, want b.protop", f)
+	}
+}
+
+// A loader diagnostic underlines the import that caused it, and not the file,
+// the first import, or nothing.
+//
+// Both fixtures write a good import above the bad one. That is the whole point
+// of them: a span that named the file, or that named whichever import the
+// loader looked at first, would slice to `import "there.protop";` and this row
+// would say so. Without the good import above, a span pointing anywhere in the
+// header would be indistinguishable from the right one.
+//
+// What is underlined is the import statement entire, `;` included, rather than
+// the string inside it. That is deliberate and it is not the shape
+// nanov/protobuf-to-messagepack-sharp#57 objects to elsewhere: there the span
+// covers a container when the thing at fault is one name inside it, and here
+// the whole statement is what protopc could not carry out. There is nothing
+// inside it that is right.
+func TestALoaderDiagnosticUnderlinesTheImportThatCausedIt(t *testing.T) {
+	for _, tt := range []struct {
+		name  string
+		roots []string
+		files []file
+		want  diag.Code
+		text  string
+	}{
+		{
+			name:  "an import nothing provides",
+			roots: []string{"."},
+			files: []file{
+				{"a.protop", src("A", "there.protop", "gone.protop")},
+				{"there.protop", src("There")},
+			},
+			want: diag.ImportNotFound,
+			text: `import "gone.protop";`,
+		},
+		{
+			name:  "an import two roots provide",
+			roots: []string{".", "one", "two"},
+			files: []file{
+				{"a.protop", src("A", "there.protop", "both.protop")},
+				{"there.protop", src("There")},
+				{"one/both.protop", src("One")},
+				{"two/both.protop", src("Two")},
+			},
+			want: diag.ImportAmbiguous,
+			text: `import "both.protop";`,
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			dir := plant(t, tt.files...)
+			_, bag, err := loadIn(t, dir, tt.roots, []string{"a.protop"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			assertCodes(t, bag, tt.want)
+			// Line 4 is the second import: revision, namespace, import,
+			// import, as src writes them.
+			assertUnderlines(t, bag, 0, 4, 1, tt.text)
+		})
 	}
 }
 
