@@ -1,8 +1,9 @@
 package diag
 
 import (
-	"os"
-	"regexp"
+	"go/ast"
+	"go/parser"
+	"go/token"
 	"strings"
 	"testing"
 
@@ -92,27 +93,119 @@ func TestEveryCodeKeepsItsNumber(t *testing.T) {
 	}
 }
 
+// declaredCodes is every Code-typed constant codes.go declares, by name. It is
+// what makes the two completeness tests below mean "every code" rather than
+// "every code someone wrote in one particular way".
+//
+// It walks the file's syntax tree instead of matching text, because the text
+// had one spelling and the language has many. The regex this replaces was
+// `^\t(\w+) Code = \d+$`, and eleven declaration forms were measured against
+// it: ten were missed, eight of them gofmt-stable. A trailing line comment. A
+// hex literal. `iota` arithmetic. A grouped `X, Y Code = 1, 2`. A spec that
+// inherits its type from the one above it. `X = Code(304)`. `X = TagOutOfRange`.
+// A top-level `const` outside the block. CRLF line endings.
+//
+// On its own each miss fails the count check beside it -- but the count is
+// restored by deleting the code's two oracle rows, and a demotion made in the
+// same commit then passes gofmt, vet and every test in the repo. That is a
+// code lifted clean out of the completeness guarantee, which is the one thing
+// these tests exist to make impossible.
+//
+// go/ast and go/parser are standard library. go.mod has no third-party
+// dependency and this does not give it one.
+func declaredCodes(t *testing.T) []string {
+	t.Helper()
+	file, err := parser.ParseFile(token.NewFileSet(), "codes.go", nil, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	isCode := map[string]bool{}
+	var names []string
+
+	// `X = TagOutOfRange` takes its type from a constant declared elsewhere in
+	// the file, possibly below it, so the walk repeats until it learns nothing
+	// new rather than trusting declaration order.
+	for {
+		before := len(names)
+		for _, decl := range file.Decls {
+			gen, ok := decl.(*ast.GenDecl)
+			if !ok || gen.Tok != token.CONST {
+				continue
+			}
+			// Within one const block a spec with no expression repeats the
+			// type AND the expression of the spec above it, which is how the
+			// iota form is written. carried is that repeated answer.
+			carried := false
+			for _, spec := range gen.Specs {
+				vs, ok := spec.(*ast.ValueSpec)
+				if !ok {
+					continue
+				}
+				switch {
+				case len(vs.Values) == 0:
+					// repeats the spec above: carried already says what it is
+				case vs.Type != nil:
+					carried = isCodeIdent(vs.Type)
+				default:
+					carried = yieldsACode(vs.Values[0], isCode)
+				}
+				if !carried {
+					continue
+				}
+				for _, n := range vs.Names {
+					if n.Name != "_" && !isCode[n.Name] {
+						isCode[n.Name] = true
+						names = append(names, n.Name)
+					}
+				}
+			}
+		}
+		if len(names) == before {
+			return names
+		}
+	}
+}
+
+func isCodeIdent(e ast.Expr) bool {
+	id, ok := e.(*ast.Ident)
+	return ok && id.Name == "Code"
+}
+
+// yieldsACode reports whether an untyped const expression is a Code anyway:
+// a conversion `Code(304)`, a reference to a constant already known to be one,
+// or either of those inside parentheses or arithmetic.
+func yieldsACode(e ast.Expr, isCode map[string]bool) bool {
+	switch e := e.(type) {
+	case *ast.CallExpr:
+		return isCodeIdent(e.Fun)
+	case *ast.Ident:
+		return isCode[e.Name]
+	case *ast.ParenExpr:
+		return yieldsACode(e.X, isCode)
+	case *ast.BinaryExpr:
+		return yieldsACode(e.X, isCode) || yieldsACode(e.Y, isCode)
+	}
+	return false
+}
+
 // The table above is only an oracle if it is complete, so the names -- and only
 // the names -- are read back out of codes.go. A code added without a line here
 // fails, which is the point at which someone has to decide what group it is in
 // and what number is free in it. The numbers stay literals in the table; taking
 // those from the source too would be the tautology this test exists to avoid.
 func TestEveryCodeIsInTheTable(t *testing.T) {
-	src, err := os.ReadFile("codes.go")
-	if err != nil {
-		t.Fatal(err)
-	}
 	listed := make(map[string]bool, len(wantCodeNumbers))
 	for _, c := range wantCodeNumbers {
 		listed[c.name] = true
 	}
-	declared := regexp.MustCompile(`(?m)^\t(\w+) Code = \d+$`).FindAllStringSubmatch(string(src), -1)
+	declared := declaredCodes(t)
 	if len(declared) != len(wantCodeNumbers) {
 		t.Errorf("codes.go declares %d codes, the table lists %d", len(declared), len(wantCodeNumbers))
 	}
-	for _, m := range declared {
-		if !listed[m[1]] {
-			t.Errorf("%s is declared in codes.go and is in no test that says what number it has", m[1])
+	for _, name := range declared {
+		if !listed[name] {
+			t.Errorf("%s is declared in codes.go and is in no test that says what number it has", name)
 		}
 	}
 }
@@ -258,21 +351,17 @@ func TestNoCodeIsAdvisoryYet(t *testing.T) {
 // since an unlisted code takes the zero value it would agree about every code
 // nobody has thought about.
 func TestEveryCodeIsInTheSeverityTable(t *testing.T) {
-	src, err := os.ReadFile("codes.go")
-	if err != nil {
-		t.Fatal(err)
-	}
 	listed := make(map[string]bool, len(wantCodeSeverities))
 	for _, c := range wantCodeSeverities {
 		listed[c.name] = true
 	}
-	declared := regexp.MustCompile(`(?m)^\t(\w+) Code = \d+$`).FindAllStringSubmatch(string(src), -1)
+	declared := declaredCodes(t)
 	if len(declared) != len(wantCodeSeverities) {
 		t.Errorf("codes.go declares %d codes, the severity table lists %d", len(declared), len(wantCodeSeverities))
 	}
-	for _, m := range declared {
-		if !listed[m[1]] {
-			t.Errorf("%s is declared in codes.go and is in no test that says whether it fails the compile", m[1])
+	for _, name := range declared {
+		if !listed[name] {
+			t.Errorf("%s is declared in codes.go and is in no test that says whether it fails the compile", name)
 		}
 	}
 }
