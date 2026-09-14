@@ -602,6 +602,15 @@ func underlines(s string) *string { return &s }
 // to what a user sees, and a test that reads it back out of the source is the
 // only thing that says how wide it is.
 //
+// Seven rows pin nothing, and say why in spanUnpinned. All seven are
+// nanov/protobuf-to-messagepack-sharp#57: PROTOP0100 and PROTOP0104 underline
+// each other's header line, and PROTOP0400 underlines the `[` rather than the
+// annotation its message says to move. Pinning a wrong underline is worse than
+// leaving it open -- it turns a defect into a golden that #57 then has to argue
+// with -- so those spans are left to #57 and the row records the debt instead
+// of hiding it. Three rows that were already pinned that way stay pinned, each
+// with the citation beside it.
+//
 // Lexical diagnostics come first in the bag whatever their position, because
 // Parse tokenises the whole file before it reads a token of it.
 func TestParseDiagnostics(t *testing.T) {
@@ -612,18 +621,27 @@ func TestParseDiagnostics(t *testing.T) {
 		wantLine  int
 		wantCol   int
 		wantSpan  *string
+		// spanUnpinned is why this row asserts no underline, and a row must
+		// give one or the other. Nothing used to demand either, so the column
+		// was 14 rows of 52 and the gap read as an oversight rather than as a
+		// decision -- which is how a class of diagnostic stays unpinned for a
+		// milestone at a time. The reason is prose because the only reasons
+		// that survive review are the ones that name an issue.
+		spanUnpinned string
 	}{
 		{
 			name:      "missing revision",
 			src:       "namespace A;\nstruct S { int64 a = 1; }\n",
 			wantCodes: []diag.Code{diag.MissingRevision},
 			wantLine:  1, wantCol: 1,
+			spanUnpinned: "#57: headSpan is toks[0], so this underlines `namespace` -- the other header line",
 		},
 		{
 			name:      "missing namespace",
 			src:       "revision 1;\nstruct S { int64 a = 1; }\n",
 			wantCodes: []diag.Code{diag.MissingNamespace},
 			wantLine:  1, wantCol: 1,
+			spanUnpinned: "#57: headSpan is toks[0], so this underlines `revision` -- the other header line",
 		},
 		{
 			// Both are checked after the whole file, so a header-less file still
@@ -632,6 +650,7 @@ func TestParseDiagnostics(t *testing.T) {
 			src:       "struct S { int64 a = 1; }\n",
 			wantCodes: []diag.Code{diag.MissingRevision, diag.MissingNamespace},
 			wantLine:  1, wantCol: 1,
+			spanUnpinned: "#57: headSpan is toks[0], here the `struct` neither diagnostic is about",
 		},
 		{
 			name: "tag 0",
@@ -643,6 +662,7 @@ struct S {
 `,
 			wantCodes: []diag.Code{diag.TagOutOfRange},
 			wantLine:  4, wantCol: 14,
+			wantSpan: underlines("0"),
 		},
 		{
 			name: "precision on a type that takes none",
@@ -654,6 +674,7 @@ struct S {
 `,
 			wantCodes: []diag.Code{diag.PrecisionNotAllowed},
 			wantLine:  4, wantCol: 9, // the precision itself, not the type
+			wantSpan: underlines("4"),
 		},
 		{
 			name: "decimal without its precision",
@@ -665,18 +686,21 @@ struct S {
 `,
 			wantCodes: []diag.Code{diag.PrecisionRequired},
 			wantLine:  4, wantCol: 3,
+			wantSpan: underlines("decimal"),
 		},
 		{
 			name:      "unterminated block comment",
 			src:       "revision 1;\nnamespace A;\n/* and then nothing\n",
 			wantCodes: []diag.Code{diag.UnterminatedBlockComment},
 			wantLine:  3, wantCol: 1,
+			wantSpan: underlines("/*"),
 		},
 		{
 			name:      "unsupported revision",
 			src:       "revision 2;\nnamespace A;\n",
 			wantCodes: []diag.Code{diag.UnsupportedRevision},
 			wantLine:  1, wantCol: 10,
+			wantSpan: underlines("2"),
 		},
 		{
 			// Named for what it is: the namespace is a header line and not a
@@ -716,12 +740,14 @@ namespace A;
 			src:       "revision 1;\nrevision 1;\nnamespace A;\n",
 			wantCodes: []diag.Code{diag.DuplicateRevision},
 			wantLine:  2, wantCol: 1,
+			wantSpan: underlines("revision 1;"),
 		},
 		{
 			name:      "duplicate namespace",
 			src:       "revision 1;\nnamespace A;\nnamespace B;\n",
 			wantCodes: []diag.Code{diag.DuplicateNamespace},
 			wantLine:  3, wantCol: 1,
+			wantSpan: underlines("namespace B;"),
 		},
 		{
 			// The duplicate is below a declaration rather than beside the
@@ -767,6 +793,7 @@ revision 1;
 			src:       "revision 1;\nnamespace A;\nwidget W {\n}\n",
 			wantCodes: []diag.Code{diag.UnknownDeclaration},
 			wantLine:  3, wantCol: 1,
+			wantSpan: underlines("widget"),
 		},
 		{
 			// Section 3 has one position and no before-slot. The annotation is
@@ -782,6 +809,7 @@ struct S {
 `,
 			wantCodes: []diag.Code{diag.AnnotationNotAllowed},
 			wantLine:  3, wantCol: 1,
+			spanUnpinned: "#57: PROTOP0400 underlines the `[` alone, not the annotation it says to move",
 		},
 		{
 			name: "annotation before a tag",
@@ -793,6 +821,7 @@ struct S {
 `,
 			wantCodes: []diag.Code{diag.AnnotationNotAllowed},
 			wantLine:  4, wantCol: 11,
+			spanUnpinned: "#57: PROTOP0400 underlines the `[` alone, not the annotation it says to move",
 		},
 		{
 			// A backend protopc does not have. An unknown prefix is an error
@@ -807,6 +836,7 @@ struct S {
 `,
 			wantCodes: []diag.Code{diag.UnknownAnnotationPrefix},
 			wantLine:  4, wantCol: 16,
+			wantSpan: underlines("go"),
 		},
 		{
 			// protop's own set is closed, so an unprefixed name outside it is a
@@ -820,6 +850,7 @@ struct S {
 `,
 			wantCodes: []diag.Code{diag.UnknownAnnotation},
 			wantLine:  4, wantCol: 16,
+			wantSpan: underlines("refrences"),
 		},
 		{
 			name: "unterminated annotation",
@@ -831,6 +862,7 @@ struct S {
 `,
 			wantCodes: []diag.Code{diag.UnterminatedAnnotation},
 			wantLine:  4, wantCol: 15,
+			wantSpan: underlines("["),
 		},
 		{
 			// Unterminated only if the scan were a search for the next `]`: the
@@ -846,6 +878,7 @@ struct S {
 `,
 			wantCodes: []diag.Code{diag.TagOutOfRange},
 			wantLine:  4, wantCol: 13,
+			wantSpan: underlines("0"),
 		},
 		{
 			// A range's `..` promises an upper bound, and a member that fails
@@ -861,6 +894,7 @@ table T {
 `,
 			wantCodes: []diag.Code{diag.UnexpectedToken},
 			wantLine:  4, wantCol: 15,
+			wantSpan: underlines(";"),
 		},
 		{
 			// An alias is two names and an `=`; without the second name there is
@@ -874,6 +908,7 @@ table T {
 `,
 			wantCodes: []diag.Code{diag.UnexpectedToken},
 			wantLine:  4, wantCol: 23,
+			wantSpan: underlines(";"),
 		},
 		{
 			// A composite key spends an ordinal exactly as a field does, so the
@@ -887,6 +922,7 @@ table T {
 `,
 			wantCodes: []diag.Code{diag.TagOutOfRange},
 			wantLine:  4, wantCol: 13,
+			wantSpan: underlines("0"),
 		},
 		{
 			// Two members cannot hold one position in the array. The second one
@@ -901,6 +937,7 @@ struct S {
 `,
 			wantCodes: []diag.Code{diag.DuplicateTag},
 			wantLine:  5, wantCol: 13,
+			wantSpan: underlines("1"),
 		},
 		{
 			// The reservation is checked against the whole declaration however it
@@ -916,6 +953,7 @@ table T {
 `,
 			wantCodes: []diag.Code{diag.TagIsReserved},
 			wantLine:  4, wantCol: 13,
+			wantSpan: underlines("10"),
 		},
 		{
 			// A range that ends before it begins retires nothing, so it is a
@@ -929,6 +967,7 @@ table T {
 `,
 			wantCodes: []diag.Code{diag.ReservedRangeReversed},
 			wantLine:  4, wantCol: 12,
+			wantSpan: underlines("14..8"),
 		},
 		{
 			// Identity is what a table has and the value declarations do not: a
@@ -942,6 +981,7 @@ struct S {
 `,
 			wantCodes: []diag.Code{diag.KeyNotAllowed},
 			wantLine:  4, wantCol: 3,
+			wantSpan: underlines("key"),
 		},
 		{
 			// The composite spelling is held to the same rule, and is told so
@@ -957,6 +997,7 @@ record R {
 `,
 			wantCodes: []diag.Code{diag.KeyNotAllowed},
 			wantLine:  4, wantCol: 3,
+			wantSpan: underlines("key"),
 		},
 		{
 			// A composite key spends an ordinal, so it collides with a field
@@ -973,6 +1014,7 @@ table T {
 `,
 			wantCodes: []diag.Code{diag.DuplicateTag},
 			wantLine:  5, wantCol: 13,
+			wantSpan: underlines("1"),
 		},
 		{
 			// A precision belongs to `decimal` alone, and a declared type is
@@ -987,6 +1029,7 @@ struct S {
 `,
 			wantCodes: []diag.Code{diag.PrecisionNotAllowed},
 			wantLine:  4, wantCol: 9,
+			wantSpan: underlines("4"),
 		},
 		{
 			// Section 3 gives an annotation one position, after what it
@@ -1001,6 +1044,7 @@ struct S {
 `,
 			wantCodes: []diag.Code{diag.AnnotationNotAllowed},
 			wantLine:  4, wantCol: 3,
+			spanUnpinned: "#57: PROTOP0400 underlines the `[` alone, not the annotation it says to move",
 		},
 		{
 			// The position that would have to mean "annotate the type" if any
@@ -1014,6 +1058,7 @@ struct S {
 `,
 			wantCodes: []diag.Code{diag.AnnotationNotAllowed},
 			wantLine:  4, wantCol: 9,
+			spanUnpinned: "#57: PROTOP0400 underlines the `[` alone, not the annotation it says to move",
 		},
 		{
 			// The backend set is closed, and closed means closed against every
@@ -1027,6 +1072,7 @@ struct S {
 `,
 			wantCodes: []diag.Code{diag.UnknownAnnotationPrefix},
 			wantLine:  4, wantCol: 16,
+			wantSpan: underlines("kt"),
 		},
 		{
 			// A list has one element type. Two is not a list of pairs, it is a
@@ -1040,6 +1086,7 @@ struct S {
 `,
 			wantCodes: []diag.Code{diag.TypeArgumentCountWrong},
 			wantLine:  4, wantCol: 3,
+			wantSpan: underlines("list<Odd, Venue>"),
 		},
 		{
 			// A bare `list` in type position is not a declared type named
@@ -1054,6 +1101,7 @@ struct S {
 `,
 			wantCodes: []diag.Code{diag.TypeArgumentCountWrong},
 			wantLine:  4, wantCol: 3,
+			wantSpan: underlines("list"),
 		},
 		{
 			// Only a collection is generic. The diagnostic underlines the whole
@@ -1067,6 +1115,7 @@ struct S {
 `,
 			wantCodes: []diag.Code{diag.TypeArgumentsNotAllowed},
 			wantLine:  4, wantCol: 3,
+			wantSpan: underlines("int64<string>"),
 		},
 		{
 			// `map` is reserved, not implemented: it parses in full -- the
@@ -1081,6 +1130,7 @@ struct S {
 `,
 			wantCodes: []diag.Code{diag.NotYetImplemented},
 			wantLine:  4, wantCol: 3,
+			wantSpan: underlines("map"),
 		},
 		{
 			// Both facts are independently true and both are told: the arity is
@@ -1094,6 +1144,7 @@ struct S {
 `,
 			wantCodes: []diag.Code{diag.TypeArgumentCountWrong, diag.NotYetImplemented},
 			wantLine:  4, wantCol: 3,
+			wantSpan: underlines("map<string>"),
 		},
 		{
 			// The `<` promises a type argument, and a member that fails mid-way
@@ -1107,6 +1158,7 @@ struct S {
 `,
 			wantCodes: []diag.Code{diag.UnexpectedToken},
 			wantLine:  4, wantCol: 12,
+			wantSpan: underlines("odds"),
 		},
 		{
 			// A member that repeats a tag is told that and nothing else. The
@@ -1124,12 +1176,21 @@ table T {
 `,
 			wantCodes: []diag.Code{diag.TagIsReserved, diag.DuplicateTag},
 			wantLine:  4, wantCol: 13,
+			wantSpan: underlines("10"),
 		},
 		{
 			// The best message in the milestone, and the reason it is its own
 			// code. A tag here is not a token in the wrong place: it is a
 			// misunderstanding of what a view is, so the message says what a
 			// view is instead of what the parser expected.
+			//
+			// The `=` underline is #57's last entry, and the one #57 does not
+			// call a defect: the equals sign is where the mistake starts, and
+			// the message names the member anyway. It stays pinned here and in
+			// TestRenderOfTheDiagnosticsThisMilestoneAdds because #57 asks for
+			// the choice to be written down rather than inferred from two
+			// tests -- this is the writing down. If #57 rules it a defect the
+			// two pins move together.
 			name: "a tag on a view member",
 			src: `revision 1;
 namespace A;
@@ -1144,6 +1205,11 @@ view V of T {
 		{
 			// A view is a subset of one source. Without the `of` it is a subset
 			// of nothing, and it carries no tags of its own to fall back on.
+			//
+			// The `{` underline is #57's: the caret lands on the token AFTER
+			// the gap where the source belongs. Already checked in, so it is
+			// left pinned rather than loosened -- #57 moves it, and this pin is
+			// what will say so.
 			name: "a view with no `of`",
 			src: `revision 1;
 namespace A;
@@ -1160,6 +1226,9 @@ view V {
 			// `of`, and a source, and a parser that took whatever ident it
 			// found in the middle would read `view V from T` as a view of `T`
 			// with the `from` silently thrown away.
+			//
+			// PROTOP0203's underline is #57's; this arm is the one where it
+			// lands on something the user did type.
 			name: "a view whose source is not introduced by `of`",
 			src: `revision 1;
 namespace A;
@@ -1174,6 +1243,8 @@ view V from T {
 		{
 			// The same mistake said the other way, and so the same code: the
 			// `of` is there and names nothing.
+			//
+			// `{` again, and #57's again -- see the `view with no of` row.
 			name: "a view whose `of` names nothing",
 			src: `revision 1;
 namespace A;
@@ -1219,6 +1290,16 @@ view V of T {
 		{
 			// Section 3 gives an annotation one position, after what it
 			// describes, and a view body is not an exception to it.
+			//
+			// This is the `wantSpan: "["` #57 calls the trap. PROTOP0400 is
+			// raised with the span of the bracket TOKEN while the accepted
+			// path in the same file uses the whole-bracket span that the
+			// rejected path computes and discards, so a message reading "write
+			// this one after ..." underlines one character of the seven it
+			// means. It is left pinned because it was already checked in and
+			// #57 is what moves it -- but it is not precedent: the four other
+			// PROTOP0400 rows in this table are deliberately unpinned, which is
+			// what spanUnpinned records.
 			name: "annotation before a view member",
 			src: `revision 1;
 namespace A;
@@ -1282,6 +1363,7 @@ table T {
 `,
 			wantCodes: []diag.Code{diag.TagIsReserved},
 			wantLine:  5, wantCol: 13,
+			wantSpan: underlines("12"),
 		},
 		{
 			// The end of the file is a legitimately empty underline, and the
@@ -1321,10 +1403,15 @@ struct S {
 			if pos := f.Position(bag.All()[0].Span.Start); pos.Line != tt.wantLine || pos.Column != tt.wantCol {
 				t.Errorf("first diagnostic at %d:%d, want %d:%d", pos.Line, pos.Column, tt.wantLine, tt.wantCol)
 			}
-			if tt.wantSpan != nil {
+			switch {
+			case tt.wantSpan != nil && tt.spanUnpinned != "":
+				t.Errorf("row pins a span AND says why it does not; one of the two is stale")
+			case tt.wantSpan != nil:
 				if got := f.Slice(bag.All()[0].Span); got != *tt.wantSpan {
 					t.Errorf("first diagnostic underlines %q, want %q", got, *tt.wantSpan)
 				}
+			case tt.spanUnpinned == "":
+				t.Errorf("row pins no span and gives no reason: set wantSpan, or set spanUnpinned to the issue that owns the span")
 			}
 		})
 	}
