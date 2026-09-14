@@ -1233,6 +1233,70 @@ table T {
 	}
 }
 
+// The severity of a parser diagnostic, end to end, on the two codes a demotion
+// was reproduced on. A code sequence says what was noticed; this says what it
+// costs, which is a different claim: bag.HasErrors is the gate every stage
+// after the parser inherits, so a code that does not fail the compile is a file
+// protopc reads, accepts, and generates C# from.
+//
+// Both of these were demoted by hand -- PROTOP0202 at the parser's `key` site,
+// PROTOP0303 at its duplicate-tag one -- and the whole suite stayed green while
+// protopc printed a warning and exited 0 on input it exists to reject. The
+// checker's side of PROTOP0303 was never in that state, because
+// TestACheckerDiagnosticIsWhatDecidesTheExitCode reads the exit code; the
+// parser's side had nothing.
+//
+// diag's table pins what each code means. This pins that the meaning survives
+// the trip from the code to the gate, and neither test makes the other one
+// true.
+func TestAParserDiagnosticFailsTheCompile(t *testing.T) {
+	for _, tt := range []struct {
+		name string
+		src  string
+		want diag.Code
+	}{
+		{
+			// Identity is a table's, so a struct that declares a key is not a
+			// struct with a harmless extra word -- nothing can point at it.
+			name: "a key on a struct",
+			src: `revision 1;
+namespace A;
+struct S {
+  key int64 id = 1;
+}
+`,
+			want: diag.KeyNotAllowed,
+		},
+		{
+			// A tag is a position in a MessagePack array. Accepting this emits
+			// two members writing one slot, which is a wire format nobody can
+			// read back.
+			name: "one tag on two members",
+			src: `revision 1;
+namespace A;
+struct S {
+  int64 a = 1;
+  int64 b = 1;
+}
+`,
+			want: diag.DuplicateTag,
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			f, _, bag := parse(t, tt.src)
+			if bag.Len() != 1 || bag.All()[0].Code != tt.want {
+				t.Fatalf("want one %s, got:\n%s", tt.want, diag.RenderAll(f, bag))
+			}
+			if got := bag.All()[0].Severity; got != diag.Error {
+				t.Errorf("%s was raised as a %s", tt.want, got)
+			}
+			if !bag.HasErrors() {
+				t.Error("HasErrors is false, so protopc accepts this file and generates from it")
+			}
+		})
+	}
+}
+
 // A tag is 1-based because a MessagePack key is tag - 1. An enum member's
 // number is a value on the wire and not a position, so the same 0 that is an
 // error on a field is idiomatic here -- it is how section 1 spells UNKNOWN.
