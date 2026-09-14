@@ -187,11 +187,33 @@ var wantCodeSeverities = []struct {
 // A code keeps its severity the way it keeps its number, and for the same
 // reason: both are what the code MEANS to whoever reads protopc's output, and
 // neither is the business of the stage that happens to raise it.
+//
+// The collision check is the whole of what holds the table's CODE column, and
+// it needs to be, because the want column cannot hold it. Over in the number
+// table each row carries a literal -- "PROTOP0304" -- so pointing a row's code
+// at the wrong constant is caught by the row itself. Here every row's
+// answer is the same word, Error, so the want column carries no identity at
+// all: swap a row's code for another code and the row still passes. Two edits
+// then hide a demotion completely -- register TagIsReserved as a Warning in
+// codes.go, and point its row at TagOutOfRange -- and protopc goes on to
+// GENERATE C# for a field reusing a retired tag, printing a warning and
+// exiting 0. Measured across the language, 29 of the 45 codes survived that.
+//
+// What kills all 29 is one map. TestEveryCodeIsInTheSeverityTable pins the
+// table complete by NAME against codes.go, so 45 rows name 45 distinct codes;
+// any row aliased to another row's constant necessarily makes some code value
+// appear twice, and some other code value not appear at all. The completeness
+// being pinned elsewhere is what makes counting duplicates sufficient here.
 func TestEveryCodeKeepsItsSeverity(t *testing.T) {
+	byCode := make(map[Code]string, len(wantCodeSeverities))
 	for _, c := range wantCodeSeverities {
 		if got := c.code.Severity(); got != c.want {
 			t.Errorf("%s is a %s, want a %s", c.name, got, c.want)
 		}
+		if prev, taken := byCode[c.code]; taken {
+			t.Errorf("the rows for %s and %s both hold %s, so one code in the language has no row saying whether it fails the compile", prev, c.name, c.code)
+		}
+		byCode[c.code] = c.name
 	}
 }
 
