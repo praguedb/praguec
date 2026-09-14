@@ -452,6 +452,12 @@ func TestScopeIsNotTransitive(t *testing.T) {
 	assertCodes(t, set, bag, diag.UnknownType)
 }
 
+// No assertAt here, deliberately. PROTOP0204's span is dw.decl.Span, the whole
+// three-line declaration, where the duplicated thing is the name -- and
+// check.Decl carries no span for its name, so narrowing it is a model change
+// rather than an argument swap. That is
+// nanov/protobuf-to-messagepack-sharp#57's, and pinning the wide span here
+// would leave #57 arguing with a golden this pass wrote.
 func TestDuplicateDeclarationsAreDiagnosed(t *testing.T) {
 	set, _, bag := checkSet(t, map[string]string{
 		"a.protop": "revision 1;\nnamespace A;\nstruct S {\n  int64 x = 1;\n}\nrecord S {\n  int64 y = 1;\n}\n",
@@ -473,11 +479,17 @@ func TestADeclarationMayShadowAnImportedName(t *testing.T) {
 	}
 }
 
+// The underline is the whole of the second member and not its name alone,
+// which is deliberate and is why it is written out: the member is what is
+// duplicated, the first one is named by position inside the message, and a
+// member is one line so the caret does not run away down the file. That is the
+// difference from PROTOP0204 above, whose span is three lines.
 func TestDuplicateMembersAreDiagnosed(t *testing.T) {
 	set, _, bag := checkSet(t, map[string]string{
 		"a.protop": "revision 1;\nnamespace A;\ntable T {\n  key int64 id = 1;\n  int64 id = 2;\n}\n",
 	})
 	assertCodes(t, set, bag, diag.DuplicateMember)
+	assertAt(t, set, bag, 0, "a.protop:5:3", "int64 id = 2;")
 }
 
 // A member's name and a member's tag are two facts with two fixes, so an alias
@@ -487,6 +499,9 @@ func TestAnAliasCollidesByNameWithAField(t *testing.T) {
 		"a.protop": "revision 1;\nnamespace A;\ntable T {\n  key int64 id = 1;\n  alias id = id;\n}\n",
 	})
 	assertCodes(t, set, bag, diag.DuplicateMember)
+	// The alias, whole: an alias carries no tag, so the member is all there is
+	// to point at and the underline says which of the two `id`s is the second.
+	assertAt(t, set, bag, 0, "a.protop:5:3", "alias id = id;")
 }
 
 func TestAnUnknownTypeIsDiagnosed(t *testing.T) {
@@ -602,6 +617,11 @@ view OfR of R {
 				"a.protop": "revision 1;\nnamespace A;\n" + decls + "view V of " + src + " {\n  x;\n}\n",
 			})
 			assertCodes(t, set, bag, diag.ViewSourceNotSelectable)
+			// The source name alone, in all three arms. The message says what
+			// that name is -- a struct, an enum, a view -- so an underline
+			// under the whole `view V of S {` would point at two names and
+			// mean one of them.
+			assertAt(t, set, bag, 0, "a.protop:15:11", src)
 		})
 	}
 }
@@ -763,6 +783,9 @@ table T {
 			"a.protop": "revision 1;\nnamespace A;\n" + decls + "view V of T {\n  R r;\n}\n",
 		})
 		assertCodes(t, set, bag, diag.NarrowingNotAView)
+		// The narrowing name and not the member: `R r;` is wrong in its first
+		// word only, and the message says to delete that word.
+		assertAt(t, set, bag, 0, "a.protop:11:3", "R")
 	})
 	t.Run("a name that is nothing at all", func(t *testing.T) {
 		set, _, bag := checkSet(t, map[string]string{
@@ -1365,6 +1388,12 @@ table T {
   key int64 id = 1;
 }
 `
+	// The first two arms carry no assertAt. PROTOP0317 and PROTOP0318 underline
+	// the whole `[references(Nowhere)]` when the unknown thing is the name
+	// inside it, and the target name's span is not kept on the model -- so it
+	// is the same model change as PROTOP0204's and the same issue,
+	// nanov/protobuf-to-messagepack-sharp#57. The third arm is different and is
+	// pinned: there the annotation as a whole IS what is malformed.
 	t.Run("a record is not a relation target", func(t *testing.T) {
 		set, _, bag := checkSet(t, map[string]string{
 			"a.protop": "revision 1;\nnamespace A;\n" + decls + "table U {\n  key int64 id = 1;\n  int64 r = 2 [references(R)];\n}\n",
@@ -1382,6 +1411,7 @@ table T {
 			"a.protop": "revision 1;\nnamespace A;\n" + decls + "table U {\n  key int64 id = 1;\n  int64 r = 2 [references];\n}\n",
 		})
 		assertCodes(t, set, bag, diag.MalformedRelation)
+		assertAt(t, set, bag, 0, "a.protop:11:15", "[references]")
 	})
 }
 
@@ -1564,6 +1594,11 @@ func TestARelationsTargetIsOneNameInsideMatchedParentheses(t *testing.T) {
 					"table U {\n  key int64 id = 1;\n  int64 game_id = 2 " + tt.annotation + ";\n}\n",
 			})
 			assertCodes(t, set, bag, diag.MalformedRelation)
+			// The whole annotation, which is the one shape of it that is
+			// right: nothing inside a malformed relation is a name protopc
+			// read, so there is nothing narrower to point at that the user
+			// would recognise.
+			assertAt(t, set, bag, 0, "a.protop:8:21", tt.annotation)
 		})
 	}
 }
