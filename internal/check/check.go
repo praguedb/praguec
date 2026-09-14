@@ -171,7 +171,7 @@ func (c *checker) declareOne(w *fileWork, d syntax.Decl) *declWork {
 		return nil
 	}
 	if first, dup := w.file.byName[dw.decl.Name]; dup {
-		w.sink.Errorf(diag.DuplicateDeclaration, dw.decl.Span,
+		w.sink.Raise(diag.DuplicateDeclaration, dw.decl.Span,
 			"`%s` is already declared at %s; which of the two a reference means is not a question protop answers",
 			dw.decl.Name, w.file.Source.Position(first.Span.Start))
 		return nil
@@ -225,7 +225,7 @@ func (c *checker) addMember(w *fileWork, dw *declWork, mw *memberWork) {
 		return // the parser could not read the name; see declareOne
 	}
 	if first, dup := dw.decl.byName[mw.member.Name]; dup {
-		w.sink.Errorf(diag.DuplicateMember, mw.member.Span,
+		w.sink.Raise(diag.DuplicateMember, mw.member.Span,
 			"`%s` already names a member of `%s` at %s",
 			mw.member.Name, dw.decl.Name, w.file.Source.Position(first.Span.Start))
 		return
@@ -249,7 +249,7 @@ func (c *checker) resolveImports(w *fileWork) {
 		path := ImportPath(im.Path)
 		imported, ok := c.byPath[path]
 		if !ok {
-			w.sink.Errorf(diag.ImportNotFound, im.Span,
+			w.sink.Raise(diag.ImportNotFound, im.Span,
 				"no file named %q was given to the compiler; an import names a file and where that file comes from is the build's question, not the schema's",
 				path)
 			continue
@@ -342,7 +342,7 @@ func (c *checker) resolveType(w *fileWork, t syntax.TypeRef) Type {
 		out.Kind, out.Decl = TypeDecl, d
 		return out
 	}
-	w.sink.Errorf(diag.UnknownType, t.Name.Span,
+	w.sink.Raise(diag.UnknownType, t.Name.Span,
 		"unknown type `%s`; a file sees its own declarations and those of the files it imports, and nothing else",
 		t.Name.Text)
 	return out
@@ -356,7 +356,7 @@ func (c *checker) resolveKeyParts(w *fileWork, dw *declWork, mw *memberWork, k *
 	for _, part := range k.Parts {
 		target := dw.decl.Member(part.Text)
 		if target == nil || target == mw.member {
-			w.sink.Errorf(diag.CompositeKeyPartNotFound, part.Span,
+			w.sink.Raise(diag.CompositeKeyPartNotFound, part.Span,
 				"`%s` names no member of `%s`; a composite key is a name over members of the declaration it belongs to",
 				part.Text, dw.decl.Name)
 			continue
@@ -372,7 +372,7 @@ func (c *checker) resolveKeyParts(w *fileWork, dw *declWork, mw *memberWork, k *
 func (c *checker) resolveAlias(w *fileWork, dw *declWork, mw *memberWork, a *syntax.Alias) {
 	target := dw.decl.Member(a.Source.Text)
 	if target == nil || target == mw.member {
-		w.sink.Errorf(diag.AliasTargetNotFound, a.Source.Span,
+		w.sink.Raise(diag.AliasTargetNotFound, a.Source.Span,
 			"`%s` names no other member of `%s`; an alias is a get and set passthrough and needs something to pass through to",
 			a.Source.Text, dw.decl.Name)
 		return
@@ -395,13 +395,13 @@ func (c *checker) resolveViewSource(w *fileWork, dw *declWork) {
 	}
 	src, ok := w.file.scope[name.Text]
 	if !ok {
-		w.sink.Errorf(diag.ViewSourceNotFound, name.Span,
+		w.sink.Raise(diag.ViewSourceNotFound, name.Span,
 			"unknown view source `%s`; a file sees its own declarations and those of the files it imports, and nothing else",
 			name.Text)
 		return
 	}
 	if src.Kind != DeclTable && src.Kind != DeclRecord {
-		w.sink.Errorf(diag.ViewSourceNotSelectable, name.Span,
+		w.sink.Raise(diag.ViewSourceNotSelectable, name.Span,
 			"`%s` is a %s, and a view is a subset of a table or a record; there are no tags here for a view to be pinned to",
 			name.Text, src.Kind)
 		return
@@ -434,7 +434,7 @@ func (c *checker) expandViewMember(w *fileWork, dw *declWork, mw *memberWork) {
 		// of a field list held to the first one at compile time, and this is
 		// the moment that pays: the shared repo renamed or retired the member,
 		// and the repo that drifted is the one that fails to build.
-		w.sink.Errorf(diag.NoSuchMember, mw.view.Name.Span,
+		w.sink.Raise(diag.NoSuchMember, mw.view.Name.Span,
 			"`%s` names no member of `%s`, declared at %s; a view selects members its source declares, so a rename or a removal there is a compile error here rather than a field that decodes to nil",
 			mw.view.Name.Text, src.Name, src.File.Source.Position(src.Span.Start))
 		return
@@ -469,13 +469,13 @@ func (c *checker) narrow(w *fileWork, mw *memberWork) {
 	name := *mw.view.Narrow
 	view, ok := w.file.scope[name.Text]
 	if !ok {
-		w.sink.Errorf(diag.UnknownType, name.Span,
+		w.sink.Raise(diag.UnknownType, name.Span,
 			"unknown type `%s`; a file sees its own declarations and those of the files it imports, and nothing else",
 			name.Text)
 		return
 	}
 	if view.Kind != DeclView {
-		w.sink.Errorf(diag.NarrowingNotAView, name.Span,
+		w.sink.Raise(diag.NarrowingNotAView, name.Span,
 			"`%s` is a %s, and a view member narrows to another view; a member that keeps the type its source gives it is written as its name alone",
 			name.Text, view.Kind)
 		return
@@ -483,7 +483,7 @@ func (c *checker) narrow(w *fileWork, mw *memberWork) {
 
 	elem := mw.member.Type.Element()
 	if elem.Kind != TypeDecl || elem.Decl != view.Of {
-		w.sink.Errorf(diag.NarrowingSourceMismatch, name.Span,
+		w.sink.Raise(diag.NarrowingSourceMismatch, name.Span,
 			"`%s` is a view of `%s` and `%s` holds `%s`; a narrowing pins the member to a subset of what it already holds, and a view of anything else carries a different declaration's tags",
 			name.Text, sourceName(view), mw.member.Name, elem.Name)
 		return
@@ -527,7 +527,7 @@ func (c *checker) checkViewTags(w *fileWork, dw *declWork) {
 			continue
 		}
 		if first, dup := seen[m.Tag]; dup {
-			w.sink.Errorf(diag.DuplicateTag, m.Span,
+			w.sink.Raise(diag.DuplicateTag, m.Span,
 				"tag %d is already used at %s; `%s` and `%s` select the same member of `%s`, and a tag is a position in the MessagePack array that two members cannot hold",
 				m.Tag, w.file.Source.Position(first.Span.Start), first.Name, m.Name, dw.decl.Of.Name)
 			continue
@@ -560,7 +560,7 @@ func (c *checker) resolveRelation(w *fileWork, dw *declWork, m *Member, a *synta
 	}
 	target, ok := relationTarget(a)
 	if !ok {
-		w.sink.Errorf(diag.MalformedRelation, a.Span,
+		w.sink.Raise(diag.MalformedRelation, a.Span,
 			"`%s` names the table a member points at, as in `[%s(SportGame)]`",
 			syntax.RelationAnnotation, syntax.RelationAnnotation)
 		return
@@ -568,13 +568,13 @@ func (c *checker) resolveRelation(w *fileWork, dw *declWork, m *Member, a *synta
 
 	decl, found := w.file.scope[target]
 	if !found {
-		w.sink.Errorf(diag.RelationTargetNotFound, a.Span,
+		w.sink.Raise(diag.RelationTargetNotFound, a.Span,
 			"unknown relation target `%s`; a file sees its own declarations and those of the files it imports, and nothing else",
 			target)
 		return
 	}
 	if decl.Kind != DeclTable {
-		w.sink.Errorf(diag.RelationTargetNotATable, a.Span,
+		w.sink.Raise(diag.RelationTargetNotATable, a.Span,
 			"`%s` is a %s and cannot be the target of a relation; a relation resolves against a key, and only a `table` has one",
 			target, decl.Kind)
 		return

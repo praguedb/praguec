@@ -1275,9 +1275,11 @@ func TestRenderPointsAtTheOffendingToken(t *testing.T) {
 // could be emptied entirely.
 //
 // Severity was unpinned too, and it is the worst of the three: bag.HasErrors
-// gates every stage after the parser, so an Errorf quietly demoted to a Warnf
+// gates every stage after the parser, so a code quietly demoted to a warning
 // means protopc ACCEPTS a view that names no source and hands it to a backend.
-// The word `error` in each golden says so, and HasErrors is asserted beside
+// Demoting one now takes a line of internal/diag/codes.go rather than a word at
+// this call site, and diag's own table holds all forty-five of them; the word
+// `error` in each golden says so here as well, and HasErrors is asserted beside
 // them in case the rendering ever stops printing it.
 func TestRenderOfTheDiagnosticsThisMilestoneAdds(t *testing.T) {
 	for _, tt := range []struct {

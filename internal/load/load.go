@@ -210,13 +210,13 @@ func (l *loader) follow(u unit) error {
 		found := l.search(key)
 		switch len(found) {
 		case 0:
-			sink.Errorf(diag.ImportNotFound, im.Span,
+			sink.Raise(diag.ImportNotFound, im.Span,
 				"no file named %q was found under any include root; searched %s",
 				key, quoteList(l.roots))
 			continue
 		case 1:
 		default:
-			sink.Errorf(diag.ImportAmbiguous, im.Span,
+			sink.Raise(diag.ImportAmbiguous, im.Span,
 				"%q is provided by more than one include root -- %s -- and which one wins is not settled; "+
 					"remove a root, or rename one of the files",
 				key, quoteList(found))

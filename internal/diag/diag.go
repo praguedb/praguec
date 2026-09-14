@@ -60,16 +60,21 @@ type Bag struct {
 	diags []Diagnostic
 }
 
-// Errorf records an error at span.
-func (b *Bag) Errorf(code Code, span source.Span, format string, args ...any) {
-	b.add(Error, code, span, format, args...)
+// Raise records a diagnostic at span, at the severity its code carries.
+//
+// One method and not a pair, because the caller has nothing to choose: the
+// severity belongs to the code (see Code.Severity) and is the same wherever the
+// code is raised. The Errorf/Warnf pair this replaces put the choice at the
+// call site, where a demotion was one word in one file that nothing downstream
+// could see.
+func (b *Bag) Raise(code Code, span source.Span, format string, args ...any) {
+	b.add(code.Severity(), code, span, format, args...)
 }
 
-// Warnf records a warning at span.
-func (b *Bag) Warnf(code Code, span source.Span, format string, args ...any) {
-	b.add(Warning, code, span, format, args...)
-}
-
+// add is the primitive underneath Raise, taking the severity explicitly. It
+// stays unexported and in-package so that the tests for what a severity DOES --
+// how a warning renders, and that it does not fail the compile -- can raise one
+// while no code in the language is a warning.
 func (b *Bag) add(sev Severity, code Code, span source.Span, format string, args ...any) {
 	b.diags = append(b.diags, Diagnostic{
 		Code:     code,
@@ -112,15 +117,10 @@ type Sink struct {
 	file *source.File
 }
 
-// Errorf records an error at span in the sink's file.
-func (s *Sink) Errorf(code Code, span source.Span, format string, args ...any) {
-	s.bag.add(Error, code, span, format, args...)
-	s.stamp()
-}
-
-// Warnf records a warning at span in the sink's file.
-func (s *Sink) Warnf(code Code, span source.Span, format string, args ...any) {
-	s.bag.add(Warning, code, span, format, args...)
+// Raise records a diagnostic at span in the sink's file, at the severity its
+// code carries.
+func (s *Sink) Raise(code Code, span source.Span, format string, args ...any) {
+	s.bag.add(code.Severity(), code, span, format, args...)
 	s.stamp()
 }
 

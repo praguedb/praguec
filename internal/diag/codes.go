@@ -26,6 +26,36 @@ type Code int
 // messages and in documentation.
 func (c Code) String() string { return fmt.Sprintf("PROTOP%04d", int(c)) }
 
+// Severity says what a diagnostic under this code does to the compile, and it
+// is a property of the code rather than of the place that raises it.
+//
+// The code is the diagnostic's identity -- what a changelog cites, what an
+// editor filters on, what a build script greps for, as this file opens by
+// saying. A fact that stops the build where one stage reports it and is
+// advisory where another does is not one fact, and a user filtering on
+// PROTOP0303 has no way to say which of the two they meant. So the severity is
+// written down once, beside the number: a shipped code keeps its number
+// forever, and it keeps this too.
+//
+// It used to live at the call site, as the choice between Bag.Errorf and
+// Bag.Warnf. That made a demotion one word in one file, invisible to every
+// test -- and a demoted error means HasErrors reports false and protopc
+// ACCEPTS a schema it exists to reject.
+func (c Code) Severity() Severity { return severities[c] }
+
+// severities names the codes that do not fail the compile. A code absent from
+// it takes the zero Severity, which is Error, and the direction of that default
+// is the point: a code added without a line here costs a build that stops when
+// it could have carried on, which someone reports within the hour. Defaulting
+// the other way would cost a schema accepted that should have been rejected,
+// which nobody sees until the wire format is wrong.
+//
+// Every code protopc has today is an error -- nothing in protop is advisory
+// yet, `map` included: the parser reports NotYetImplemented as an error, which
+// is what makes the driver stop rather than hand a half-read file to a backend.
+// The table is empty and is the place the first warning gets written down.
+var severities = map[Code]Severity{}
+
 const (
 	// UnterminatedBlockComment is a /* that reaches the end of the file.
 	UnterminatedBlockComment Code = 1

@@ -130,10 +130,10 @@ func (p *parser) parseFile() *File {
 	// Both file-level declarations are checked after the whole file, so that a
 	// file missing its header still reports everything else wrong with it.
 	if file.Revision == nil {
-		p.bag.Errorf(diag.MissingRevision, p.headSpan(), "a protop file must open with `revision %d;`", protopRevision)
+		p.bag.Raise(diag.MissingRevision, p.headSpan(), "a protop file must open with `revision %d;`", protopRevision)
 	}
 	if file.Namespace == nil {
-		p.bag.Errorf(diag.MissingNamespace, p.headSpan(), "a protop file must declare a `namespace`")
+		p.bag.Raise(diag.MissingNamespace, p.headSpan(), "a protop file must declare a `namespace`")
 	}
 	return file
 }
@@ -146,7 +146,7 @@ func (p *parser) parseDecl(file *File) {
 
 	tok := p.peek()
 	if tok.Kind != KindIdent {
-		p.bag.Errorf(diag.UnknownDeclaration, tok.Span, "expected a declaration, found %s", tok.Kind)
+		p.bag.Raise(diag.UnknownDeclaration, tok.Span, "expected a declaration, found %s", tok.Kind)
 		p.recoverDecl()
 		return
 	}
@@ -169,7 +169,7 @@ func (p *parser) parseDecl(file *File) {
 	case "import":
 		p.parseImport(file)
 	default:
-		p.bag.Errorf(diag.UnknownDeclaration, tok.Span,
+		p.bag.Raise(diag.UnknownDeclaration, tok.Span,
 			"unknown declaration `%s`; expected `struct`, `enum`, `record`, `table`, `view` or `import`", word)
 		p.recoverDecl()
 	}
@@ -187,7 +187,7 @@ func (p *parser) parseRevision(file *File) {
 		rev.Number = num
 		rev.Span = rev.Span.To(num.Span)
 		if num.Value != protopRevision {
-			p.bag.Errorf(diag.UnsupportedRevision, num.Span,
+			p.bag.Raise(diag.UnsupportedRevision, num.Span,
 				"unknown revision %d; this compiler implements revision %d", num.Value, protopRevision)
 		}
 		if semi, ok := p.expect(KindSemi); ok {
@@ -197,11 +197,11 @@ func (p *parser) parseRevision(file *File) {
 
 	switch {
 	case file.Revision != nil:
-		p.bag.Errorf(diag.DuplicateRevision, rev.Span, "`revision` is already declared at %s",
+		p.bag.Raise(diag.DuplicateRevision, rev.Span, "`revision` is already declared at %s",
 			p.src.Position(file.Revision.Span.Start))
 		return // the first stamp wins
 	case len(file.Decls) > 0 || len(file.Imports) > 0 || file.Namespace != nil:
-		p.bag.Errorf(diag.RevisionNotFirst, rev.Span, "`revision` must be the first declaration in the file")
+		p.bag.Raise(diag.RevisionNotFirst, rev.Span, "`revision` must be the first declaration in the file")
 	}
 	file.Revision = rev
 }
@@ -228,7 +228,7 @@ func (p *parser) parseNamespace(file *File) {
 	}
 
 	if file.Namespace != nil {
-		p.bag.Errorf(diag.DuplicateNamespace, ns.Span, "`namespace` is already declared at %s",
+		p.bag.Raise(diag.DuplicateNamespace, ns.Span, "`namespace` is already declared at %s",
 			p.src.Position(file.Namespace.Span.Start))
 		return // the first declaration wins
 	}
@@ -266,7 +266,7 @@ func (p *parser) parseImport(file *File) {
 	}
 
 	if len(file.Decls) > 0 {
-		p.bag.Errorf(diag.ImportNotInHeader, im.Span,
+		p.bag.Raise(diag.ImportNotInHeader, im.Span,
 			"an `import` belongs with the file's other imports, above the first declaration; what a file depends on is a property of the whole file and not of the lines below it")
 	}
 	file.Imports = append(file.Imports, im)
@@ -356,7 +356,7 @@ func (p *parser) parseViewSource() (Ident, bool) {
 		}
 	}
 	tok := p.peek()
-	p.bag.Errorf(diag.ViewSourceMissing, tok.Span,
+	p.bag.Raise(diag.ViewSourceMissing, tok.Span,
 		"a view is a subset of one source and declares no members of its own; name that source, as in `view V %s SportGame { ... }`", ofWord)
 	return Ident{}, false
 }
@@ -378,7 +378,7 @@ func (p *parser) parseViewMember() *ViewMember {
 
 	tok := p.peek()
 	if tok.Kind != KindIdent {
-		p.bag.Errorf(diag.UnexpectedToken, tok.Span, "expected a view member's name, found %s", tok.Kind)
+		p.bag.Raise(diag.UnexpectedToken, tok.Span, "expected a view member's name, found %s", tok.Kind)
 		// The offending token is left for recovery rather than consumed
 		// first. recoverStmt consumes everything that is not a boundary, so
 		// skipping the token here would only matter when it IS one -- and a
@@ -430,7 +430,7 @@ func (p *parser) parseViewMember() *ViewMember {
 	// fell through to the annotations, and the `=` after them was reported as
 	// a missing `;` instead of as the thing it actually is.
 	if p.at(KindAssign) {
-		p.bag.Errorf(diag.TagInViewMember, p.peek().Span,
+		p.bag.Raise(diag.TagInViewMember, p.peek().Span,
 			"a view may not write a tag: `%s` is pinned to the tag its source gives it, and only the source extends the tag space; a tag added here is never written by the producer, so it would decode to nil forever while squatting a slot the source may later claim",
 			m.Name.Text)
 		p.recoverStmt()
@@ -460,7 +460,7 @@ func (p *parser) checkNarrowing(narrow Ident) {
 	if !scalarTypes[narrow.Text] {
 		return
 	}
-	p.bag.Errorf(diag.ScalarInViewMember, narrow.Span,
+	p.bag.Raise(diag.ScalarInViewMember, narrow.Span,
 		"`%s` is a scalar and a view member narrows to another view; a member keeps the type its source gives it when it is written as its name alone",
 		narrow.Text)
 }
@@ -528,7 +528,7 @@ func (p *parser) parseMember(keyword string) Member {
 
 	tok := p.peek()
 	if tok.Kind != KindIdent {
-		p.bag.Errorf(diag.UnexpectedToken, tok.Span, "expected a field type, found %s", tok.Kind)
+		p.bag.Raise(diag.UnexpectedToken, tok.Span, "expected a field type, found %s", tok.Kind)
 		p.next()
 		p.recoverStmt()
 		return nil
@@ -693,7 +693,7 @@ func (p *parser) parseReserved() *Reserved {
 			entry.Hi = hi
 			entry.Span = entry.Span.To(hi.Span)
 			if hi.Value < lo.Value {
-				p.bag.Errorf(diag.ReservedRangeReversed, entry.Span,
+				p.bag.Raise(diag.ReservedRangeReversed, entry.Span,
 					"reserved range %d..%d ends before it begins and retires nothing", lo.Value, hi.Value)
 			}
 		}
@@ -717,7 +717,7 @@ func (p *parser) parseReserved() *Reserved {
 // body loop that calls it moving.
 func (p *parser) parseField() *Field {
 	if tok := p.peek(); tok.Kind != KindIdent {
-		p.bag.Errorf(diag.UnexpectedToken, tok.Span, "expected a field type, found %s", tok.Kind)
+		p.bag.Raise(diag.UnexpectedToken, tok.Span, "expected a field type, found %s", tok.Kind)
 		p.next()
 		p.recoverStmt()
 		return nil
@@ -767,7 +767,7 @@ func (p *parser) parseField() *Field {
 // either is a promise the language has no way to keep.
 func (p *parser) checkKeyAllowed(keyword string, span source.Span) {
 	if keyword != "table" {
-		p.bag.Errorf(diag.KeyNotAllowed, span,
+		p.bag.Raise(diag.KeyNotAllowed, span,
 			"only a `table` carries identity; a `%s` cannot declare a `key`", keyword)
 	}
 }
@@ -807,7 +807,7 @@ func (p *parser) checkTags(members []Member) {
 		}
 
 		if first, dup := seen[tag.Value]; dup {
-			p.bag.Errorf(diag.DuplicateTag, tag.Span,
+			p.bag.Raise(diag.DuplicateTag, tag.Span,
 				"tag %d is already used at %s; a tag is a position in the MessagePack array and two members cannot hold one position",
 				tag.Value, p.src.Position(first.Start))
 			continue
@@ -816,7 +816,7 @@ func (p *parser) checkTags(members []Member) {
 
 		for _, r := range reserved {
 			if r.Contains(tag.Value) {
-				p.bag.Errorf(diag.TagIsReserved, tag.Span,
+				p.bag.Raise(diag.TagIsReserved, tag.Span,
 					"tag %d is reserved at %s; a retired tag is never reused, because a reader built against the old schema would decode this field into the old one",
 					tag.Value, p.src.Position(r.Span.Start))
 				break
@@ -830,7 +830,7 @@ func (p *parser) checkTags(members []Member) {
 // does, which is the reason it writes one.
 func (p *parser) checkTag(tag IntLit) {
 	if tag.Value == 0 {
-		p.bag.Errorf(diag.TagOutOfRange, tag.Span,
+		p.bag.Raise(diag.TagOutOfRange, tag.Span,
 			"field tag must be greater than 0; a MessagePack key is tag - 1, so tag 0 names no slot")
 	}
 }
@@ -875,15 +875,15 @@ func (p *parser) parseAnnotation() (*Annotation, bool) {
 		p.next() // the colon
 		a.Prefix = &prefix
 		if !backends[prefix.Text] {
-			p.bag.Errorf(diag.UnknownAnnotationPrefix, prefix.Span,
+			p.bag.Raise(diag.UnknownAnnotationPrefix, prefix.Span,
 				"unknown annotation prefix `%s`; protopc's backends are %s, and adding one means writing a backend rather than a keyword",
 				prefix.Text, wordList(backends))
 		}
 	case tok.Kind != KindIdent:
-		p.bag.Errorf(diag.UnknownAnnotation, tok.Span, "expected an annotation, found %s", tok.Kind)
+		p.bag.Raise(diag.UnknownAnnotation, tok.Span, "expected an annotation, found %s", tok.Kind)
 	default:
 		if word := p.text(tok); !protopAnnotations[word] {
-			p.bag.Errorf(diag.UnknownAnnotation, tok.Span,
+			p.bag.Raise(diag.UnknownAnnotation, tok.Span,
 				"unknown annotation `%s`; protop's own annotations are %s, and an annotation for a backend carries its prefix, as in `[cs: %s]`",
 				word, wordList(protopAnnotations), word)
 		}
@@ -914,7 +914,7 @@ func (p *parser) scanAnnotation(open Token) (text, whole source.Span, ok bool) {
 			// the file, and every token after it has already been read as
 			// annotation text. Reporting at the `[` points at the one character
 			// that has to be found.
-			p.bag.Errorf(diag.UnterminatedAnnotation, open.Span,
+			p.bag.Raise(diag.UnterminatedAnnotation, open.Span,
 				"unterminated annotation; `[` is closed by the matching `]`")
 			return source.Span{Start: start, End: end}, open.Span.To(tok.Span), false
 		case KindLBracket:
@@ -933,7 +933,7 @@ func (p *parser) scanAnnotation(open Token) (text, whole source.Span, ok bool) {
 			// in. Stopping short of it is what keeps one unclosed bracket from
 			// swallowing the declaration around it.
 			if braces == 0 {
-				p.bag.Errorf(diag.UnterminatedAnnotation, open.Span,
+				p.bag.Raise(diag.UnterminatedAnnotation, open.Span,
 					"unterminated annotation; `[` is closed by the matching `]`")
 				return source.Span{Start: start, End: end}, open.Span.To(tok.Span), false
 			}
@@ -952,7 +952,7 @@ func (p *parser) scanAnnotation(open Token) (text, whole source.Span, ok bool) {
 func (p *parser) rejectAnnotations(after string) {
 	for p.at(KindLBracket) {
 		open := p.next()
-		p.bag.Errorf(diag.AnnotationNotAllowed, open.Span,
+		p.bag.Raise(diag.AnnotationNotAllowed, open.Span,
 			"an annotation follows what it describes and there is no before-slot; write this one after %s", after)
 		if _, _, ok := p.scanAnnotation(open); !ok {
 			return
@@ -1025,7 +1025,7 @@ func (p *parser) parseTypeArgs() ([]TypeRef, Token, bool) {
 	for {
 		if p.peek().Kind != KindIdent {
 			tok := p.peek()
-			p.bag.Errorf(diag.UnexpectedToken, tok.Span, "expected a type argument, found %s", tok.Kind)
+			p.bag.Raise(diag.UnexpectedToken, tok.Span, "expected a type argument, found %s", tok.Kind)
 			return args, open, false
 		}
 		arg, ok := p.parseTypeRef()
@@ -1050,10 +1050,10 @@ func (p *parser) parseTypeArgs() ([]TypeRef, Token, bool) {
 func (p *parser) checkTypeRef(t TypeRef) {
 	switch {
 	case t.Name.Text == scaledScalar && t.Precision == nil:
-		p.bag.Errorf(diag.PrecisionRequired, t.Name.Span,
+		p.bag.Raise(diag.PrecisionRequired, t.Name.Span,
 			"`%s` requires a precision, as in `%s(4)`", scaledScalar, scaledScalar)
 	case t.Name.Text != scaledScalar && t.Precision != nil:
-		p.bag.Errorf(diag.PrecisionNotAllowed, t.Precision.Span,
+		p.bag.Raise(diag.PrecisionNotAllowed, t.Precision.Span,
 			"a precision is only allowed on `%s`, not on `%s`", scaledScalar, t.Name.Text)
 	}
 
@@ -1063,11 +1063,11 @@ func (p *parser) checkTypeRef(t TypeRef) {
 	arity, isCollection := collectionTypes[t.Name.Text]
 	switch {
 	case !isCollection && len(t.Args) > 0:
-		p.bag.Errorf(diag.TypeArgumentsNotAllowed, t.Span,
+		p.bag.Raise(diag.TypeArgumentsNotAllowed, t.Span,
 			"`%s` takes no type arguments; protop's generic types are %s",
 			t.Name.Text, wordList(collectionKeys()))
 	case isCollection && len(t.Args) != arity:
-		p.bag.Errorf(diag.TypeArgumentCountWrong, t.Span,
+		p.bag.Raise(diag.TypeArgumentCountWrong, t.Span,
 			"`%s` takes %s and was given %d, as in `%s`",
 			t.Name.Text, plural(arity, "type argument"), len(t.Args), collectionExample(t.Name.Text))
 	}
@@ -1076,7 +1076,7 @@ func (p *parser) checkTypeRef(t TypeRef) {
 	// full and then reported against, once per type written -- the difference
 	// between "protopc is behind" and "you wrote this wrong".
 	if notYetCollections[t.Name.Text] {
-		p.bag.Errorf(diag.NotYetImplemented, t.Name.Span, "`%s` is not yet implemented", t.Name.Text)
+		p.bag.Raise(diag.NotYetImplemented, t.Name.Span, "`%s` is not yet implemented", t.Name.Text)
 	}
 }
 
@@ -1143,7 +1143,7 @@ func (p *parser) parseEnum() *Enum {
 func (p *parser) parseEnumMember() *EnumMember {
 	tok := p.peek()
 	if tok.Kind != KindIdent {
-		p.bag.Errorf(diag.UnexpectedToken, tok.Span, "expected an enum member name, found %s", tok.Kind)
+		p.bag.Raise(diag.UnexpectedToken, tok.Span, "expected an enum member name, found %s", tok.Kind)
 		p.next()
 		p.recoverStmt()
 		return nil
@@ -1206,7 +1206,7 @@ func (p *parser) expect(k Kind) (Token, bool) {
 		return p.next(), true
 	}
 	tok := p.peek()
-	p.bag.Errorf(diag.UnexpectedToken, tok.Span, "expected %s, found %s", k, tok.Kind)
+	p.bag.Raise(diag.UnexpectedToken, tok.Span, "expected %s, found %s", k, tok.Kind)
 	return tok, false
 }
 
