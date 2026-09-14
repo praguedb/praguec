@@ -117,6 +117,141 @@ func TestEveryCodeIsInTheTable(t *testing.T) {
 	}
 }
 
+// Every code and the severity it carries. Severity is what a diagnostic DOES:
+// an error is what HasErrors reports and what stops the driver before it hands
+// a half-read file to a backend, so a code demoted to a warning is protopc
+// accepting a schema it exists to reject. It used to be unpinnable -- the
+// severity was an argument at each of the 56 call sites, chosen by which method
+// name was typed, and nothing about a Code could be asked what it was.
+//
+// Every code is an error today. That is not a reason to leave the table out:
+// the table is what makes a demotion a line of this file rather than a silent
+// change of behaviour, and "all of them" is the claim being made.
+var wantCodeSeverities = []struct {
+	name string
+	code Code
+	want Severity
+}{
+	{"UnterminatedBlockComment", UnterminatedBlockComment, Error},
+	{"UnterminatedString", UnterminatedString, Error},
+	{"UnexpectedCharacter", UnexpectedCharacter, Error},
+	{"IntegerOutOfRange", IntegerOutOfRange, Error},
+
+	{"MissingRevision", MissingRevision, Error},
+	{"RevisionNotFirst", RevisionNotFirst, Error},
+	{"UnsupportedRevision", UnsupportedRevision, Error},
+	{"DuplicateRevision", DuplicateRevision, Error},
+	{"MissingNamespace", MissingNamespace, Error},
+	{"DuplicateNamespace", DuplicateNamespace, Error},
+	{"ImportNotInHeader", ImportNotInHeader, Error},
+	{"ImportNotFound", ImportNotFound, Error},
+	{"ImportAmbiguous", ImportAmbiguous, Error},
+
+	{"UnexpectedToken", UnexpectedToken, Error},
+	{"UnknownDeclaration", UnknownDeclaration, Error},
+	{"KeyNotAllowed", KeyNotAllowed, Error},
+	{"ViewSourceMissing", ViewSourceMissing, Error},
+	{"DuplicateDeclaration", DuplicateDeclaration, Error},
+	{"ViewSourceNotFound", ViewSourceNotFound, Error},
+	{"ViewSourceNotSelectable", ViewSourceNotSelectable, Error},
+
+	{"TagOutOfRange", TagOutOfRange, Error},
+	{"PrecisionNotAllowed", PrecisionNotAllowed, Error},
+	{"PrecisionRequired", PrecisionRequired, Error},
+	{"DuplicateTag", DuplicateTag, Error},
+	{"TagIsReserved", TagIsReserved, Error},
+	{"ReservedRangeReversed", ReservedRangeReversed, Error},
+	{"TypeArgumentCountWrong", TypeArgumentCountWrong, Error},
+	{"TypeArgumentsNotAllowed", TypeArgumentsNotAllowed, Error},
+	{"TagInViewMember", TagInViewMember, Error},
+	{"ScalarInViewMember", ScalarInViewMember, Error},
+	{"DuplicateMember", DuplicateMember, Error},
+	{"UnknownType", UnknownType, Error},
+	{"NoSuchMember", NoSuchMember, Error},
+	{"NarrowingNotAView", NarrowingNotAView, Error},
+	{"NarrowingSourceMismatch", NarrowingSourceMismatch, Error},
+	{"AliasTargetNotFound", AliasTargetNotFound, Error},
+	{"CompositeKeyPartNotFound", CompositeKeyPartNotFound, Error},
+	{"RelationTargetNotFound", RelationTargetNotFound, Error},
+	{"RelationTargetNotATable", RelationTargetNotATable, Error},
+
+	{"AnnotationNotAllowed", AnnotationNotAllowed, Error},
+	{"UnknownAnnotationPrefix", UnknownAnnotationPrefix, Error},
+	{"UnknownAnnotation", UnknownAnnotation, Error},
+	{"UnterminatedAnnotation", UnterminatedAnnotation, Error},
+	{"MalformedRelation", MalformedRelation, Error},
+
+	{"NotYetImplemented", NotYetImplemented, Error},
+}
+
+// A code keeps its severity the way it keeps its number, and for the same
+// reason: both are what the code MEANS to whoever reads protopc's output, and
+// neither is the business of the stage that happens to raise it.
+func TestEveryCodeKeepsItsSeverity(t *testing.T) {
+	for _, c := range wantCodeSeverities {
+		if got := c.code.Severity(); got != c.want {
+			t.Errorf("%s is a %s, want a %s", c.name, got, c.want)
+		}
+	}
+}
+
+// The table is only an oracle if it is complete, so the names are read back out
+// of codes.go, exactly as TestEveryCodeIsInTheTable does for the numbers. A
+// code added without a line here fails, which is the point at which someone has
+// to say out loud whether the new diagnostic stops the build.
+//
+// The severities stay literals in the table. Reading them from the map in
+// codes.go would ask the implementation whether it agrees with itself, and
+// since an unlisted code takes the zero value it would agree about every code
+// nobody has thought about.
+func TestEveryCodeIsInTheSeverityTable(t *testing.T) {
+	src, err := os.ReadFile("codes.go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	listed := make(map[string]bool, len(wantCodeSeverities))
+	for _, c := range wantCodeSeverities {
+		listed[c.name] = true
+	}
+	declared := regexp.MustCompile(`(?m)^\t(\w+) Code = \d+$`).FindAllStringSubmatch(string(src), -1)
+	if len(declared) != len(wantCodeSeverities) {
+		t.Errorf("codes.go declares %d codes, the severity table lists %d", len(declared), len(wantCodeSeverities))
+	}
+	for _, m := range declared {
+		if !listed[m[1]] {
+			t.Errorf("%s is declared in codes.go and is in no test that says whether it fails the compile", m[1])
+		}
+	}
+}
+
+// Raise reads the severity off the code rather than holding one of its own,
+// which is the whole of the change and is invisible while every code is an
+// error: Raise could pass Error as a constant and the table above would agree
+// with it about all 45. So one code is registered as a warning for the length
+// of this test and the answer is read back through both raising paths.
+//
+// The registry being a map, and being in this package, is what makes that
+// possible -- and is the reason the severity table lives in codes.go rather
+// than in a switch inside Raise.
+func TestRaiseTakesTheSeverityFromTheCode(t *testing.T) {
+	severities[NotYetImplemented] = Warning
+	t.Cleanup(func() { delete(severities, NotYetImplemented) })
+
+	f := source.NewFile("x.protop", "revision 1;\n")
+	var b Bag
+	b.Raise(NotYetImplemented, source.SpanAt(0), "on the bag")
+	b.In(f).Raise(NotYetImplemented, source.SpanAt(0), "on the sink")
+
+	for _, d := range b.All() {
+		if d.Severity != Warning {
+			t.Errorf("%q raised as a %s; Raise is not reading the code's severity", d.Message, d.Severity)
+		}
+	}
+	if b.HasErrors() {
+		t.Error("a bag of warnings reports HasErrors")
+	}
+}
+
 func TestCodeString(t *testing.T) {
 	if got := UnterminatedBlockComment.String(); got != "PROTOP0001" {
 		t.Errorf("got %q, want PROTOP0001", got)
