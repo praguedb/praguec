@@ -93,6 +93,45 @@ func codes(bag *diag.Bag) []string {
 // and everything about whether the severity a code has survives the trip from
 // Raise to the gate. No expected codes derives to false, which is the clean
 // case, and is why the clean assertions come through here too.
+//
+// What it does not catch is a demotion made in diag's table and its oracle
+// together, because then the derivation agrees with the demotion. The tests
+// that name a severity in a literal are what hold that.
+//
+// What a gate comparison catches that nothing else does, on the record,
+// because deriving the expectation from diag's table makes it look like it
+// holds nothing at all:
+//
+// Bag.All returns the live backing slice and Diagnostic.Severity is an
+// exported field, so any stage can demote a diagnostic AFTER raising it. diag
+// cannot see that -- the stage doing it is not diag -- and neither can any
+// table, because nothing about the code changed. Measured in the two stages
+// that have a code without a literal-severity fixture: the demotion appended
+// to syntax/parser.go's TagIsReserved site, and to check.go's
+// AliasTargetNotFound site, each fails that package's gate comparison and
+// nothing else in the repo.
+//
+// The loader is the exception and it is worth writing down rather than
+// implying otherwise. It raises two codes and both of them have a literal
+// fixture in TestALoaderDiagnosticFailsTheCompile, so for a demotion of either
+// one this comparison is measurably redundant today -- verified, the demotion
+// at the ImportNotFound site fails that test too. It is the same comparison
+// all the same, and it is what covers the third code the loader raises,
+// whenever there is one, without anybody having to remember to add a fixture
+// for it.
+//
+// And it is the widest net there is on the severity axis: instrumented, all 45
+// codes in the language reach bag.HasErrors through one of these three
+// helpers. Nothing else is within reach of that. Measured against the other
+// attack -- demoting a code in diag's table and its oracle together -- only 16
+// of the 45 were caught anywhere outside diag at all: 8 by the handful of
+// tests that write a severity out as a literal, and 8 more incidentally, by
+// render goldens holding the word "error" in a line they were written to pin
+// for its position.
+//
+// So the derived expectation is a deliberate trade and not a weakness to be
+// tightened: it buys coverage of every code at the price of one attack, and
+// the attack it misses is held one layer up.
 func assertCodes(t *testing.T, bag *diag.Bag, want ...diag.Code) {
 	t.Helper()
 	wantStrings := make([]string, len(want))

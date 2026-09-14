@@ -69,6 +69,31 @@ func parseClean(t *testing.T, src string) (*source.File, *File) {
 // together, because then the derivation agrees with the demotion. That is what
 // TestAParserDiagnosticFailsTheCompile is for, and why the two are not the same
 // test written twice.
+//
+// What it uniquely catches, on the record, because deriving its expectation
+// from diag's table makes it look like it holds nothing at all:
+//
+// Bag.All returns the live backing slice and Diagnostic.Severity is an
+// exported field, so any stage can demote a diagnostic AFTER raising it --
+// diag's own tests cannot see that, because the stage doing it is not diag.
+// Measured: appending `p.bag.All()[p.bag.Len()-1].Severity = diag.Warning` to
+// the TagIsReserved site in parser.go leaves every other test in the repo
+// green, and deleting the three HasErrors comparisons in these helpers makes
+// it green everywhere. This comparison is the only thing in the repo that
+// fails.
+//
+// And it is the widest net there is on the severity axis: instrumented, all 45
+// codes in the language reach bag.HasErrors through one of these three
+// helpers. Nothing else is within reach of that. Measured against the other
+// attack -- demoting a code in diag's table and its oracle together -- only 16
+// of the 45 were caught anywhere outside diag at all: 8 by the handful of
+// tests that write a severity out as a literal, and 8 more incidentally, by
+// render goldens holding the word "error" in a line they were written to pin
+// for its position.
+//
+// So the derived expectation is a deliberate trade and not a weakness to be
+// tightened: it buys coverage of every code at the price of one attack, and
+// the attack it misses is held one layer up.
 func assertGate(t *testing.T, f *source.File, bag *diag.Bag, want []diag.Code) {
 	t.Helper()
 	fails := false

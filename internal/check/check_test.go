@@ -124,6 +124,34 @@ func assertCodes(t *testing.T, set FileSet, bag *diag.Bag, want ...diag.Code) {
 // everything about whether the severity a code has survives the trip from
 // Raise to the gate. An empty expectation derives to false, which is the clean
 // case and is why the clean helpers come through here too.
+//
+// What it does not catch is a demotion made in diag's table and its oracle
+// together, because then the derivation agrees with the demotion. The tests
+// that name a severity in a literal are what hold that.
+//
+// What it uniquely catches, on the record, because deriving its expectation
+// from diag's table makes it look like it holds nothing at all:
+//
+// Bag.All returns the live backing slice and Diagnostic.Severity is an
+// exported field, so any stage can demote a diagnostic AFTER raising it. diag
+// cannot see that -- the stage doing it is not diag -- and neither can any
+// table, because nothing about the code changed. Measured: appending
+// `c.bag.All()[c.bag.Len()-1].Severity = diag.Warning` to the
+// AliasTargetNotFound site in check.go fails two tests, both of them here and
+// both through this comparison, and nothing else in the repo.
+//
+// And it is the widest net there is on the severity axis: instrumented, all 45
+// codes in the language reach bag.HasErrors through one of these three
+// helpers. Nothing else is within reach of that. Measured against the other
+// attack -- demoting a code in diag's table and its oracle together -- only 16
+// of the 45 were caught anywhere outside diag at all: 8 by the handful of
+// tests that write a severity out as a literal, and 8 more incidentally, by
+// render goldens holding the word "error" in a line they were written to pin
+// for its position.
+//
+// So the derived expectation is a deliberate trade and not a weakness to be
+// tightened: it buys coverage of every code at the price of one attack, and
+// the attack it misses is held one layer up.
 func assertGate(t *testing.T, set FileSet, bag *diag.Bag, want []diag.Code) {
 	t.Helper()
 	fails := false
