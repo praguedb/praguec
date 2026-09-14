@@ -327,7 +327,18 @@ func TestTwoRootsProvidingOneImportIsDiagnosed(t *testing.T) {
 	}
 	assertCodes(t, bag, diag.ImportAmbiguous)
 	msg := bag.All()[0].Message
-	for _, want := range []string{filepath.Join("one", "b.protop"), filepath.Join("two", "b.protop")} {
+	// The two paths, and then the half of the sentence that is the reason.
+	// Naming the roots alone left everything after the semicolon unheld:
+	// truncating the message there failed nothing in the repo. That tail is
+	// the whole point of PROTOP0108 -- the loader always HAS a file it could
+	// take, and what it is reporting is that which root should win is
+	// nanov/protobuf-to-messagepack-sharp#48 and unsettled. A build whose
+	// meaning rests on an open question should say so, and if that clause
+	// went missing the diagnostic would read as a plain conflict with a
+	// winner somebody forgot to print.
+	want := []string{filepath.Join("one", "b.protop"), filepath.Join("two", "b.protop")}
+	want = append(want, "which one wins is not settled", "remove a root, or rename one of the files")
+	for _, want := range want {
 		if !strings.Contains(msg, want) {
 			t.Errorf("message does not name %q:\n%s", want, msg)
 		}
