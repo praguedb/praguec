@@ -195,6 +195,37 @@ func TestEveryCodeKeepsItsSeverity(t *testing.T) {
 	}
 }
 
+// Nothing in protop is advisory, said once about the whole language rather than
+// once per code.
+//
+// This is the third place a severity is written down and the three are not one
+// fact repeated. severities says what a code does; wantCodeSeverities is the
+// oracle that pins each code by name; and this pins the SHAPE of the set. The
+// first two can be edited together -- and a demotion made in both agrees with
+// itself, passes TestEveryCodeKeepsItsSeverity, and passes every derived gate
+// assertion in check, load and syntax, because those derive what they expect
+// from this package and so follow a demotion wherever it goes. Measured across
+// all 45 codes, such an edit went unnoticed for 29 of them. This is what
+// notices.
+//
+// It reads the code column of the oracle and ignores its want column on
+// purpose: the table is held complete by TestEveryCodeIsInTheSeverityTable, so
+// iterating it is iterating the language, and the expectation here is a literal
+// that no edit to either of the other two places can move.
+//
+// It is the coarsest of the three because the fact is coarse: protop has no
+// warning. `map` is not one -- the parser raises NotYetImplemented as an error,
+// which is what stops the driver instead of handing a half-read file to a
+// backend. The day protop grows an advisory diagnostic, this test is where that
+// decision gets argued rather than absorbed, which is the right price for it.
+func TestNoCodeIsAdvisoryYet(t *testing.T) {
+	for _, c := range wantCodeSeverities {
+		if got := c.code.Severity(); got != Error {
+			t.Errorf("%s is a %s; protop has no advisory diagnostic, and a code that does not fail the compile is one protopc prints and then accepts the schema anyway", c.name, got)
+		}
+	}
+}
+
 // The table is only an oracle if it is complete, so the names are read back out
 // of codes.go, exactly as TestEveryCodeIsInTheTable does for the numbers. A
 // code added without a line here fails, which is the point at which someone has
