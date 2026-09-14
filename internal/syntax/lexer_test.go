@@ -16,6 +16,7 @@ func lex(t *testing.T, src string) (*source.File, []Token) {
 	if bag.HasErrors() {
 		t.Fatalf("unexpected diagnostics:\n%s", diag.RenderAll(f, &bag))
 	}
+	assertGate(t, f, &bag, nil)
 	return f, toks
 }
 
@@ -162,6 +163,7 @@ func TestLexDiagnostics(t *testing.T) {
 			if d.Code != tt.wantCode {
 				t.Errorf("code = %s, want %s", d.Code, tt.wantCode)
 			}
+			assertGate(t, f, &bag, []diag.Code{tt.wantCode})
 			if pos := f.Position(d.Span.Start); pos.Line != tt.wantLine || pos.Column != tt.wantCol {
 				t.Errorf("reported at %d:%d, want %d:%d", pos.Line, pos.Column, tt.wantLine, tt.wantCol)
 			}

@@ -78,6 +78,39 @@ func codes(bag *diag.Bag) []string {
 	return out
 }
 
+// assertCodes holds a bag against the sequence of codes it should contain, and
+// then against what those codes imply about the compile.
+//
+// bag.HasErrors is the gate the driver reads. The loader is the first stage to
+// fill a bag, so a loader diagnostic that does not reach the gate is a missing
+// import that protopc prints, and then goes on to parse, check and generate C#
+// around the hole it just named.
+//
+// The gate expectation is derived and never written down: the compile fails
+// exactly when one of the expected codes is an error by diag's own table. So
+// this says nothing about what a severity ought to be -- the day a code becomes
+// advisory the expectation moves with it and no fixture here needs an edit --
+// and everything about whether the severity a code has survives the trip from
+// Raise to the gate. No expected codes derives to false, which is the clean
+// case, and is why the clean assertions come through here too.
+func assertCodes(t *testing.T, bag *diag.Bag, want ...diag.Code) {
+	t.Helper()
+	wantStrings := make([]string, len(want))
+	fails := false
+	for i, c := range want {
+		wantStrings[i] = c.String()
+		if c.Severity() == diag.Error {
+			fails = true
+		}
+	}
+	if got := codes(bag); !slices.Equal(got, wantStrings) {
+		t.Fatalf("codes = %v, want %v", got, wantStrings)
+	}
+	if got := bag.HasErrors(); got != fails {
+		t.Fatalf("HasErrors = %v, want %v for %v", got, fails, wantStrings)
+	}
+}
+
 func loadIn(t *testing.T, dir string, roots, inputs []string) (*Result, *diag.Bag, error) {
 	t.Helper()
 	abs := func(paths []string) []string {
@@ -104,9 +137,7 @@ func TestAnImportResolvesAgainstTheIncludeRoots(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := codes(bag); len(got) != 0 {
-		t.Fatalf("diagnostics %v", got)
-	}
+	assertCodes(t, bag)
 	if got, want := keys(res.Set), []string{"a.protop", "b.protop"}; !slices.Equal(got, want) {
 		t.Errorf("set keys = %v, want %v", got, want)
 	}
@@ -164,9 +195,7 @@ func TestTheDefaultRootIsTheDirectoryOfEachInput(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := codes(bag); len(got) != 0 {
-		t.Fatalf("diagnostics %v", got)
-	}
+	assertCodes(t, bag)
 	want := []string{"a.protop", "b.protop", "c.protop", "d.protop"}
 	if got := keys(res.Set); !slices.Equal(got, want) {
 		t.Errorf("set keys = %v, want %v", got, want)
@@ -187,9 +216,7 @@ func TestAnExplicitRootReplacesTheDefaultRatherThanExtendingIt(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got, want := codes(bag), []string{"PROTOP0107"}; !slices.Equal(got, want) {
-		t.Errorf("codes = %v, want %v", got, want)
-	}
+	assertCodes(t, bag, diag.ImportNotFound)
 }
 
 // Roots are searched in the order the user gave them, and the first to provide
@@ -206,9 +233,7 @@ func TestTheRootsAreSearchedInTheOrderGiven(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := codes(bag); len(got) != 0 {
-		t.Fatalf("diagnostics %v", got)
-	}
+	assertCodes(t, bag)
 	if got := res.Set["b.protop"].Source.Name; !strings.Contains(got, filepath.Join("first", "b.protop")) {
 		t.Errorf("b.protop was opened from %q, want the first root", got)
 	}
@@ -228,9 +253,7 @@ func TestTwoRootsProvidingOneImportIsDiagnosed(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got, want := codes(bag), []string{"PROTOP0108"}; !slices.Equal(got, want) {
-		t.Fatalf("codes = %v, want %v", got, want)
-	}
+	assertCodes(t, bag, diag.ImportAmbiguous)
 	msg := bag.All()[0].Message
 	for _, want := range []string{filepath.Join("one", "b.protop"), filepath.Join("two", "b.protop")} {
 		if !strings.Contains(msg, want) {
@@ -258,9 +281,8 @@ func TestAnAmbiguousImportIsReportedOnce(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got, want := codes(bag), []string{"PROTOP0108"}; !slices.Equal(got, want) {
-		t.Fatalf("codes = %v, want %v; the ambiguity is one fact about the roots", got, want)
-	}
+	// The ambiguity is one fact about the roots, and so one diagnostic.
+	assertCodes(t, bag, diag.ImportAmbiguous)
 }
 
 // One file reached under two import strings is one unit, under both of them.
@@ -284,9 +306,7 @@ func TestOneFileReachedUnderTwoImportStringsIsOneUnitUnderBoth(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := codes(bag); len(got) != 0 {
-		t.Fatalf("codes = %v, want none", got)
-	}
+	assertCodes(t, bag)
 	want := []string{"a.protop", "b.protop", "c.protop", "lib/b.protop"}
 	if got := keys(res.Set); !slices.Equal(got, want) {
 		t.Fatalf("set keys = %v, want %v; both spellings resolved, so both must be findable", got, want)
@@ -352,9 +372,8 @@ func TestOneRootGivenTwiceIsNotAnAmbiguity(t *testing.T) {
 	}
 
 	// The import that is there resolved once: no PROTOP0108.
-	if got, want := codes(&bag), []string{"PROTOP0107"}; !slices.Equal(got, want) {
-		t.Fatalf("codes = %v, want %v -- three spellings of one directory are one root", got, want)
-	}
+	// Three spellings of one directory are one root, and so one diagnostic.
+	assertCodes(t, &bag, diag.ImportNotFound)
 	// And the import that is not there says it looked in one directory, twice
 	// over: `one` and its absolute spelling are two roots to resolveRoots and
 	// `one/` is not a third.
@@ -393,9 +412,7 @@ func TestTheFirstRootThatProvidesAnImportIsTheOneOpened(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if got, want := codes(bag), []string{"PROTOP0108"}; !slices.Equal(got, want) {
-				t.Fatalf("codes = %v, want %v", got, want)
-			}
+			assertCodes(t, bag, diag.ImportAmbiguous)
 			want := filepath.Join(first, "b.protop")
 			if got := res.Set["b.protop"].Source.Name; !strings.HasSuffix(got, want) {
 				t.Errorf("b.protop was opened from %q, want the first root's %q", got, want)
@@ -451,9 +468,7 @@ func TestADirectoryNamedLikeAnImportDoesNotProvideIt(t *testing.T) {
 	if err != nil {
 		t.Fatalf("a directory in the way of an import must not be an error: %v", err)
 	}
-	if got := codes(bag); len(got) != 0 {
-		t.Fatalf("codes = %v, want none", got)
-	}
+	assertCodes(t, bag)
 	if got, want := res.Set["b.protop"].Source.Name, filepath.Join("two", "b.protop"); !strings.HasSuffix(got, want) {
 		t.Errorf("b.protop was opened from %q, want %q", got, want)
 	}
@@ -473,9 +488,7 @@ func TestAnImportCycleTerminates(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := codes(bag); len(got) != 0 {
-		t.Fatalf("diagnostics %v", got)
-	}
+	assertCodes(t, bag)
 	if got, want := keys(res.Set), []string{"a.protop", "b.protop"}; !slices.Equal(got, want) {
 		t.Errorf("set keys = %v, want %v", got, want)
 	}
@@ -527,9 +540,7 @@ func TestAnImportUnderNoRootIsADiagnosticThatSaysWhereItLooked(t *testing.T) {
 	if err != nil {
 		t.Fatalf("a missing import must not be an error: %v", err)
 	}
-	if got, want := codes(bag), []string{"PROTOP0107"}; !slices.Equal(got, want) {
-		t.Fatalf("codes = %v, want %v", got, want)
-	}
+	assertCodes(t, bag, diag.ImportNotFound)
 	msg := bag.All()[0].Message
 	for _, want := range []string{"gone.protop", filepath.Join(dir, "one"), filepath.Join(dir, "two")} {
 		if !strings.Contains(msg, want) {
@@ -642,9 +653,7 @@ func TestAnInputUnderNoRootKeepsItsOwnPath(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := codes(bag); len(got) != 0 {
-		t.Fatalf("diagnostics %v", got)
-	}
+	assertCodes(t, bag)
 	if len(res.Targets) != 1 || !strings.HasSuffix(res.Targets[0], "elsewhere/a.protop") {
 		t.Errorf("targets = %v, want the input's own path", res.Targets)
 	}
@@ -671,9 +680,7 @@ func TestTheSetTheLoaderBuildsIsTheSetTheCheckerReads(t *testing.T) {
 			t.Fatal(err)
 		}
 		schema := check.Check(res.Set, bag)
-		if got := codes(bag); len(got) != 0 {
-			t.Fatalf("diagnostics %v", got)
-		}
+		assertCodes(t, bag)
 		if schema == nil || len(schema.Files) != 2 {
 			t.Fatalf("schema = %v, want two files", schema)
 		}
@@ -711,16 +718,12 @@ func TestTheSetTheLoaderBuildsIsTheSetTheCheckerReads(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				if got := codes(bag); len(got) != 0 {
-					t.Fatalf("the loader raised %v", got)
-				}
+				assertCodes(t, bag)
 				if _, ok := res.Set["b.protop"]; !ok {
 					t.Fatalf("%q resolved and %q did not reach the set: %v", alias, "b.protop", keys(res.Set))
 				}
 				check.Check(res.Set, bag)
-				if got := codes(bag); len(got) != 0 {
-					t.Fatalf("checking a set the loader built raised %v", got)
-				}
+				assertCodes(t, bag)
 			})
 		}
 	})

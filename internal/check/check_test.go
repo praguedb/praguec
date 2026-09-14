@@ -77,6 +77,7 @@ func checkClean(t *testing.T, files map[string]string) *Schema {
 	if bag.Len() != 0 {
 		t.Fatalf("unexpected diagnostics:\n%s", renderAll(set, bag))
 	}
+	assertGate(t, set, bag, nil)
 	return schema
 }
 
@@ -108,6 +109,31 @@ func assertCodes(t *testing.T, set FileSet, bag *diag.Bag, want ...diag.Code) {
 		if got[i] != want[i] {
 			t.Fatalf("diagnostics:\n%s\nwant codes %v, got %v", renderAll(set, bag), want, got)
 		}
+	}
+	assertGate(t, set, bag, want)
+}
+
+// assertGate holds the bag against what the codes it carries imply about the
+// compile. bag.HasErrors is the gate the driver reads, and a diagnostic that is
+// reported without reaching it is one protopc prints and then accepts anyway.
+//
+// The expectation is derived and never written down: the compile fails exactly
+// when one of the expected codes is an error by diag's own table. So this says
+// nothing about what a severity ought to be -- the day a code becomes advisory
+// the expectation moves with it and no fixture here needs an edit -- and
+// everything about whether the severity a code has survives the trip from
+// Raise to the gate. An empty expectation derives to false, which is the clean
+// case and is why the clean helpers come through here too.
+func assertGate(t *testing.T, set FileSet, bag *diag.Bag, want []diag.Code) {
+	t.Helper()
+	fails := false
+	for _, c := range want {
+		if c.Severity() == diag.Error {
+			fails = true
+		}
+	}
+	if got := bag.HasErrors(); got != fails {
+		t.Errorf("HasErrors = %v, want %v for %v:\n%s", got, fails, want, renderAll(set, bag))
 	}
 }
 

@@ -48,7 +48,38 @@ func parseClean(t *testing.T, src string) (*source.File, *File) {
 	if bag.Len() != 0 {
 		t.Fatalf("unexpected diagnostics:\n%s", diag.RenderAll(f, bag))
 	}
+	assertGate(t, f, bag, nil)
 	return f, file
+}
+
+// assertGate holds the bag against what the codes it carries imply about the
+// compile. bag.HasErrors is the gate the driver reads and every later stage
+// inherits, so a diagnostic that is reported without reaching it is one protopc
+// prints and then accepts anyway.
+//
+// The expectation is derived and never written down: the compile fails exactly
+// when one of the expected codes is an error by diag's own table. So this says
+// nothing about what a severity ought to be -- the day a code becomes advisory
+// the expectation moves with it and no fixture here needs an edit -- and
+// everything about whether the severity a code has survives the trip from Raise
+// to the gate. An empty expectation derives to false, which is the clean case
+// and is why the clean helpers come through here too.
+//
+// What it does not catch is a demotion made in diag's table and its oracle
+// together, because then the derivation agrees with the demotion. That is what
+// TestAParserDiagnosticFailsTheCompile is for, and why the two are not the same
+// test written twice.
+func assertGate(t *testing.T, f *source.File, bag *diag.Bag, want []diag.Code) {
+	t.Helper()
+	fails := false
+	for _, c := range want {
+		if c.Severity() == diag.Error {
+			fails = true
+		}
+	}
+	if got := bag.HasErrors(); got != fails {
+		t.Errorf("HasErrors = %v, want %v for %v:\n%s", got, fails, want, diag.RenderAll(f, bag))
+	}
 }
 
 // dump renders what the parser promises to get right -- names, types, tags and
@@ -1221,6 +1252,7 @@ table T {
 			if !slices.Equal(got, tt.wantCodes) {
 				t.Fatalf("codes = %v, want %v:\n%s", got, tt.wantCodes, diag.RenderAll(f, bag))
 			}
+			assertGate(t, f, bag, tt.wantCodes)
 			if pos := f.Position(bag.All()[0].Span.Start); pos.Line != tt.wantLine || pos.Column != tt.wantCol {
 				t.Errorf("first diagnostic at %d:%d, want %d:%d", pos.Line, pos.Column, tt.wantLine, tt.wantCol)
 			}
