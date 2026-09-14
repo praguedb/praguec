@@ -628,6 +628,17 @@ func TestParseDiagnostics(t *testing.T) {
 		// milestone at a time. The reason is prose because the only reasons
 		// that survive review are the ones that name an issue.
 		spanUnpinned string
+		// wantMessage is the whole sentence, for a message whose whole sentence
+		// is the teaching, and wantMessageHas is the parts that must not drift,
+		// for one built around an interpolated enumeration or a worked example.
+		// A row sets one or the other and never both -- the split is
+		// nanov/protobuf-to-messagepack-sharp#40's census, which also names the
+		// 14 codes that say only what their code name says and earn no golden
+		// at all. Those rows set neither, deliberately, and
+		// loadBearingMessages below is what keeps that a decision rather than
+		// an omission.
+		wantMessage    string
+		wantMessageHas []string
 	}{
 		{
 			name:      "missing revision",
@@ -660,8 +671,9 @@ struct S {
   int64 id = 0;
 }
 `,
-			wantCodes: []diag.Code{diag.TagOutOfRange},
-			wantLine:  4, wantCol: 14,
+			wantCodes:   []diag.Code{diag.TagOutOfRange},
+			wantMessage: "field tag must be greater than 0; a MessagePack key is tag - 1, so tag 0 names no slot",
+			wantLine:    4, wantCol: 14,
 			wantSpan: underlines("0"),
 		},
 		{
@@ -673,7 +685,11 @@ struct S {
 }
 `,
 			wantCodes: []diag.Code{diag.PrecisionNotAllowed},
-			wantLine:  4, wantCol: 9, // the precision itself, not the type
+			wantMessageHas: []string{
+				"only allowed on `decimal`",
+				"not on `int64`",
+			},
+			wantLine: 4, wantCol: 9, // the precision itself, not the type
 			wantSpan: underlines("4"),
 		},
 		{
@@ -685,7 +701,11 @@ struct S {
 }
 `,
 			wantCodes: []diag.Code{diag.PrecisionRequired},
-			wantLine:  4, wantCol: 3,
+			wantMessageHas: []string{
+				"`decimal` requires a precision",
+				"as in `decimal(4)`",
+			},
+			wantLine: 4, wantCol: 3,
 			wantSpan: underlines("decimal"),
 		},
 		{
@@ -699,7 +719,11 @@ struct S {
 			name:      "unsupported revision",
 			src:       "revision 2;\nnamespace A;\n",
 			wantCodes: []diag.Code{diag.UnsupportedRevision},
-			wantLine:  1, wantCol: 10,
+			wantMessageHas: []string{
+				"unknown revision 2",
+				"this compiler implements revision 1",
+			},
+			wantLine: 1, wantCol: 10,
 			wantSpan: underlines("2"),
 		},
 		{
@@ -792,7 +816,11 @@ revision 1;
 			name:      "unknown declaration",
 			src:       "revision 1;\nnamespace A;\nwidget W {\n}\n",
 			wantCodes: []diag.Code{diag.UnknownDeclaration},
-			wantLine:  3, wantCol: 1,
+			wantMessageHas: []string{
+				"unknown declaration `widget`",
+				"`struct`, `enum`, `record`, `table`, `view` or `import`",
+			},
+			wantLine: 3, wantCol: 1,
 			wantSpan: underlines("widget"),
 		},
 		{
@@ -807,8 +835,9 @@ struct S {
   int64 a = 1;
 }
 `,
-			wantCodes: []diag.Code{diag.AnnotationNotAllowed},
-			wantLine:  3, wantCol: 1,
+			wantCodes:   []diag.Code{diag.AnnotationNotAllowed},
+			wantMessage: "an annotation follows what it describes and there is no before-slot; write this one after the declaration's name",
+			wantLine:    3, wantCol: 1,
 			spanUnpinned: "#57: PROTOP0400 underlines the `[` alone, not the annotation it says to move",
 		},
 		{
@@ -819,8 +848,9 @@ struct S {
   int64 a [cs: X] = 1;
 }
 `,
-			wantCodes: []diag.Code{diag.AnnotationNotAllowed},
-			wantLine:  4, wantCol: 11,
+			wantCodes:   []diag.Code{diag.AnnotationNotAllowed},
+			wantMessage: "an annotation follows what it describes and there is no before-slot; write this one after the member's tag",
+			wantLine:    4, wantCol: 11,
 			spanUnpinned: "#57: PROTOP0400 underlines the `[` alone, not the annotation it says to move",
 		},
 		{
@@ -835,7 +865,12 @@ struct S {
 }
 `,
 			wantCodes: []diag.Code{diag.UnknownAnnotationPrefix},
-			wantLine:  4, wantCol: 16,
+			wantMessageHas: []string{
+				"unknown annotation prefix `go`",
+				"protopc's backends are `cs`",
+				"writing a backend rather than a keyword",
+			},
+			wantLine: 4, wantCol: 16,
 			wantSpan: underlines("go"),
 		},
 		{
@@ -849,7 +884,12 @@ struct S {
 }
 `,
 			wantCodes: []diag.Code{diag.UnknownAnnotation},
-			wantLine:  4, wantCol: 16,
+			wantMessageHas: []string{
+				"unknown annotation `refrences`",
+				"protop's own annotations are `references`",
+				"as in `[cs: refrences]`",
+			},
+			wantLine: 4, wantCol: 16,
 			wantSpan: underlines("refrences"),
 		},
 		{
@@ -935,8 +975,9 @@ struct S {
   int64 b = 1;
 }
 `,
-			wantCodes: []diag.Code{diag.DuplicateTag},
-			wantLine:  5, wantCol: 13,
+			wantCodes:   []diag.Code{diag.DuplicateTag},
+			wantMessage: "tag 1 is already used at x.protop:4:13; a tag is a position in the MessagePack array and two members cannot hold one position",
+			wantLine:    5, wantCol: 13,
 			wantSpan: underlines("1"),
 		},
 		{
@@ -951,8 +992,9 @@ table T {
   reserved 8..14;
 }
 `,
-			wantCodes: []diag.Code{diag.TagIsReserved},
-			wantLine:  4, wantCol: 13,
+			wantCodes:   []diag.Code{diag.TagIsReserved},
+			wantMessage: "tag 10 is reserved at x.protop:5:12; a retired tag is never reused, because a reader built against the old schema would decode this field into the old one",
+			wantLine:    4, wantCol: 13,
 			wantSpan: underlines("10"),
 		},
 		{
@@ -979,8 +1021,9 @@ struct S {
   key int64 id = 1;
 }
 `,
-			wantCodes: []diag.Code{diag.KeyNotAllowed},
-			wantLine:  4, wantCol: 3,
+			wantCodes:   []diag.Code{diag.KeyNotAllowed},
+			wantMessage: "only a `table` carries identity; a `struct` cannot declare a `key`",
+			wantLine:    4, wantCol: 3,
 			wantSpan: underlines("key"),
 		},
 		{
@@ -995,8 +1038,9 @@ record R {
   int64 b = 3;
 }
 `,
-			wantCodes: []diag.Code{diag.KeyNotAllowed},
-			wantLine:  4, wantCol: 3,
+			wantCodes:   []diag.Code{diag.KeyNotAllowed},
+			wantMessage: "only a `table` carries identity; a `record` cannot declare a `key`",
+			wantLine:    4, wantCol: 3,
 			wantSpan: underlines("key"),
 		},
 		{
@@ -1028,7 +1072,11 @@ struct S {
 }
 `,
 			wantCodes: []diag.Code{diag.PrecisionNotAllowed},
-			wantLine:  4, wantCol: 9,
+			wantMessageHas: []string{
+				"only allowed on `decimal`",
+				"not on `Venue`",
+			},
+			wantLine: 4, wantCol: 9,
 			wantSpan: underlines("4"),
 		},
 		{
@@ -1042,8 +1090,9 @@ struct S {
   [cs: X] int64 a = 1;
 }
 `,
-			wantCodes: []diag.Code{diag.AnnotationNotAllowed},
-			wantLine:  4, wantCol: 3,
+			wantCodes:   []diag.Code{diag.AnnotationNotAllowed},
+			wantMessage: "an annotation follows what it describes and there is no before-slot; write this one after the member's tag",
+			wantLine:    4, wantCol: 3,
 			spanUnpinned: "#57: PROTOP0400 underlines the `[` alone, not the annotation it says to move",
 		},
 		{
@@ -1071,7 +1120,11 @@ struct S {
 }
 `,
 			wantCodes: []diag.Code{diag.UnknownAnnotationPrefix},
-			wantLine:  4, wantCol: 16,
+			wantMessageHas: []string{
+				"unknown annotation prefix `kt`",
+				"protopc's backends are `cs`",
+			},
+			wantLine: 4, wantCol: 16,
 			wantSpan: underlines("kt"),
 		},
 		{
@@ -1085,7 +1138,11 @@ struct S {
 }
 `,
 			wantCodes: []diag.Code{diag.TypeArgumentCountWrong},
-			wantLine:  4, wantCol: 3,
+			wantMessageHas: []string{
+				"`list` takes 1 type argument and was given 2",
+				"as in `list<Odd>`",
+			},
+			wantLine: 4, wantCol: 3,
 			wantSpan: underlines("list<Odd, Venue>"),
 		},
 		{
@@ -1100,7 +1157,11 @@ struct S {
 }
 `,
 			wantCodes: []diag.Code{diag.TypeArgumentCountWrong},
-			wantLine:  4, wantCol: 3,
+			wantMessageHas: []string{
+				"`list` takes 1 type argument and was given 0",
+				"as in `list<Odd>`",
+			},
+			wantLine: 4, wantCol: 3,
 			wantSpan: underlines("list"),
 		},
 		{
@@ -1114,7 +1175,11 @@ struct S {
 }
 `,
 			wantCodes: []diag.Code{diag.TypeArgumentsNotAllowed},
-			wantLine:  4, wantCol: 3,
+			wantMessageHas: []string{
+				"`int64` takes no type arguments",
+				"protop's generic types are `list`, `map`",
+			},
+			wantLine: 4, wantCol: 3,
 			wantSpan: underlines("int64<string>"),
 		},
 		{
@@ -1143,7 +1208,11 @@ struct S {
 }
 `,
 			wantCodes: []diag.Code{diag.TypeArgumentCountWrong, diag.NotYetImplemented},
-			wantLine:  4, wantCol: 3,
+			wantMessageHas: []string{
+				"`map` takes 2 type arguments and was given 1",
+				"as in `map<string, Odd>`",
+			},
+			wantLine: 4, wantCol: 3,
 			wantSpan: underlines("map<string>"),
 		},
 		{
@@ -1198,8 +1267,9 @@ view V of T {
   sport_type_id = 5;
 }
 `,
-			wantCodes: []diag.Code{diag.TagInViewMember},
-			wantLine:  4, wantCol: 17,
+			wantCodes:   []diag.Code{diag.TagInViewMember},
+			wantMessage: "a view may not write a tag: `sport_type_id` is pinned to the tag its source gives it, and only the source extends the tag space; a tag added here is never written by the producer, so it would decode to nil forever while squatting a slot the source may later claim",
+			wantLine:    4, wantCol: 17,
 			wantSpan: underlines("="),
 		},
 		{
@@ -1217,8 +1287,9 @@ view V {
   name;
 }
 `,
-			wantCodes: []diag.Code{diag.ViewSourceMissing},
-			wantLine:  3, wantCol: 8,
+			wantCodes:   []diag.Code{diag.ViewSourceMissing},
+			wantMessage: "a view is a subset of one source and declares no members of its own; name that source, as in `view V of SportGame { ... }`",
+			wantLine:    3, wantCol: 8,
 			wantSpan: underlines("{"),
 		},
 		{
@@ -1268,8 +1339,9 @@ view V of T {
   int64 x;
 }
 `,
-			wantCodes: []diag.Code{diag.ScalarInViewMember},
-			wantLine:  4, wantCol: 3,
+			wantCodes:   []diag.Code{diag.ScalarInViewMember},
+			wantMessage: "`int64` is a scalar and a view member narrows to another view; a member keeps the type its source gives it when it is written as its name alone",
+			wantLine:    4, wantCol: 3,
 			wantSpan: underlines("int64"),
 		},
 		{
@@ -1307,8 +1379,9 @@ view V of T {
   [cs: X] name;
 }
 `,
-			wantCodes: []diag.Code{diag.AnnotationNotAllowed},
-			wantLine:  4, wantCol: 3,
+			wantCodes:   []diag.Code{diag.AnnotationNotAllowed},
+			wantMessage: "an annotation follows what it describes and there is no before-slot; write this one after the member's name",
+			wantLine:    4, wantCol: 3,
 			wantSpan: underlines("["),
 		},
 		{
@@ -1324,8 +1397,9 @@ struct S {
 }
 import "prague.protop";
 `,
-			wantCodes: []diag.Code{diag.ImportNotInHeader},
-			wantLine:  6, wantCol: 1,
+			wantCodes:   []diag.Code{diag.ImportNotInHeader},
+			wantMessage: "an `import` belongs with the file's other imports, above the first declaration; what a file depends on is a property of the whole file and not of the lines below it",
+			wantLine:    6, wantCol: 1,
 			wantSpan: underlines(`import "prague.protop";`),
 		},
 		{
@@ -1386,6 +1460,41 @@ struct S {
 			wantLine:  5, wantCol: 1,
 			wantSpan: underlines(""),
 		},
+		{
+			// PROTOP0201 is raised at two sites with two different sentences,
+			// and this is the second. `unknown declaration` answers a word that
+			// names no keyword; this answers a token that is not a word at all,
+			// and tells the user what a declaration may start with instead of
+			// quoting back something they did not write.
+			name:      "a top-level token that is not a word at all",
+			src:       "revision 1;\nnamespace A;\n;\n",
+			wantCodes: []diag.Code{diag.UnknownDeclaration},
+			wantMessageHas: []string{
+				"expected a declaration",
+				"found `;`",
+			},
+			wantLine: 3, wantCol: 1,
+			wantSpan: underlines(";"),
+		},
+		{
+			// PROTOP0402's second site, for the same reason: `unknown
+			// annotation` quotes the word back and lists protop's own set,
+			// which there is no word to do here.
+			name: "an annotation that is not a word at all",
+			src: `revision 1;
+namespace A;
+struct S {
+  int64 a = 1 [1];
+}
+`,
+			wantCodes: []diag.Code{diag.UnknownAnnotation},
+			wantMessageHas: []string{
+				"expected an annotation",
+				"found an integer",
+			},
+			wantLine: 4, wantCol: 16,
+			wantSpan: underlines("1"),
+		},
 	}
 
 	for _, tt := range tests {
@@ -1413,8 +1522,75 @@ struct S {
 			case tt.spanUnpinned == "":
 				t.Errorf("row pins no span and gives no reason: set wantSpan, or set spanUnpinned to the issue that owns the span")
 			}
+
+			msg := bag.All()[0].Message
+			if tt.wantMessage != "" && len(tt.wantMessageHas) > 0 {
+				t.Errorf("row pins the whole message AND parts of it; pick one")
+			}
+			if tt.wantMessage != "" && msg != tt.wantMessage {
+				t.Errorf("first diagnostic reads\n\t%q\nwant\n\t%q", msg, tt.wantMessage)
+			}
+			for _, want := range tt.wantMessageHas {
+				if !strings.Contains(msg, want) {
+					t.Errorf("first diagnostic reads\n\t%q\nwant it to contain\n\t%q", msg, want)
+				}
+			}
 		})
 	}
+
+	// Every code this package raises whose message carries more than its own
+	// name is pinned by some row above. Without this the message column is the
+	// span column before it was made to answer for itself: filled where
+	// somebody thought of it, and silent about everywhere they did not.
+	//
+	// The list is #40's census, restricted to the codes this package raises. A
+	// code is on it when its message says something the code name does not --
+	// an enumeration of what was expected, a worked example, a position to go
+	// and look at. The codes deliberately absent are the ones whose message is
+	// their own name in a sentence: a golden on those is a second copy of
+	// codes.go that has to be edited whenever a word moves.
+	covered := map[diag.Code]bool{}
+	for _, tt := range tests {
+		if tt.wantMessage == "" && len(tt.wantMessageHas) == 0 {
+			continue
+		}
+		covered[tt.wantCodes[0]] = true
+	}
+	for _, c := range loadBearingMessages {
+		if !covered[c] {
+			t.Errorf("%s carries a load-bearing message and no row pins it", c)
+		}
+	}
+}
+
+// loadBearingMessages is the codes raised in this package whose message text is
+// worth more than the code number -- #40's census, its parser half. Two of them
+// are raised at two sites with different wording and have a row for each:
+// PROTOP0201 (`expected a declaration` against `unknown declaration`) and
+// PROTOP0402 (`expected an annotation` against `unknown annotation`).
+//
+// PROTOP0200 is absent on purpose despite having six sites. Its message is
+// `expected X, found Y` at every one of them, which is the code name with the
+// two tokens the underline already shows; the census puts it among the 14 that
+// earn no golden, and six rows of it would be six copies of the Kind stringer.
+var loadBearingMessages = []diag.Code{
+	diag.UnsupportedRevision,
+	diag.ImportNotInHeader,
+	diag.UnknownDeclaration,
+	diag.KeyNotAllowed,
+	diag.ViewSourceMissing,
+	diag.TagOutOfRange,
+	diag.PrecisionNotAllowed,
+	diag.PrecisionRequired,
+	diag.DuplicateTag,
+	diag.TagIsReserved,
+	diag.TypeArgumentCountWrong,
+	diag.TypeArgumentsNotAllowed,
+	diag.TagInViewMember,
+	diag.ScalarInViewMember,
+	diag.AnnotationNotAllowed,
+	diag.UnknownAnnotationPrefix,
+	diag.UnknownAnnotation,
 }
 
 // The severity of a parser diagnostic, end to end, on the two codes a demotion
