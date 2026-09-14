@@ -1323,6 +1323,234 @@ func TestAMessageQuotesADeclarationAtItsKeyword(t *testing.T) {
 	})
 }
 
+// The messages that say more than their code number does, one row per code.
+//
+// #40's census split all 45 codes by the ticket's own rule: a message that only
+// names a token is well covered by the code, and a message that carries an
+// enumeration, a worked example, or a position to go and look at is not. These
+// fourteen are this package's half of the load-bearing set, and replacing any
+// of their messages with the literal "unexpected token" failed nothing here.
+//
+// The rows are their own fixtures rather than a reach into the tests above,
+// because a test named for what the checker CONCLUDES should stay free to
+// change its fixture, and a golden that moves with it pins nothing. What is
+// asserted here is the sentence; what is asserted there is the conclusion.
+//
+// wantMessage is the whole sentence and wantMessageHas is the parts of it that
+// must not drift; a row sets one or the other. The split follows the census:
+// a sentence that is entirely teaching is pinned entire, and one built around
+// an interpolated position or example is pinned at the interpolation, so that
+// a fixture edit above does not turn into a golden edit here.
+func TestTheCheckersMessagesSayWhatTheCodeCannot(t *testing.T) {
+	tests := []struct {
+		name           string
+		files          map[string]string
+		wantCode       diag.Code
+		wantMessage    string
+		wantMessageHas []string
+	}{
+		{
+			name: "an import naming no file in the set",
+			files: map[string]string{
+				"a.protop": "revision 1;\nnamespace A;\nimport \"gone.protop\";\nstruct S {\n  int64 x = 1;\n}\n",
+			},
+			wantCode: diag.ImportNotFound,
+			wantMessageHas: []string{
+				"no file named \"gone.protop\" was given to the compiler",
+				"where that file comes from is the build's question, not the schema's",
+			},
+		},
+		{
+			name: "two declarations of one name",
+			files: map[string]string{
+				"a.protop": "revision 1;\nnamespace A;\nstruct S {\n  int64 x = 1;\n}\nrecord S {\n  int64 y = 1;\n}\n",
+			},
+			wantCode: diag.DuplicateDeclaration,
+			wantMessageHas: []string{
+				"a.protop:3:1",
+				"which of the two a reference means is not a question protop answers",
+			},
+		},
+		{
+			name: "a view of something that is not there",
+			files: map[string]string{
+				"a.protop": "revision 1;\nnamespace A;\nview V of Gone {\n  x;\n}\n",
+			},
+			wantCode:    diag.ViewSourceNotFound,
+			wantMessage: "unknown view source `Gone`; a file sees its own declarations and those of the files it imports, and nothing else",
+		},
+		{
+			name: "a view of something with no tags to select",
+			files: map[string]string{
+				"a.protop": "revision 1;\nnamespace A;\nstruct S {\n  int64 x = 1;\n}\nview V of S {\n  x;\n}\n",
+			},
+			wantCode:    diag.ViewSourceNotSelectable,
+			wantMessage: "`S` is a struct, and a view is a subset of a table or a record; there are no tags here for a view to be pinned to",
+		},
+		{
+			name: "one source member selected twice",
+			files: map[string]string{
+				"a.protop": "revision 1;\nnamespace A;\ntable T {\n  key int64 id = 1;\n  int64 x = 2;\n}\nview V of T {\n  x as a;\n  x as b;\n}\n",
+			},
+			wantCode: diag.DuplicateTag,
+			wantMessageHas: []string{
+				"tag 2 is already used at a.protop:8:3",
+				"`a` and `b` select the same member of `T`",
+				"a tag is a position in the MessagePack array that two members cannot hold",
+			},
+		},
+		{
+			name: "a type naming nothing in scope",
+			files: map[string]string{
+				"a.protop": "revision 1;\nnamespace A;\nstruct S {\n  Gone x = 1;\n}\n",
+			},
+			wantCode:    diag.UnknownType,
+			wantMessage: "unknown type `Gone`; a file sees its own declarations and those of the files it imports, and nothing else",
+		},
+		{
+			name: "a view member naming nothing its source declares",
+			files: map[string]string{
+				"a.protop": "revision 1;\nnamespace A;\ntable T {\n  key int64 id = 1;\n}\nview V of T {\n  gone;\n}\n",
+			},
+			wantCode: diag.NoSuchMember,
+			wantMessageHas: []string{
+				"declared at a.protop:3:1",
+				"a rename or a removal there is a compile error here rather than a field that decodes to nil",
+			},
+		},
+		{
+			name: "a narrowing to something that is not a view",
+			files: map[string]string{
+				"a.protop": "revision 1;\nnamespace A;\nrecord R {\n  int64 x = 1;\n}\ntable T {\n  key int64 id = 1;\n  R r = 2;\n}\nview V of T {\n  R r;\n}\n",
+			},
+			wantCode:    diag.NarrowingNotAView,
+			wantMessage: "`R` is a record, and a view member narrows to another view; a member that keeps the type its source gives it is written as its name alone",
+		},
+		{
+			name: "a narrowing to a view of something else",
+			files: map[string]string{
+				"a.protop": "revision 1;\nnamespace A;\nrecord R {\n  int64 x = 1;\n}\nrecord Q {\n  int64 y = 1;\n}\ntable T {\n  key int64 id = 1;\n  R r = 2;\n}\nview VQ of Q {\n  y;\n}\nview V of T {\n  VQ r;\n}\n",
+			},
+			wantCode:    diag.NarrowingSourceMismatch,
+			wantMessage: "`VQ` is a view of `Q` and `r` holds `R`; a narrowing pins the member to a subset of what it already holds, and a view of anything else carries a different declaration's tags",
+		},
+		{
+			name: "an alias with nothing to pass through to",
+			files: map[string]string{
+				"a.protop": "revision 1;\nnamespace A;\ntable T {\n  key int64 id = 1;\n  alias other = gone;\n}\n",
+			},
+			wantCode:    diag.AliasTargetNotFound,
+			wantMessage: "`gone` names no other member of `T`; an alias is a get and set passthrough and needs something to pass through to",
+		},
+		{
+			name: "a composite key over a member that is not there",
+			files: map[string]string{
+				"a.protop": "revision 1;\nnamespace A;\ntable T {\n  key key = 1 (gone);\n  int64 x = 2;\n}\n",
+			},
+			wantCode:    diag.CompositeKeyPartNotFound,
+			wantMessage: "`gone` names no member of `T`; a composite key is a name over members of the declaration it belongs to",
+		},
+		{
+			name: "a relation pointing at nothing in scope",
+			files: map[string]string{
+				"a.protop": "revision 1;\nnamespace A;\ntable T {\n  key int64 id = 1;\n  int64 other_id = 2 [references(Gone)];\n}\n",
+			},
+			wantCode:    diag.RelationTargetNotFound,
+			wantMessage: "unknown relation target `Gone`; a file sees its own declarations and those of the files it imports, and nothing else",
+		},
+		{
+			name: "a relation pointing at something with no identity",
+			files: map[string]string{
+				"a.protop": "revision 1;\nnamespace A;\nstruct S {\n  int64 x = 1;\n}\ntable T {\n  key int64 id = 1;\n  int64 s_id = 2 [references(S)];\n}\n",
+			},
+			wantCode:    diag.RelationTargetNotATable,
+			wantMessage: "`S` is a struct and cannot be the target of a relation; a relation resolves against a key, and only a `table` has one",
+		},
+		{
+			name: "a relation written in some other shape",
+			files: map[string]string{
+				"a.protop": "revision 1;\nnamespace A;\ntable T {\n  key int64 id = 1;\n  int64 x = 2 [references];\n}\n",
+			},
+			wantCode: diag.MalformedRelation,
+			wantMessageHas: []string{
+				"`references` names the table a member points at",
+				"as in `[references(SportGame)]`",
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			set, _, bag := checkSet(t, tt.files)
+			assertCodes(t, set, bag, tt.wantCode)
+			msg := bag.All()[0].Message
+			if tt.wantMessage != "" && len(tt.wantMessageHas) > 0 {
+				t.Errorf("row pins the whole message AND parts of it; pick one")
+			}
+			if tt.wantMessage != "" && msg != tt.wantMessage {
+				t.Errorf("%s reads\n\t%q\nwant\n\t%q", tt.wantCode, msg, tt.wantMessage)
+			}
+			for _, want := range tt.wantMessageHas {
+				if !strings.Contains(msg, want) {
+					t.Errorf("%s reads\n\t%q\nwant it to contain\n\t%q", tt.wantCode, msg, want)
+				}
+			}
+		})
+	}
+
+	// The table holds every code on the list and the list holds every code in
+	// the table. Without this the table is the span column before it had to
+	// answer for itself: a code drops out of it in a refactor and nothing
+	// anywhere says a message stopped being held.
+	inTable := map[diag.Code]bool{}
+	for _, tt := range tests {
+		if inTable[tt.wantCode] {
+			t.Errorf("%s has two rows; one code, one row, or the list below stops meaning anything", tt.wantCode)
+		}
+		inTable[tt.wantCode] = true
+	}
+	for _, c := range loadBearingMessages {
+		if !inTable[c] {
+			t.Errorf("%s carries a load-bearing message and has no row", c)
+		}
+	}
+	for c := range inTable {
+		if !slices.Contains(loadBearingMessages, c) {
+			t.Errorf("%s has a row and is not on the list; say why it is load-bearing or take the row out", c)
+		}
+	}
+}
+
+// loadBearingMessages is the codes raised in this package whose message text is
+// worth more than the code number -- #40's census, its checker half.
+//
+// PROTOP0107 is on it for the wording raised HERE, which is not the loader's.
+// The loader says which include roots it searched; this one says the file was
+// never given to the compiler at all, because the checker is handed a set and
+// has no roots to name. The site is dead from the driver's point of view --
+// load raises 0107 first and Check returns early on HasErrors -- and it is
+// tested rather than deleted, so its sentence is held like any other.
+//
+// PROTOP0303 is on it for the same reason: the parser's wording is about two
+// members of a declaration, and this one is about two view members selecting
+// one source member, which is the only way a view can collide.
+var loadBearingMessages = []diag.Code{
+	diag.ImportNotFound,
+	diag.DuplicateDeclaration,
+	diag.ViewSourceNotFound,
+	diag.ViewSourceNotSelectable,
+	diag.DuplicateTag,
+	diag.UnknownType,
+	diag.NoSuchMember,
+	diag.NarrowingNotAView,
+	diag.NarrowingSourceMismatch,
+	diag.AliasTargetNotFound,
+	diag.CompositeKeyPartNotFound,
+	diag.RelationTargetNotFound,
+	diag.RelationTargetNotATable,
+	diag.MalformedRelation,
+}
+
 // Every shape that can carry an annotation carries it into the model. protopc
 // does not know what a backend's annotation means and is not entitled to an
 // opinion, so dropping one is not the cautious choice: it is the generated code
