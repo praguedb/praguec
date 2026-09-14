@@ -3468,3 +3468,230 @@ struct S
   int64 x = 1
 `)
 }
+
+// A missing trailing `;` is one mistake and costs one diagnostic, in every body
+// protop has.
+//
+// It used to cost two at the same column under the same code. The statement
+// parser reports the token it stopped on and deliberately declines to consume it
+// -- see recovery -- so the body loop re-entered on that same token and reported
+// it a second time as a member that does not start. The second one is a fact
+// about the parser's control flow, and there is nothing a reader of the source
+// can do with it.
+//
+// One row per place inside a body that reads a trailing `;` of its own: a field,
+// the three member forms that are not fields, an enum member and a view member.
+// Six call sites, one diagnostic each.
+//
+// The token standing where the `;` should be is an integer in every row, and
+// that is load-bearing rather than decorative. When it is an ident the body loop
+// reads it as the start of the next member and never reports it at all, so there
+// is no second diagnostic to be had -- which is why the fixtures that hold the
+// recovery convention, below, are a different set and not these.
+//
+// The count is the whole of what this holds, so it asserts the code sequence and
+// says nothing about the message or the span. Those belong to #40 and are pinned
+// there; saying them twice would mean this test failing for a reason it was not
+// written to have an opinion about.
+func TestAMissingSemicolonIsReportedOnce(t *testing.T) {
+	for _, tt := range []struct{ name, src string }{
+		{"a field", `revision 1;
+namespace A;
+struct S {
+  int64 x = 1 5;
+  int64 y = 2;
+}
+`},
+		{"an alias", `revision 1;
+namespace A;
+struct S {
+  int64 b = 1;
+  alias a = b 5;
+  int64 y = 2;
+}
+`},
+		{"a reservation", `revision 1;
+namespace A;
+struct S {
+  reserved 1 5;
+  int64 y = 2;
+}
+`},
+		{"a composite key", `revision 1;
+namespace A;
+table T {
+  key k = 1 (x, y) 5;
+  int64 y = 2;
+}
+`},
+		{"an enum member", `revision 1;
+namespace A;
+enum E {
+  A = 1 5;
+  B = 2;
+}
+`},
+		{"a view member", `revision 1;
+namespace A;
+view V of T {
+  a 5;
+  b;
+}
+`},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			f, _, bag := parse(t, tt.src)
+			var got []diag.Code
+			for _, d := range bag.All() {
+				got = append(got, d.Code)
+			}
+			if !slices.Equal(got, []diag.Code{diag.UnexpectedToken}) {
+				t.Fatalf("codes = %v, want one:\n%s", got, diag.RenderAll(f, bag))
+			}
+			assertGate(t, f, bag, got)
+		})
+	}
+}
+
+// And it costs no member. A missing `;` is reported in place and recovery does
+// not run, because the token that is not a semicolon is almost always the start
+// of the next member and skipping to the next `;` would report one mistake and
+// throw away a member that was written correctly, without a word said about it.
+//
+// That is the convention #41 forbids fixing the duplicate with, and it is what
+// stops the count above from being bought by recovering instead of by
+// suppressing -- which reads identically in a diagnostic count and is a
+// regression in the tree. Only the field row was held before: adding
+// `p.recoverStmt()` to the enum member's `expect(KindSemi)` leaves the whole
+// repo green.
+//
+// So the `;` is simply absent here and the next member's own first token is what
+// stands in its place, which is the shape recovery would eat. The view row is a
+// rename for that reason and not by taste: two idents in a view are one narrowed
+// member, so dropping the `;` from a plain `a;` before a `b;` spells the legal
+// member `a b;` and there is no mistake left to recover from.
+func TestAMissingSemicolonDoesNotSwallowTheMemberAfterIt(t *testing.T) {
+	for _, tt := range []struct{ name, src, want string }{
+		{"a field", `revision 1;
+namespace A;
+struct S {
+  int64 x = 1
+  int64 y = 2;
+}
+`, `revision 1
+namespace A
+struct S
+  int64 x = 1
+  int64 y = 2
+`},
+		{"an alias", `revision 1;
+namespace A;
+struct S {
+  int64 b = 1;
+  alias a = b
+  int64 y = 2;
+}
+`, `revision 1
+namespace A
+struct S
+  int64 b = 1
+  alias a = b
+  int64 y = 2
+`},
+		{"a reservation", `revision 1;
+namespace A;
+struct S {
+  reserved 1
+  int64 y = 2;
+}
+`, `revision 1
+namespace A
+struct S
+  reserved 1
+  int64 y = 2
+`},
+		{"a composite key", `revision 1;
+namespace A;
+table T {
+  key k = 1 (x, y)
+  int64 y = 2;
+}
+`, `revision 1
+namespace A
+table T
+  key k = 1 (x, y)
+  int64 y = 2
+`},
+		{"an enum member", `revision 1;
+namespace A;
+enum E {
+  A = 1
+  B = 2;
+}
+`, `revision 1
+namespace A
+enum E
+  A = 1
+  B = 2
+`},
+		{"a view member", `revision 1;
+namespace A;
+view V of T {
+  a as c
+  b;
+}
+`, `revision 1
+namespace A
+view V of T
+  a as c
+  b
+`},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			_, file, _ := parse(t, tt.src)
+			assertDump(t, file, tt.want)
+		})
+	}
+}
+
+// The suppression is spent on the one token it was raised for and does not
+// outlive it.
+//
+// This is the failure mode of suppressing at all, and it would be worse than the
+// duplicate it buys: a body loop that stopped reporting members which do not
+// start would swallow real mistakes in silence for the rest of the file. The
+// body here has both -- a missing `;` whose duplicate goes, and a later `5;`
+// that never had one -- so the second diagnostic is the one the first is not
+// allowed to take with it.
+//
+// Measured: with the suppression left standing instead of cleared when the
+// parser moves on, this file reports once, the `5;` vanishes, and every other
+// test in the repo stays green.
+func TestSuppressingTheDuplicateDoesNotSilenceALaterMember(t *testing.T) {
+	f, file, bag := parse(t, `revision 1;
+namespace A;
+struct S {
+  int64 x = 1 5;
+  int64 y = 2;
+  5;
+}
+`)
+	var got []diag.Code
+	for _, d := range bag.All() {
+		got = append(got, d.Code)
+	}
+	if !slices.Equal(got, []diag.Code{diag.UnexpectedToken, diag.UnexpectedToken}) {
+		t.Fatalf("codes = %v, want the missing `;` and the member that does not start:\n%s", got, diag.RenderAll(f, bag))
+	}
+	// At two different tokens, which is the point: the duplicate that was
+	// dropped was at the first of them.
+	if a, b := bag.All()[0].Span.Start, bag.All()[1].Span.Start; a == b {
+		t.Errorf("both diagnostics at offset %d, want two different tokens", a)
+	}
+	assertDump(t, file, `revision 1
+namespace A
+struct S
+  int64 x = 1
+  int64 y = 2
+`)
+}

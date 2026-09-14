@@ -120,6 +120,22 @@ type parser struct {
 	toks []Token
 	bag  *diag.Bag
 	i    int // index into toks of the next unread token
+
+	// reported says that a diagnostic has already been raised about the token
+	// at i and that nothing has been consumed since. It exists for one shape:
+	// a missing trailing `;` is reported where it is and the offending token
+	// is deliberately left unconsumed (see recovery, below), so the body loop
+	// re-enters on a token that has already been named and its member-start
+	// report says the same thing a second time. That second report is a fact
+	// about this parser's control flow, not about the source, so raiseMemberStart
+	// drops it.
+	//
+	// next is what clears the flag, which is what makes it exact: set means
+	// "still sitting on the token that was reported on". A report about a
+	// different token, or about the same token once anything has moved past it,
+	// is never suppressed -- including at EOF, where next advances no index but
+	// still clears the flag.
+	reported bool
 }
 
 func (p *parser) parseFile() *File {
@@ -378,7 +394,7 @@ func (p *parser) parseViewMember() *ViewMember {
 
 	tok := p.peek()
 	if tok.Kind != KindIdent {
-		p.bag.Raise(diag.UnexpectedToken, tok.Span, "expected a view member's name, found %s", tok.Kind)
+		p.raiseMemberStart(tok, "a view member's name")
 		// The offending token is left for recovery rather than consumed
 		// first. recoverStmt consumes everything that is not a boundary, so
 		// skipping the token here would only matter when it IS one -- and a
@@ -528,7 +544,7 @@ func (p *parser) parseMember(keyword string) Member {
 
 	tok := p.peek()
 	if tok.Kind != KindIdent {
-		p.bag.Raise(diag.UnexpectedToken, tok.Span, "expected a field type, found %s", tok.Kind)
+		p.raiseMemberStart(tok, "a field type")
 		p.next()
 		p.recoverStmt()
 		return nil
@@ -717,7 +733,12 @@ func (p *parser) parseReserved() *Reserved {
 // body loop that calls it moving.
 func (p *parser) parseField() *Field {
 	if tok := p.peek(); tok.Kind != KindIdent {
-		p.bag.Raise(diag.UnexpectedToken, tok.Span, "expected a field type, found %s", tok.Kind)
+		// Through raiseMemberStart like the other three, and measured never to
+		// suppress anything there: this is reached only once parseMember has
+		// consumed a leading `key`, and consuming is what clears the flag. That
+		// is a fact about today's grammar and not a rule, so the question is
+		// asked here too rather than the answer being hard-coded.
+		p.raiseMemberStart(tok, "a field type")
 		p.next()
 		p.recoverStmt()
 		return nil
@@ -1143,7 +1164,7 @@ func (p *parser) parseEnum() *Enum {
 func (p *parser) parseEnumMember() *EnumMember {
 	tok := p.peek()
 	if tok.Kind != KindIdent {
-		p.bag.Raise(diag.UnexpectedToken, tok.Span, "expected an enum member name, found %s", tok.Kind)
+		p.raiseMemberStart(tok, "an enum member name")
 		p.next()
 		p.recoverStmt()
 		return nil
@@ -1191,6 +1212,7 @@ func (p *parser) next() Token {
 	if p.i < len(p.toks)-1 {
 		p.i++
 	}
+	p.reported = false
 	return t
 }
 
@@ -1207,7 +1229,32 @@ func (p *parser) expect(k Kind) (Token, bool) {
 	}
 	tok := p.peek()
 	p.bag.Raise(diag.UnexpectedToken, tok.Span, "expected %s, found %s", k, tok.Kind)
+	p.reported = true
 	return tok, false
+}
+
+// raiseMemberStart reports that a body member does not begin where one should,
+// naming what that body was looking for -- unless the token it would name has
+// already been reported on and nothing has moved past it since.
+//
+// Every failed expect sets that flag, but only one kind of failure can still be
+// holding it by the time a body loop reports: a missing trailing `;`, which is
+// reported in place and leaves its token where it is. Every other failure
+// recovers, and recovery either consumes the token or stops on one that ends the
+// body -- either way the loop never reaches here still holding the flag.
+//
+// The four member-start reports come through here and nothing else does. What
+// the check is NOT is "a diagnostic already exists at this position". A position
+// is an offset into a file the diagnostic does not name -- source.Span carries
+// no file identity and a driver fills one bag from many files -- and two reports
+// at one offset are not always one mistake anyway: a file that stops mid-member
+// has the member and the enclosing body each reporting what ran out, at the same
+// offset, under the same code, and both are worth saying.
+func (p *parser) raiseMemberStart(tok Token, want string) {
+	if p.reported {
+		return
+	}
+	p.bag.Raise(diag.UnexpectedToken, tok.Span, "expected %s, found %s", want, tok.Kind)
 }
 
 func (p *parser) expectIdent() (Ident, bool) {
