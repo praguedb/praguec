@@ -372,6 +372,48 @@ func TestTheManifestMatchesTheShapeItsDocumentationShows(t *testing.T) {
 // ---------------------------------------------------------------------------
 // Exit codes. A diagnostic is not a crash and a crash is not a diagnostic.
 
+// The three numbers, written out. The const block above main's usage text
+// promises them to anyone scripting protopc, and until now nothing held that
+// promise: every assertion in this file -- the want column below included --
+// compares runCLI's answer against those same constants, so the oracle only
+// ever asked the implementation whether it agreed with itself. Setting
+// exitDiags to 0 left all seven packages green while `protopc check` printed
+// PROTOP0300 and exited 0, which is a CI job that passes on every schema
+// protopc rejects.
+//
+// So the numbers are literals here, for the reason diag's wantCodeNumbers
+// gives for the codes: reading the constant would ask it whether it agrees
+// with itself. The rows that follow go on reading the constants, which is what
+// makes them readable -- what was missing is not there, it is here, in
+// something that says what the constants ARE.
+//
+// The message on each says what the number means to the caller, because that
+// is what a caller branches on: 1 is protopc having read the schema and having
+// something to say about it, 2 is protopc never having got that far.
+func TestTheExitCodesAreTheNumbersTheyAreDocumentedAs(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		got  int
+		want int
+		why  string
+	}{
+		{"exitOK", exitOK, 0, "success is 0 or every caller of protopc reads a clean compile as a failure"},
+		{"exitDiags", exitDiags, 1, "1 is what tells a build the SCHEMA is wrong; any other number and a CI job greps protopc's output for trouble, finds errors, and passes anyway"},
+		{"exitUsage", exitUsage, 2, "2 is what tells a build the COMMAND is wrong -- a missing file or a flag protopc does not have -- and is what keeps that apart from a schema protopc read and rejected"},
+	} {
+		if tc.got != tc.want {
+			t.Errorf("%s = %d, want %d: %s", tc.name, tc.got, tc.want, tc.why)
+		}
+	}
+
+	// And they are three different numbers. Two that collided would make the
+	// distinction the const block's comment draws -- a diagnostic is not a
+	// crash -- unreadable by the only thing that reads it.
+	if exitOK == exitDiags || exitOK == exitUsage || exitDiags == exitUsage {
+		t.Errorf("exit codes collide: ok=%d diags=%d usage=%d", exitOK, exitDiags, exitUsage)
+	}
+}
+
 func TestExitCodes(t *testing.T) {
 	good := filepath.Join(examplesDir, "branded.protop")
 	broken := writeTemp(t, "broken.protop", "revision 1;\nnamespace A;\nstruct S {\n  int64 id = 0;\n}\n")
