@@ -136,6 +136,21 @@ func TestLexStringLiteralSpansItsQuotes(t *testing.T) {
 	}
 }
 
+// Every diagnostic the lexer raises, pinned by code, by where it starts and by
+// what it underlines.
+//
+// wantSpan is the third of those and was the missing one: a line and a column
+// say where a caret goes and nothing said how far it runs, so the underline
+// under `99999999999999999999` could shrink to the first `9` with the suite
+// green. Three of these five codes -- 0002, 0003 and 0004 -- had no width
+// assertion anywhere in the repo.
+//
+// It is a plain string and not the parser table's *string because a lexical
+// span cannot be empty: the lexer raises about bytes it has already consumed,
+// so there is always at least the one it choked on. An unterminated block
+// comment is deliberately the narrowest of them -- the two opening bytes rather
+// than the rest of the file, which is what keeps the caret off every line below
+// it.
 func TestLexDiagnostics(t *testing.T) {
 	tests := []struct {
 		name     string
@@ -143,12 +158,13 @@ func TestLexDiagnostics(t *testing.T) {
 		wantCode diag.Code
 		wantLine int
 		wantCol  int
+		wantSpan string
 	}{
-		{"unterminated block comment", "revision 1;\n/* and then nothing\n", diag.UnterminatedBlockComment, 2, 1},
-		{"unterminated string at a newline", "import \"prague.protop\n;", diag.UnterminatedString, 1, 8},
-		{"unterminated string at end of file", "import \"prague", diag.UnterminatedString, 1, 8},
-		{"unexpected character", "revision @ 1;", diag.UnexpectedCharacter, 1, 10},
-		{"integer out of range", "tag = 99999999999999999999;", diag.IntegerOutOfRange, 1, 7},
+		{"unterminated block comment", "revision 1;\n/* and then nothing\n", diag.UnterminatedBlockComment, 2, 1, "/*"},
+		{"unterminated string at a newline", "import \"prague.protop\n;", diag.UnterminatedString, 1, 8, "\"prague.protop"},
+		{"unterminated string at end of file", "import \"prague", diag.UnterminatedString, 1, 8, "\"prague"},
+		{"unexpected character", "revision @ 1;", diag.UnexpectedCharacter, 1, 10, "@"},
+		{"integer out of range", "tag = 99999999999999999999;", diag.IntegerOutOfRange, 1, 7, "99999999999999999999"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -166,6 +182,9 @@ func TestLexDiagnostics(t *testing.T) {
 			assertGate(t, f, &bag, []diag.Code{tt.wantCode})
 			if pos := f.Position(d.Span.Start); pos.Line != tt.wantLine || pos.Column != tt.wantCol {
 				t.Errorf("reported at %d:%d, want %d:%d", pos.Line, pos.Column, tt.wantLine, tt.wantCol)
+			}
+			if got := f.Slice(d.Span); got != tt.wantSpan {
+				t.Errorf("underlines %q, want %q", got, tt.wantSpan)
 			}
 		})
 	}
