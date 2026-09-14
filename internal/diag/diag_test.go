@@ -400,6 +400,50 @@ func TestBagCollects(t *testing.T) {
 	}
 }
 
+// HasErrors looks at every diagnostic, not at one of them.
+//
+// TestBagCollects builds its bag warning-then-error and so pins one half: a
+// HasErrors rewritten to read only the FIRST diagnostic fails there. The other
+// half was unheld -- one rewritten to read only the LAST passed the whole
+// suite, because no bag anywhere in it held an error followed by a warning.
+//
+// That is harmless while every code is an error and stops being harmless on
+// exactly the day this severity axis was built for. Recovery means a bag
+// collects several diagnostics per file and the driver fills one bag across
+// all of them, so the first advisory code protop ships will land after an
+// error constantly -- and a gate reading the last diagnostic would report a
+// clean compile for a schema it had just printed an error about.
+//
+// The bag is built through the unexported add, which is why add is unexported
+// and in-package rather than gone: no code in the language is a warning, so
+// there is no way to raise one through the exported path and no way to write
+// this test without it.
+func TestHasErrorsFindsAnErrorAnywhereInTheBag(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		sevs []Severity
+		want bool
+	}{
+		{"nothing at all", nil, false},
+		{"a warning alone", []Severity{Warning}, false},
+		{"an error alone", []Severity{Error}, true},
+		{"a warning then an error", []Severity{Warning, Error}, true},
+		{"an error then a warning", []Severity{Error, Warning}, true},
+		{"an error between warnings", []Severity{Warning, Error, Warning}, true},
+		{"warnings only", []Severity{Warning, Warning, Warning}, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var b Bag
+			for i, sev := range tc.sevs {
+				b.add(sev, NotYetImplemented, source.SpanAt(source.Pos(i)), "%d", i)
+			}
+			if got := b.HasErrors(); got != tc.want {
+				t.Errorf("HasErrors = %v over %v, want %v; the gate reads the whole bag", got, tc.sevs, tc.want)
+			}
+		})
+	}
+}
+
 // A span is a pair of byte offsets and says nothing about which file it indexes
 // into, so a stage that sees several files at once -- the checking stage is the
 // first -- reports through a sink that stamps the file on. Render then prefers
