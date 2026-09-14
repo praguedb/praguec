@@ -572,6 +572,25 @@ struct S
 	}
 }
 
+// underlines boxes the text a row expects its first diagnostic to underline, so
+// that a row which says nothing about the span and a row which says the span is
+// empty are two different rows.
+//
+// They used to be one. The column was a plain string read as
+// `if tt.wantSpan != ""`, which spells "not filled in" and "underlines nothing"
+// the same way -- and an empty underline is not a degenerate case here, it is
+// what EVERY end-of-file diagnostic has. `expected `;`, found end of file`
+// points at the zero-width position one past the last byte, so f.Slice returns
+// "" and Render prints no snippet line at all. Under the old column that row
+// could not be written: asserting "" asserted nothing, and the whole class of
+// diagnostic was silently unassertable while looking like a column somebody had
+// merely not got to yet.
+//
+// A pointer rather than a `wantNoSpan bool` because the two facts are one fact
+// -- there is an expectation, or there is not -- and a bool beside a string lets
+// a row set both and mean neither.
+func underlines(s string) *string { return &s }
+
 // Every diagnostic the parser raises, pinned by code sequence and by where it
 // points. Codes are protopc's interface -- an editor filters on them and a
 // changelog cites them -- so the sequence is asserted exactly.
@@ -592,7 +611,7 @@ func TestParseDiagnostics(t *testing.T) {
 		wantCodes []diag.Code
 		wantLine  int
 		wantCol   int
-		wantSpan  string
+		wantSpan  *string
 	}{
 		{
 			name:      "missing revision",
@@ -669,7 +688,7 @@ struct S {
 			src:       "namespace A;\nrevision 1;\n",
 			wantCodes: []diag.Code{diag.RevisionNotFirst},
 			wantLine:  2, wantCol: 1,
-			wantSpan: "revision 1;",
+			wantSpan: underlines("revision 1;"),
 		},
 		{
 			// The arm that was dead to the suite. `revision` stamps the dialect
@@ -690,7 +709,7 @@ namespace A;
 `,
 			wantCodes: []diag.Code{diag.RevisionNotFirst},
 			wantLine:  4, wantCol: 1,
-			wantSpan: "revision 1;",
+			wantSpan: underlines("revision 1;"),
 		},
 		{
 			name:      "duplicate revision",
@@ -723,7 +742,7 @@ namespace B;
 `,
 			wantCodes: []diag.Code{diag.DuplicateNamespace},
 			wantLine:  6, wantCol: 1,
-			wantSpan: "namespace B;",
+			wantSpan: underlines("namespace B;"),
 		},
 		{
 			// And the same for `revision`, where narrowing the check does not
@@ -741,7 +760,7 @@ revision 1;
 `,
 			wantCodes: []diag.Code{diag.DuplicateRevision},
 			wantLine:  6, wantCol: 1,
-			wantSpan: "revision 1;",
+			wantSpan: underlines("revision 1;"),
 		},
 		{
 			name:      "unknown declaration",
@@ -1120,7 +1139,7 @@ view V of T {
 `,
 			wantCodes: []diag.Code{diag.TagInViewMember},
 			wantLine:  4, wantCol: 17,
-			wantSpan: "=",
+			wantSpan: underlines("="),
 		},
 		{
 			// A view is a subset of one source. Without the `of` it is a subset
@@ -1134,7 +1153,7 @@ view V {
 `,
 			wantCodes: []diag.Code{diag.ViewSourceMissing},
 			wantLine:  3, wantCol: 8,
-			wantSpan: "{",
+			wantSpan: underlines("{"),
 		},
 		{
 			// The word is `of` and not merely some word: a view head is a name,
@@ -1150,7 +1169,7 @@ view V from T {
 `,
 			wantCodes: []diag.Code{diag.ViewSourceMissing},
 			wantLine:  3, wantCol: 8,
-			wantSpan: "from",
+			wantSpan: underlines("from"),
 		},
 		{
 			// The same mistake said the other way, and so the same code: the
@@ -1164,7 +1183,7 @@ view V of {
 `,
 			wantCodes: []diag.Code{diag.ViewSourceMissing},
 			wantLine:  3, wantCol: 11,
-			wantSpan: "{",
+			wantSpan: underlines("{"),
 		},
 		{
 			// The leading name of a view member narrows it to another view. A
@@ -1180,7 +1199,7 @@ view V of T {
 `,
 			wantCodes: []diag.Code{diag.ScalarInViewMember},
 			wantLine:  4, wantCol: 3,
-			wantSpan: "int64",
+			wantSpan: underlines("int64"),
 		},
 		{
 			// A field written into a view body is two mistakes, and both are
@@ -1195,7 +1214,7 @@ view V of T {
 `,
 			wantCodes: []diag.Code{diag.ScalarInViewMember, diag.TagInViewMember},
 			wantLine:  4, wantCol: 3,
-			wantSpan: "int64",
+			wantSpan: underlines("int64"),
 		},
 		{
 			// Section 3 gives an annotation one position, after what it
@@ -1209,7 +1228,7 @@ view V of T {
 `,
 			wantCodes: []diag.Code{diag.AnnotationNotAllowed},
 			wantLine:  4, wantCol: 3,
-			wantSpan: "[",
+			wantSpan: underlines("["),
 		},
 		{
 			// Imports are grouped under the header. What a file depends on is a
@@ -1226,7 +1245,7 @@ import "prague.protop";
 `,
 			wantCodes: []diag.Code{diag.ImportNotInHeader},
 			wantLine:  6, wantCol: 1,
-			wantSpan: `import "prague.protop";`,
+			wantSpan: underlines(`import "prague.protop";`),
 		},
 		{
 			// An import names a file with a string literal. A bare word is not
@@ -1238,7 +1257,7 @@ import prague;
 `,
 			wantCodes: []diag.Code{diag.UnexpectedToken},
 			wantLine:  3, wantCol: 8,
-			wantSpan: "prague",
+			wantSpan: underlines("prague"),
 		},
 		{
 			// `revision` is first in the file, and an import is something it
@@ -1248,7 +1267,7 @@ import prague;
 			src:       "import \"prague.protop\";\nrevision 1;\nnamespace A;\n",
 			wantCodes: []diag.Code{diag.RevisionNotFirst},
 			wantLine:  2, wantCol: 1,
-			wantSpan: "revision 1;",
+			wantSpan: underlines("revision 1;"),
 		},
 		{
 			// Overlapping reservations are one reservation as far as a tag is
@@ -1263,6 +1282,27 @@ table T {
 `,
 			wantCodes: []diag.Code{diag.TagIsReserved},
 			wantLine:  5, wantCol: 13,
+		},
+		{
+			// The end of the file is a legitimately empty underline, and the
+			// reason the column is a pointer. The `}` that is missing is at no
+			// token, so the span is the zero-width position one past the last
+			// byte: the headline names the line and the column and Render emits
+			// no snippet, because there is no source left to point at.
+			//
+			// Written as a row rather than left to the renderer's own tests
+			// because the parser is what chooses this span. An EOF diagnostic
+			// raised at the last token instead -- at the `;`, say -- would read
+			// as a complaint about a line that is perfectly fine.
+			name: "a declaration the file ends inside",
+			src: `revision 1;
+namespace A;
+struct S {
+  int64 a = 1;
+`,
+			wantCodes: []diag.Code{diag.UnexpectedToken},
+			wantLine:  5, wantCol: 1,
+			wantSpan: underlines(""),
 		},
 	}
 
@@ -1281,9 +1321,9 @@ table T {
 			if pos := f.Position(bag.All()[0].Span.Start); pos.Line != tt.wantLine || pos.Column != tt.wantCol {
 				t.Errorf("first diagnostic at %d:%d, want %d:%d", pos.Line, pos.Column, tt.wantLine, tt.wantCol)
 			}
-			if tt.wantSpan != "" {
-				if got := f.Slice(bag.All()[0].Span); got != tt.wantSpan {
-					t.Errorf("first diagnostic underlines %q, want %q", got, tt.wantSpan)
+			if tt.wantSpan != nil {
+				if got := f.Slice(bag.All()[0].Span); got != *tt.wantSpan {
+					t.Errorf("first diagnostic underlines %q, want %q", got, *tt.wantSpan)
 				}
 			}
 		})
