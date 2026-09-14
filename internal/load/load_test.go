@@ -262,6 +262,60 @@ func TestTwoRootsProvidingOneImportIsDiagnosed(t *testing.T) {
 	}
 }
 
+// The severity of a loader diagnostic, end to end. A code sequence says what
+// was noticed; this says what it costs. bag.HasErrors is what cmd/protopc turns
+// into an exit code, and the loader is the first stage to fill the bag, so a
+// loader diagnostic that does not fail the compile is an import protopc reports
+// as missing and then parses, checks and generates C# around.
+//
+// The wanted severity is written here as a literal, and that is the point --
+// assertCodes derives what it expects from diag's own table and so agrees with
+// a demotion made in that table. Two tests that cannot both be satisfied by the
+// same edit: diag's table says what the code means, and this says the meaning
+// survives the trip from Raise to the gate.
+func TestALoaderDiagnosticFailsTheCompile(t *testing.T) {
+	for _, tt := range []struct {
+		name  string
+		roots []string
+		files []file
+		want  diag.Code
+	}{
+		{
+			name:  "an import nothing provides",
+			roots: []string{"."},
+			files: []file{{"a.protop", src("A", "gone.protop")}},
+			want:  diag.ImportNotFound,
+		},
+		{
+			name:  "an import two roots provide",
+			roots: []string{"one", "two"},
+			files: []file{
+				{"a.protop", src("A", "b.protop")},
+				{"one/b.protop", src("One")},
+				{"two/b.protop", src("Two")},
+			},
+			want: diag.ImportAmbiguous,
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			dir := plant(t, tt.files...)
+			_, bag, err := loadIn(t, dir, tt.roots, []string{"a.protop"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if bag.Len() != 1 || bag.All()[0].Code != tt.want {
+				t.Fatalf("want one %s, got %v", tt.want, codes(bag))
+			}
+			if got := bag.All()[0].Severity; got != diag.Error {
+				t.Errorf("%s raised as a %s, want an Error", tt.want, got)
+			}
+			if !bag.HasErrors() {
+				t.Errorf("%s does not fail the compile; protopc would carry on past it", tt.want)
+			}
+		})
+	}
+}
+
 // An ambiguity is a fact about the include roots, not about the line that
 // tripped over it, so two files importing one ambiguous name report it once.
 //

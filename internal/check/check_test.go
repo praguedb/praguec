@@ -593,6 +593,80 @@ func TestAViewMemberMustNameAMemberOfItsSource(t *testing.T) {
 	}
 }
 
+// The severity of a checker diagnostic, end to end. A code sequence says what
+// was noticed; this says what it costs, which is a different claim. bag.HasErrors
+// is what cmd/protopc turns into an exit code and what every stage after the
+// checker inherits, so a checker diagnostic that does not fail the compile is a
+// schema protopc reports on and then generates C# from anyway.
+//
+// The wanted severity is written here as a literal, and that is the point --
+// assertGate cannot make this claim, because assertGate derives what it expects
+// from diag's own table and so agrees with a demotion made in that table. These
+// three codes are pinned twice, by two tests that cannot both be satisfied by
+// the same edit: diag's table says what the code means, and this says the
+// meaning survives the trip from Raise to the gate.
+//
+// PROTOP0312 leads because codes.go calls it the diagnostic the whole design
+// exists to produce. It was demotable in two edits -- the table and its oracle
+// -- with all seven packages staying green, which is the hole this closes.
+func TestACheckerDiagnosticFailsTheCompile(t *testing.T) {
+	for _, tt := range []struct {
+		name string
+		src  string
+		want diag.Code
+	}{
+		{
+			name: "a view member the source does not declare",
+			src: `revision 1;
+namespace A;
+table T {
+  key int64 id = 1;
+}
+view V of T {
+  missing;
+}
+`,
+			want: diag.NoSuchMember,
+		},
+		{
+			name: "a field of a type nothing declares",
+			src: `revision 1;
+namespace A;
+struct S {
+  Nope n = 1;
+}
+`,
+			want: diag.UnknownType,
+		},
+		{
+			name: "one name declared twice",
+			src: `revision 1;
+namespace A;
+struct S {
+  int64 x = 1;
+}
+record S {
+  int64 y = 1;
+}
+`,
+			want: diag.DuplicateDeclaration,
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			set, _, bag := checkSet(t, map[string]string{"a.protop": tt.src})
+			if bag.Len() != 1 || bag.All()[0].Code != tt.want {
+				t.Fatalf("want one %s:\n%s", tt.want, renderAll(set, bag))
+			}
+			if got := bag.All()[0].Severity; got != diag.Error {
+				t.Errorf("%s raised as a %s, want an Error", tt.want, got)
+			}
+			if !bag.HasErrors() {
+				t.Errorf("%s does not fail the compile; protopc would accept this schema", tt.want)
+			}
+		})
+	}
+}
+
 // Tag, type and presence come from the source; the view line carries the name
 // and an optional rename, and nothing else. `?` included: presence is not
 // something a view gets to change its mind about.
