@@ -73,6 +73,39 @@ func CollectionArity(name string) (int, bool) {
 	return arity, ok
 }
 
+// IsBuiltinTypeName reports whether name is one protop's own type system
+// already holds: one of its scalars, or one of its collections.
+//
+// It reads the two closed sets and copies neither, which is the whole of why it
+// lives here rather than in the stage that asks. A caller outside this package
+// that kept its own list would have to be edited a second time the day either
+// set grows -- and the second edit is the one that gets forgotten. Whether the
+// scalar set is the right set is #32's question; this one is only whether the
+// name is already taken.
+func IsBuiltinTypeName(name string) bool {
+	_, isCollection := collectionTypes[name]
+	return scalarTypes[name] || isCollection
+}
+
+// BuiltinTypeNames is every name IsBuiltinTypeName answers yes to, sorted, for
+// a caller that has to walk the set rather than ask about one name of it.
+//
+// Sorted because a map has no order and a test that iterated one would report a
+// different failure on every run. Derived from the same two maps for the same
+// reason as above: a rule held against this walks the language, so a name added
+// to either map is covered with no second edit anywhere.
+func BuiltinTypeNames() []string {
+	names := make([]string, 0, len(scalarTypes)+len(collectionTypes))
+	for name := range scalarTypes {
+		names = append(names, name)
+	}
+	for name := range collectionTypes {
+		names = append(names, name)
+	}
+	slices.Sort(names)
+	return names
+}
+
 // RelationAnnotation is the name of protop's own relation annotation, the
 // `references` of `[references(SportGame)]`. Its contents are read by the stage
 // that can look a name up, which is not this one.

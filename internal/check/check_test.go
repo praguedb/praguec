@@ -467,6 +467,194 @@ func TestDuplicateDeclarationsAreDiagnosed(t *testing.T) {
 	assertCodes(t, set, bag, diag.DuplicateDeclaration)
 }
 
+// A declaration cannot take a name protop's own type system already holds.
+//
+// The language has no keyword token kinds -- that is load-bearing and is not in
+// question here -- so `record list { ... }` parses like any other declaration.
+// Before this rule it was then accepted in silence, and the only complaint came
+// from a downstream `list refs = 2;` as a PROTOP0306 about its arity: a use site
+// telling the user about the wrong line, with the bad declarations above it
+// unremarked. The mistake is the declaration, so the diagnostic is at the
+// declaration.
+//
+// All five declaration keywords, and both closed sets. The collections are what
+// #39 was reported about; a scalar has exactly the same shape, and a rule that
+// covered only the generics would leave `struct string` unnameable and unsaid.
+func TestADeclarationCannotTakeABuiltinTypeName(t *testing.T) {
+	set, _, bag := checkSet(t, map[string]string{
+		"a.protop": `revision 1;
+namespace A;
+record list {
+  int64 id = 1;
+}
+table map {
+  key int64 id = 1;
+}
+struct string {
+  int64 id = 1;
+}
+enum int64 {
+  A = 1;
+}
+view double of T {
+  id;
+}
+table T {
+  key int64 id = 1;
+}
+`,
+	})
+	assertCodes(t, set, bag,
+		diag.BuiltinTypeDeclared, diag.BuiltinTypeDeclared, diag.BuiltinTypeDeclared,
+		diag.BuiltinTypeDeclared, diag.BuiltinTypeDeclared)
+
+	// One per declaration keyword, each at its own keyword. The position is the
+	// whole of the fix: it is what was wrong before, not the wording.
+	for i, want := range []string{"a.protop:3:1", "a.protop:6:1", "a.protop:9:1", "a.protop:12:1", "a.protop:15:1"} {
+		assertSpanStartsAt(t, bag, i, want)
+	}
+
+	// The message names which of the two sets the name was taken from, and that
+	// word is derived from the sets rather than written beside the rule.
+	assertMessageMentions(t, bag, 0, "protop's built-in generic type")
+	assertMessageMentions(t, bag, 2, "protop's built-in scalar type")
+}
+
+// Every name in either closed set, walked rather than listed.
+//
+// This is what makes the rule follow the sets. The checker asks
+// syntax.IsBuiltinTypeName and this asks syntax.BuiltinTypeNames; both are
+// computed from `scalarTypes` and `collectionTypes` themselves, so a seventh
+// scalar added to the parser is covered here with no edit at this end.
+// Measured: adding one and running this file is what catches a rule that did
+// not grow with it.
+//
+// A list written out here instead would be a second hand-maintained copy of a
+// closed set, which is the failure mode this repository has produced before --
+// most recently #43, where a census listed names by hand and certified the
+// exact gap it was built to fail.
+//
+// What is IN the sets is #32's question and nothing here touches it. The claim
+// is that the set is closed and that the rule reads all of it.
+func TestEveryBuiltinTypeNameIsDiagnosedAtItsDeclaration(t *testing.T) {
+	names := syntax.BuiltinTypeNames()
+	if len(names) == 0 {
+		t.Fatal("syntax.BuiltinTypeNames() is empty; the walk below would assert nothing")
+	}
+	for _, name := range names {
+		t.Run(name, func(t *testing.T) {
+			set, _, bag := checkSet(t, map[string]string{
+				"a.protop": fmt.Sprintf("revision 1;\nnamespace A;\nrecord %s {\n  int64 x = 1;\n}\n", name),
+			})
+			assertCodes(t, set, bag, diag.BuiltinTypeDeclared)
+			assertSpanStartsAt(t, bag, 0, "a.protop:3:1")
+			assertMessageMentions(t, bag, 0, "`"+name+"` already names protop's built-in ")
+		})
+	}
+}
+
+// Only the two closed sets. A name that merely resembles one of protop's is an
+// ordinary declaration: a rule that could not tell the difference would have
+// taken the user's whole name space rather than the eight words the language
+// actually owns.
+func TestANameThatMerelyResemblesABuiltinIsFine(t *testing.T) {
+	schema := checkClean(t, map[string]string{
+		"a.protop": `revision 1;
+namespace A;
+record List {
+  int64 x = 1;
+}
+record lists {
+  int64 x = 1;
+}
+record Int64 {
+  int64 x = 1;
+}
+struct my_string {
+  int64 x = 1;
+}
+`,
+	})
+	for _, name := range []string{"List", "lists", "Int64", "my_string"} {
+		if schema.File("a.protop").Decl(name) == nil {
+			t.Errorf("`%s` is not in the model; it names nothing protop has", name)
+		}
+	}
+}
+
+// The offending declaration is still registered, and that is a decision rather
+// than an omission.
+//
+// The name belongs to the language and not to this file, but the DECLARATION is
+// well formed: it has members, tags and a key, and every other rule in the
+// checker still has something true to say about it. Dropping it would turn one
+// mistake into a second wave of them, because a view's source, a relation's
+// target and a narrowing are looked up in the file's scope rather than in the
+// type system -- all three would then also report the declaration missing, on
+// lines the user got right.
+//
+// DuplicateDeclaration drops its declaration for a reason that does not reach
+// here: two declarations cannot both hold one symbol-table slot. Nothing is
+// contending for a slot in this case -- `string` is not in byName at all until
+// this declaration puts it there.
+func TestADeclarationWithABuiltinNameIsStillRegistered(t *testing.T) {
+	set, schema, bag := checkSet(t, map[string]string{
+		"a.protop": `revision 1;
+namespace A;
+record string {
+  int64 id = 1;
+}
+view V of string {
+  id;
+}
+`,
+	})
+	// One diagnostic, about the declaration. Dropping the declaration instead
+	// would add a PROTOP0205 about the view, which is a line the user got right.
+	assertCodes(t, set, bag, diag.BuiltinTypeDeclared)
+
+	d := schema.File("a.protop").Decl("string")
+	if d == nil {
+		t.Fatal("the declaration is not in the model; the rule reports a name, it does not delete a declaration")
+	}
+	if got := schema.File("a.protop").Decl("V").Of; got != d {
+		t.Error("the view did not resolve against the declaration it names")
+	}
+}
+
+// Two declarations of one built-in name raise the built-in rule twice and the
+// duplicate rule once, in that order.
+//
+// Both, because they are two facts with two fixes -- the same reason
+// DuplicateMember is held apart from DuplicateTag. Renaming one of the pair
+// answers PROTOP0204 and leaves the other one unnameable; renaming both is what
+// PROTOP0207 asks for, and a user shown only the duplicate would think the
+// first rename had finished the job.
+//
+// Twice, because each declaration independently takes a name the schema was
+// never entitled to. The order follows from where the rule sits: the built-in
+// check runs before the name is looked up in the symbol table, so the second
+// declaration is told what is wrong with it before it is told what it collides
+// with.
+func TestTwoDeclarationsOfOneBuiltinNameRaiseBoth(t *testing.T) {
+	set, _, bag := checkSet(t, map[string]string{
+		"a.protop": `revision 1;
+namespace A;
+record list {
+  int64 a = 1;
+}
+record list {
+  int64 b = 1;
+}
+`,
+	})
+	assertCodes(t, set, bag,
+		diag.BuiltinTypeDeclared, diag.BuiltinTypeDeclared, diag.DuplicateDeclaration)
+	assertSpanStartsAt(t, bag, 0, "a.protop:3:1")
+	assertSpanStartsAt(t, bag, 1, "a.protop:6:1")
+	assertSpanStartsAt(t, bag, 2, "a.protop:6:1")
+}
+
 // A name declared in an imported file is not a duplicate of one declared here.
 // Shadowing is what makes a shared repository usable: a service that happens to
 // name a type the way the shared schema does is not thereby broken.
@@ -700,6 +888,16 @@ record S {
 }
 `,
 			want: diag.DuplicateDeclaration,
+		},
+		{
+			name: "a declaration under a built-in type name",
+			src: `revision 1;
+namespace A;
+record list {
+  int64 x = 1;
+}
+`,
+			want: diag.BuiltinTypeDeclared,
 		},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
@@ -1374,6 +1572,14 @@ func TestTheCheckersMessagesSayWhatTheCodeCannot(t *testing.T) {
 			},
 		},
 		{
+			name: "a declaration under a built-in type name",
+			files: map[string]string{
+				"a.protop": "revision 1;\nnamespace A;\nrecord list {\n  int64 x = 1;\n}\n",
+			},
+			wantCode:    diag.BuiltinTypeDeclared,
+			wantMessage: "`list` already names protop's built-in generic type; a type written `list` is read as the built-in, so nothing can ever spell its way to this declaration",
+		},
+		{
 			name: "a view of something that is not there",
 			files: map[string]string{
 				"a.protop": "revision 1;\nnamespace A;\nview V of Gone {\n  x;\n}\n",
@@ -1539,6 +1745,7 @@ func TestTheCheckersMessagesSayWhatTheCodeCannot(t *testing.T) {
 var loadBearingMessages = []diag.Code{
 	diag.ImportNotFound,
 	diag.DuplicateDeclaration,
+	diag.BuiltinTypeDeclared,
 	diag.ViewSourceNotFound,
 	diag.ViewSourceNotSelectable,
 	diag.DuplicateTag,
@@ -1957,6 +2164,26 @@ func assertAt(t *testing.T, set FileSet, bag *diag.Bag, i int, wantPos, wantText
 	}
 	if got := d.File.Slice(d.Span); got != wantText {
 		t.Errorf("diagnostic %d underlines %q, want %q", i, got, wantText)
+	}
+}
+
+// assertSpanStartsAt is assertAt with the extent left out: it holds where a
+// diagnostic begins and says nothing about how far it runs.
+//
+// For a diagnostic whose span is a whole declaration, WHERE it points is the
+// fact worth pinning -- #39 was a rule reported at a use site downstream of the
+// declaration that was wrong -- and how much of the declaration it underlines
+// is nanov/protobuf-to-messagepack-sharp#57's question. A golden written here
+// for the extent would only argue with that ticket, which is why PROTOP0204's
+// own test pins neither.
+func assertSpanStartsAt(t *testing.T, bag *diag.Bag, i int, want string) {
+	t.Helper()
+	d := bag.All()[i]
+	if d.File == nil {
+		t.Fatalf("diagnostic %d names no file", i)
+	}
+	if got := d.File.Position(d.Span.Start).String(); got != want {
+		t.Errorf("diagnostic %d is at %s, want %s", i, got, want)
 	}
 }
 

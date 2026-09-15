@@ -46,6 +46,7 @@ var wantCodeNumbers = []struct {
 	{"DuplicateDeclaration", DuplicateDeclaration, "PROTOP0204"},
 	{"ViewSourceNotFound", ViewSourceNotFound, "PROTOP0205"},
 	{"ViewSourceNotSelectable", ViewSourceNotSelectable, "PROTOP0206"},
+	{"BuiltinTypeDeclared", BuiltinTypeDeclared, "PROTOP0207"},
 
 	{"TagOutOfRange", TagOutOfRange, "PROTOP0300"},
 	{"PrecisionNotAllowed", PrecisionNotAllowed, "PROTOP0301"},
@@ -247,6 +248,7 @@ var wantCodeSeverities = []struct {
 	{"DuplicateDeclaration", DuplicateDeclaration, Error},
 	{"ViewSourceNotFound", ViewSourceNotFound, Error},
 	{"ViewSourceNotSelectable", ViewSourceNotSelectable, Error},
+	{"BuiltinTypeDeclared", BuiltinTypeDeclared, Error},
 
 	{"TagOutOfRange", TagOutOfRange, Error},
 	{"PrecisionNotAllowed", PrecisionNotAllowed, Error},

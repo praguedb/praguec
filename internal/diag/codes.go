@@ -124,6 +124,14 @@ const (
 	// view is a subset of a table or a record, which is section 5 in one
 	// sentence.
 	ViewSourceNotSelectable Code = 206
+	// BuiltinTypeDeclared is a declaration whose name is one protop's own type
+	// system already holds -- `record list`, `struct string`. protop has no
+	// keyword token kinds, so it parses; and then nothing can ever reach it,
+	// because a type written `list` or `string` is read as the built-in and the
+	// declaration has no second spelling. Held apart from DuplicateDeclaration,
+	// which is two declarations arguing over one name: here the name was never
+	// the schema's to take, and there is no other declaration to rename.
+	BuiltinTypeDeclared Code = 207
 
 	// TagOutOfRange is a field tag outside the legal range. A tag is 1-based
 	// because a MessagePack key is tag - 1, so tag 0 names no slot.

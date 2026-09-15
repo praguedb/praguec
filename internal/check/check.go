@@ -170,6 +170,25 @@ func (c *checker) declareOne(w *fileWork, d syntax.Decl) *declWork {
 	if dw.decl.Name == "" {
 		return nil
 	}
+	// A declaration cannot take a name protop's own type system already holds.
+	// There are no keyword token kinds, so `record list { ... }` parses like any
+	// other declaration -- and then nothing can ever name it: a type written
+	// `list` is read as the collection and a type written `string` as the
+	// scalar, so the declaration has no second spelling that reaches it. The
+	// name was never the schema's to take.
+	//
+	// Reported here rather than in the parser because it is a fact about a
+	// file's names, and the parser reads one declaration at a time. It does not
+	// return: the declaration is well formed, the collision is with the language
+	// and not with anything else in the file, and dropping it would turn one
+	// mistake into a second wave of them at every place the file's OTHER
+	// declarations mention it. The set is read, never copied -- see
+	// syntax.IsBuiltinTypeName.
+	if syntax.IsBuiltinTypeName(dw.decl.Name) {
+		w.sink.Raise(diag.BuiltinTypeDeclared, dw.decl.Span,
+			"`%s` already names protop's built-in %s type; a type written `%s` is read as the built-in, so nothing can ever spell its way to this declaration",
+			dw.decl.Name, builtinKindOf(dw.decl.Name), dw.decl.Name)
+	}
 	if first, dup := w.file.byName[dw.decl.Name]; dup {
 		w.sink.Raise(diag.DuplicateDeclaration, dw.decl.Span,
 			"`%s` is already declared at %s; which of the two a reference means is not a question protop answers",
@@ -178,6 +197,17 @@ func (c *checker) declareOne(w *fileWork, d syntax.Decl) *declWork {
 	}
 	w.file.byName[dw.decl.Name] = dw.decl
 	return dw
+}
+
+// builtinKindOf says which of protop's two closed type sets a name is in, so
+// that a message can name the thing the declaration collided with. Derived from
+// the sets themselves rather than from a word list here: a name added to either
+// one is described correctly with no edit at this end.
+func builtinKindOf(name string) string {
+	if _, isCollection := syntax.CollectionArity(name); isCollection {
+		return "generic"
+	}
+	return "scalar"
 }
 
 func (c *checker) declareMembers(w *fileWork, dw *declWork, members []syntax.Member) {

@@ -2041,6 +2041,48 @@ func TestClosedSetsAreExactlyWhatTheySay(t *testing.T) {
 	}
 }
 
+// The built-in name predicate is the two closed sets and nothing else, which is
+// what lets a stage outside this package ask whether a name is already taken
+// without keeping a copy of the answer -- #39's checker does exactly that.
+//
+// The oracle here is the maps, deliberately, and that is the opposite choice
+// from TestClosedSetsAreExactlyWhatTheySay above. That one pins what is IN the
+// sets against a literal, so the sets cannot be widened quietly. This one pins
+// that the readers FOLLOW the sets wherever they go, so a name added to either
+// map reaches every caller with no second edit. Reading the maps here would
+// weaken the first claim and is the whole of the second one; the two tests are
+// not one fact written twice.
+func TestTheBuiltinNamePredicateIsTheTwoClosedSets(t *testing.T) {
+	want := make([]string, 0, len(scalarTypes)+len(collectionTypes))
+	for name := range scalarTypes {
+		want = append(want, name)
+	}
+	for name := range collectionTypes {
+		want = append(want, name)
+	}
+	slices.Sort(want)
+
+	// Sorted, and asserted sorted: a caller that walks this to build a table of
+	// subtests would otherwise report a different failure on every run.
+	if got := BuiltinTypeNames(); !slices.Equal(got, want) {
+		t.Errorf("BuiltinTypeNames() = %v, want %v", got, want)
+	}
+	for _, name := range want {
+		if !IsBuiltinTypeName(name) {
+			t.Errorf("IsBuiltinTypeName(%q) is false; the name is in one of the two closed sets", name)
+		}
+	}
+
+	// A name that merely resembles one of protop's is not built in. Without
+	// this the predicate could answer true to everything and the walk above
+	// would still pass.
+	for _, name := range []string{"List", "lists", "Map", "int16", "float", "Odd", "Venue", ""} {
+		if IsBuiltinTypeName(name) {
+			t.Errorf("IsBuiltinTypeName(%q) is true; only the two closed sets are built in", name)
+		}
+	}
+}
+
 // Whether protop's scalar set is closed at all is unresolved -- #32 -- and the
 // parser no longer branches on it: a name outside the set is a reference to a
 // declared type. What keeps the census honest is the fixture. Every type
