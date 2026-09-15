@@ -609,10 +609,15 @@ func underlines(s string) *string { return &s }
 // be first -- so "you are missing your revision" underlines `namespace`, and an
 // empty file degrades to a position with no snippet at all. Whether headSpan is
 // a token span or a file-position marker is a question about what a header
-// diagnostic MEANS rather than a span to swap, and it is filed on its own.
-// Pinning a wrong underline is worse than leaving it open -- it turns a defect
-// into a golden the fix then has to argue with -- so the row records the debt
-// instead of hiding it.
+// diagnostic MEANS rather than a span to swap, and it is
+// nanov/protobuf-to-messagepack-sharp#63. Pinning a wrong underline is worse
+// than leaving it open -- it turns a defect into a golden the fix then has to
+// argue with -- so the row records the debt instead of hiding it.
+//
+// Three and not seven. The other four were #57's, which moved PROTOP0400 onto
+// the whole annotation and PROTOP0203 onto the gap where the source name goes;
+// those rows are real pins now. A row here is unpinned only while an open
+// ticket owns the span, and the citation is what says which.
 //
 // Lexical diagnostics come first in the bag whatever their position, because
 // Parse tokenises the whole file before it reads a token of it.
@@ -648,14 +653,14 @@ func TestParseDiagnostics(t *testing.T) {
 			src:       "namespace A;\nstruct S { int64 a = 1; }\n",
 			wantCodes: []diag.Code{diag.MissingRevision},
 			wantLine:  1, wantCol: 1,
-			spanUnpinned: "#57: headSpan is toks[0], so this underlines `namespace` -- the other header line",
+			spanUnpinned: "#63: headSpan is toks[0], so this underlines `namespace` -- the other header line",
 		},
 		{
 			name:      "missing namespace",
 			src:       "revision 1;\nstruct S { int64 a = 1; }\n",
 			wantCodes: []diag.Code{diag.MissingNamespace},
 			wantLine:  1, wantCol: 1,
-			spanUnpinned: "#57: headSpan is toks[0], so this underlines `revision` -- the other header line",
+			spanUnpinned: "#63: headSpan is toks[0], so this underlines `revision` -- the other header line",
 		},
 		{
 			// Both are checked after the whole file, so a header-less file still
@@ -664,7 +669,7 @@ func TestParseDiagnostics(t *testing.T) {
 			src:       "struct S { int64 a = 1; }\n",
 			wantCodes: []diag.Code{diag.MissingRevision, diag.MissingNamespace},
 			wantLine:  1, wantCol: 1,
-			spanUnpinned: "#57: headSpan is toks[0], here the `struct` neither diagnostic is about",
+			spanUnpinned: "#63: headSpan is toks[0], here the `struct` neither diagnostic is about",
 		},
 		{
 			name: "tag 0",
@@ -1851,8 +1856,20 @@ func TestRenderOfAMisplacedAnnotationUnderlinesTheWholeAnnotation(t *testing.T) 
 // bracket reached: every token after the `[`, up to and including the `}` that
 // stopped the scan -- the brace of the body the annotation sits in, which is
 // where one unclosed bracket is kept from swallowing the declaration around it.
-// The render clamps the caret to the first line, so what a user sees is the run
-// of `^` across the line that was written wrong.
+// So the render is asserted and not only the slice: this is the one span in
+// this group whose stored form and drawn form differ, and it was the one with
+// no golden anywhere. What the user gets is one line with a caret under each
+// character of it, and nothing at all under the `}` on the next line.
+//
+// Note what the golden does NOT establish, since the reason it cannot is the
+// interesting part. It does not discriminate the clamping rule: this span's
+// first line ends at the newline it crosses, so a caret run clamped to the
+// span and one run to the end of the line are the same run, and deleting the
+// clamp in internal/diag leaves this test green. No fixture of this shape can
+// tell them apart, because a span that crosses a newline always reaches the
+// end of the line it starts on. The clamp is pinned in internal/diag, where a
+// fixture can be built that does tell them apart; what is pinned here is the
+// output of this span.
 func TestAMisplacedAnnotationThatIsAlsoUnterminatedSaysBoth(t *testing.T) {
 	f, _, bag := parse(t, "revision 1;\nnamespace A;\nstruct S {\n  int64 a [cs: X = 1;\n}\n")
 
@@ -1869,6 +1886,14 @@ func TestAMisplacedAnnotationThatIsAlsoUnterminatedSaysBoth(t *testing.T) {
 	}
 	if underlined := f.Slice(bag.All()[1].Span); underlined != "[cs: X = 1;\n}" {
 		t.Errorf("PROTOP0400 underlines %q, want how far the unclosed bracket reached", underlined)
+	}
+	wantRender := "x.protop:4:11: error PROTOP0400: an annotation follows what it describes and there is " +
+		"no before-slot; write this one after the member's tag\n" +
+		"  |\n" +
+		"4 |   int64 a [cs: X = 1;\n" +
+		"  |           ^^^^^^^^^^^"
+	if got := diag.Render(f, bag.All()[1]); got != wantRender {
+		t.Errorf("rendered:\n%s\nwant:\n%s", got, wantRender)
 	}
 }
 
