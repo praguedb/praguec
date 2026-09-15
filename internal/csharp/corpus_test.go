@@ -3,8 +3,10 @@ package csharp
 import (
 	"os"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"sort"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -945,11 +947,14 @@ func TestCorpusCensus(t *testing.T) {
 			"#13's scaled decimal would arrive as a formatter attribute; there are none anywhere, so `decimal(N)` drops its scale"},
 		{"Dictionary<", "corpus", 0,
 			"#24: the corpus *cannot check* a Dictionary row, which is not the same as saying no map is needed. " +
-				"corpus/prague/INVARIANTS.md:85-87 records that a `Dictionary<,>` does appear, transitively and " +
-				"string-keyed, via `Odd.Specifiers`; corpus/prague/SOURCE.md:48-51 records that `Odd` was " +
-				"deliberately not copied. So the zero is an artefact of where the copy stopped, and " +
+				"INVARIANTS.md's `Type tally` section carries, marked as not re-derivable from the pin, a report " +
+				"that a `Dictionary<,>` does appear transitively and string-keyed via `Odd.Specifiers`; " +
+				"SOURCE.md's `Upstream paths` section lists `Odd` among the fourteen types deliberately not " +
+				"copied. So the zero is an artefact of where the copy stopped, and " +
 				"examples/prague/branded.protop's stand-in `record Odd` omits the member that would have needed " +
-				"one. Evidence for #24, which is human-in-the-loop and unruled"},
+				"one. Evidence for #24, which is human-in-the-loop and unruled. " +
+				"(Cited by section rather than by line: both regions moved in #38, and a line number into a " +
+				"prose document is a citation that rots without telling anyone)"},
 		{"enum ", "corpus", 0,
 			"SOURCE.md does not copy the enum declarations, so writeEnum has no oracle at all"},
 
@@ -1091,4 +1096,398 @@ func TestTheEmissionNeedsNoNormalisation(t *testing.T) {
 	if read == 0 {
 		t.Fatal("no emission was read; the coverage table stopped naming a reproduced declaration")
 	}
+}
+
+// --- the documents ------------------------------------------------------------
+
+// corpus/prague carries two prose documents, and until #38 nothing in the repo
+// opened either one.
+//
+// INVARIANTS.md opens by telling its readers to cite it rather than re-derive
+// what it says. That instruction is only safe if something keeps it true, and
+// nothing did: it accumulated ten wrong numbers, one of them -- `StaticDataRef?`
+// 8 against `StaticDataRef` 2, exactly backwards -- an instruction to emit ten
+// members with the wrong nullability, and another asserting the opposite of what
+// TestCorpusCensus above already pins and csharp.go already implements.
+//
+// So the tally and the declaration shapes are derived here and held against the
+// document. Not every sentence in it: a claim the pin cannot check must not be
+// given a test that pretends otherwise, and the document marks three of those
+// as carried from upstream rather than established. What is anchored is what a
+// generator would act on and what was in fact wrong.
+
+const invariantsDoc = corpusRoot + "/INVARIANTS.md"
+
+// detwinnedDrops are the five payload files INVARIANTS.md's tally does not
+// count: the BO-side copy of each BO <-> BP twin pair.
+//
+// The rule is written out in the document, in the section this checks, because
+// a tally whose de-twinning rule is unstated is a number nobody can reproduce
+// -- which is how the old one survived being wrong. Five and not four: BOVenue
+// / Venue is a twin pair too, and the document did not used to say so.
+//
+// Which side is dropped matters for exactly one figure. The keyed members are
+// identical either way; the BO side carries the corpus's only type-level
+// `[DataCacheIndex]` and an unkeyed `FixtureIdIndex`, neither of which is a
+// keyed member. Dropping BO is what makes the document's "22 annotations sit on
+// members" true, and the document now says so and gives the raw 31 beside it.
+var detwinnedDrops = []string{
+	"BOBetTypeCacheItem.cs",
+	"BOLiveObjectCacheItem.cs",
+	"BOSearchCacheItem.cs",
+	"BOSportGameCacheItem.cs",
+	"BOVenue.cs",
+}
+
+// corpusEnums are the type names the tally's two enum buckets aggregate.
+//
+// They are listed rather than detected, and the list is the one step of this
+// derivation the pin cannot justify: SOURCE.md copies no enum declaration at
+// all, which TestCorpusCensus pins as `enum ` appearing zero times corpus-wide.
+// Nothing in corpus/prague/ says these names are enums.
+//
+// tallyBucket fails on a member type that is in neither this list nor
+// tallyScalars nor tallyRefTypes, so the list cannot go stale in the direction
+// that matters: a re-pin introducing a new type name stops the suite instead of
+// landing in an enum bucket unnoticed.
+var corpusEnums = []string{
+	"BetTypeStatus", "BookingStatus", "Channel", "EventSource",
+	"EventStatus", "OddStatus", "WatchDogAction", "WinStatus",
+}
+
+// tallyScalars and tallyRefTypes are every other base type a keyed payload
+// member is written with. Together with corpusEnums they are exhaustive over
+// the pin, and tallyBucket enforces that.
+var (
+	tallyScalars  = []string{"DateTime", "bool", "byte", "decimal", "double", "int", "long", "string"}
+	tallyRefTypes = []string{"BOVenue", "IBaseLiveData", "Odd", "SlimOdd", "StaticDataRef", "Venue"}
+)
+
+// tallyEntry is one bucket of the tally, on either side of the comparison.
+type tallyEntry struct {
+	Label string
+	N     int
+}
+
+// TestTheInvariantsDocumentMatchesTheCorpus derives INVARIANTS.md's two
+// machine-checkable claims from the .cs files and fails if the document
+// disagrees.
+//
+// It follows cmd/protopc's TestTheExclusionRulesAreTheOnesTheResearchRecorded
+// rather than a golden: the right-hand side is a document nothing regenerates,
+// there is no -update path, and neither side can move without the other. The
+// difference is direction. That test transcribes a rule *out of* a document
+// into code; this one derives a fact *from* the corpus and holds the document
+// to it, because here the corpus is the oracle and the prose is the copy.
+//
+// The regions are found by their own text -- a heading, a marker sentence --
+// and not by line number, so an edit above them does not quietly stop this
+// test from finding anything. Every lookup requires exactly one match and
+// fatals otherwise, which is what stops the test passing vacuously when the
+// number it checks is deleted rather than changed.
+func TestTheInvariantsDocumentMatchesTheCorpus(t *testing.T) {
+	b, err := os.ReadFile(invariantsDoc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	doc := string(b)
+
+	t.Run("tally", func(t *testing.T) {
+		raw, detwinned := corpusTally(t)
+
+		// The heading carries both totals: the de-twinned one the buckets sum
+		// to, and the raw one that says how much the rule collapsed.
+		m := docMatch(t, doc, reTallyHeading)
+		wantDetwinned, _ := strconv.Atoi(m[1])
+		wantRaw, _ := strconv.Atoi(m[2])
+
+		if n := sumEntries(detwinned); n != wantDetwinned {
+			t.Errorf("the de-twinned corpus has %d keyed members, the tally heading says %d", n, wantDetwinned)
+		}
+		if raw != wantRaw {
+			t.Errorf("the 14 payload files have %d keyed members, the tally heading says %d raw", raw, wantRaw)
+		}
+
+		got := docTally(t, doc)
+		if entriesText(got) != entriesText(detwinned) {
+			t.Errorf("the tally in %s is not the corpus's tally.\ndocument:\n%s\ncorpus:\n%s",
+				invariantsDoc, entriesText(got), entriesText(detwinned))
+		}
+	})
+
+	t.Run("declaration shape", func(t *testing.T) {
+		sealed, exceptions, total := corpusDeclShapes(t)
+
+		m := docMatch(t, doc, reShapeBullet)
+		wantSealed, _ := strconv.Atoi(m[1])
+		wantTotal, _ := strconv.Atoi(m[2])
+		if sealed != wantSealed || total != wantTotal {
+			t.Errorf("%d of %d payloads are `public sealed partial class`, the document says %d of %d",
+				sealed, total, wantSealed, wantTotal)
+		}
+
+		// The exceptions are the rest, and naming them is the half that was
+		// wrong: SlimOdd is a bare `public class`, which csharp.go's view row
+		// and TestCorpusCensus's three declaration rows both already encode,
+		// and which the document used to contradict.
+		exLine := docLine(t, doc, "- The exceptions are ")
+		if cut := strings.Index(exLine, ". "); cut >= 0 {
+			exLine = exLine[:cut]
+		}
+		named := backticked(exLine)
+		sort.Strings(named)
+		if strings.Join(named, ", ") != strings.Join(exceptions, ", ") {
+			t.Errorf("the document names %v as the exceptions; the corpus's are %v\n  %s",
+				named, exceptions, exLine)
+		}
+	})
+}
+
+// corpusTally counts keyed payload members by bucket, raw and de-twinned.
+//
+// It reads through readCS, the same reader every other corpus comparison in
+// this package goes through, so "a member" means here what it means there. A
+// member is keyed or it is not: `FixtureIdIndex` is expression-bodied and
+// `[IgnoreMember]`, so readCS skips it as a computed member and it is in no
+// count below -- which is the whole of the old tally's `int` 9.
+func corpusTally(t *testing.T) (raw int, detwinned []tallyEntry) {
+	t.Helper()
+	ents, err := os.ReadDir(filepath.Join(corpusRoot, "payloads"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	counts := map[string]int{}
+	dropped := map[string]bool{}
+	for _, e := range ents {
+		if !strings.HasSuffix(e.Name(), ".cs") {
+			continue
+		}
+		d := readCorpus(t, filepath.Join("payloads", e.Name()))
+		drop := slicesContains(detwinnedDrops, e.Name())
+		if drop {
+			dropped[e.Name()] = true
+		}
+		for _, id := range d.Order {
+			if _, wire := keyNumber(id); !wire {
+				continue
+			}
+			raw++
+			if !drop {
+				counts[tallyBucket(t, memberType(t, e.Name(), d.Members[id]))]++
+			}
+		}
+	}
+	for _, name := range detwinnedDrops {
+		if !dropped[name] {
+			t.Fatalf("the tally's de-twinning rule drops payloads/%s, which is not in the corpus", name)
+		}
+	}
+
+	for label, n := range counts {
+		detwinned = append(detwinned, tallyEntry{label, n})
+	}
+	// Count descending, then label ordinal -- the order the document states it
+	// writes its entries in, so that a bucket cannot be appended out of place.
+	sort.Slice(detwinned, func(i, j int) bool {
+		if detwinned[i].N != detwinned[j].N {
+			return detwinned[i].N > detwinned[j].N
+		}
+		return detwinned[i].Label < detwinned[j].Label
+	})
+	return raw, detwinned
+}
+
+// memberType is the declared type of one canonical member, read back out of the
+// text readCS produced.
+func memberType(t *testing.T, file, body string) string {
+	t.Helper()
+	lines := strings.Split(body, "\n")
+	decl := lines[len(lines)-1]
+	if m := reProperty.FindStringSubmatch(decl); m != nil {
+		return m[1]
+	}
+	if m := reTuple.FindStringSubmatch(decl); m != nil {
+		return m[1]
+	}
+	t.Fatalf("%s: %q is a member shape this tally cannot read", file, decl)
+	return ""
+}
+
+// tallyBucket is which entry of the tally a member type counts towards.
+//
+// Four buckets aggregate -- the two enum ones, ValueTuple and collections --
+// and everything else counts under its own spelling, nullability included.
+// That last part is the point of the exercise: `StaticDataRef` and
+// `StaticDataRef?` are two entries, and swapping them is what #38 found.
+func tallyBucket(t *testing.T, typ string) string {
+	t.Helper()
+	base := strings.TrimSuffix(typ, "?")
+	switch {
+	case strings.HasPrefix(base, "("):
+		return "ValueTuple"
+	case strings.HasPrefix(base, "List<"), strings.HasSuffix(base, "[]"):
+		return "collections"
+	}
+	if slicesContains(corpusEnums, base) {
+		if base == typ {
+			return "non-null enums"
+		}
+		return "nullable enums"
+	}
+	if !slicesContains(tallyScalars, base) && !slicesContains(tallyRefTypes, base) {
+		t.Fatalf("the corpus has a member of type %q, which is in none of corpusEnums, "+
+			"tallyScalars or tallyRefTypes. Those three lists are what makes the enum buckets "+
+			"meaningful; put %q in whichever it belongs to before trusting this tally again.", typ, base)
+	}
+	return typ
+}
+
+// corpusDeclShapes is how many of the payload types are `public sealed partial
+// class` and which ones are not.
+func corpusDeclShapes(t *testing.T) (sealed int, exceptions []string, total int) {
+	t.Helper()
+	ents, err := os.ReadDir(filepath.Join(corpusRoot, "payloads"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, e := range ents {
+		if !strings.HasSuffix(e.Name(), ".cs") {
+			continue
+		}
+		total++
+		d := readCorpus(t, filepath.Join("payloads", e.Name()))
+		if strings.HasPrefix(d.Head, "public sealed partial class ") {
+			sealed++
+			continue
+		}
+		exceptions = append(exceptions, reHead.FindStringSubmatch(d.Head)[2])
+	}
+	sort.Strings(exceptions)
+	return sealed, exceptions, total
+}
+
+// The two claims that are numbers in a sentence. Each is matched as a whole
+// line, so a document that stops phrasing it this way fails docMatch's
+// exactly-one requirement rather than silently matching nothing.
+var (
+	reTallyHeading = regexp.MustCompile(`^## Type tally \((\d+) de-twinned members; (\d+) raw\)$`)
+	reShapeBullet  = regexp.MustCompile("^- (\\d+) of (\\d+) payloads are `public sealed partial class`")
+)
+
+// docMatch is the submatches of the one line of doc that re matches.
+//
+// Exactly one, for the same two reasons as docLine: a restated claim would make
+// the test read whichever came first, and a deleted one has to fail rather than
+// leave nothing to disagree with.
+func docMatch(t *testing.T, doc string, re *regexp.Regexp) []string {
+	t.Helper()
+	var found [][]string
+	for _, line := range strings.Split(doc, "\n") {
+		if m := re.FindStringSubmatch(line); m != nil {
+			found = append(found, m)
+		}
+	}
+	if len(found) != 1 {
+		t.Fatalf("%d lines of %s match %v, want exactly 1", len(found), invariantsDoc, re)
+	}
+	return found[0]
+}
+
+// docLine is the one line of doc beginning with prefix.
+//
+// Exactly one, and fatal otherwise: two would mean the claim is restated
+// somewhere and this test is reading whichever came first, and zero is the
+// vacuity case -- a number deleted from the document rather than corrected must
+// fail this test, not pass it by having nothing left to disagree with.
+func docLine(t *testing.T, doc, prefix string) string {
+	t.Helper()
+	var found []string
+	for _, line := range strings.Split(doc, "\n") {
+		if strings.HasPrefix(line, prefix) {
+			found = append(found, line)
+		}
+	}
+	if len(found) != 1 {
+		t.Fatalf("%d lines of %s begin %q, want exactly 1", len(found), invariantsDoc, prefix)
+	}
+	return found[0]
+}
+
+// tallyMarker is the sentence the tally's own entries follow. The paragraph is
+// found by it rather than by line number so that an edit anywhere above leaves
+// this test still reading the tally.
+const tallyMarker = "Entries are ordered by count, then by label:"
+
+// docTally is the tally as the document writes it.
+func docTally(t *testing.T, doc string) []tallyEntry {
+	t.Helper()
+	lines := strings.Split(doc, "\n")
+	at := -1
+	for i, line := range lines {
+		if strings.TrimSpace(line) == tallyMarker {
+			if at >= 0 {
+				t.Fatalf("%s carries the tally marker twice", invariantsDoc)
+			}
+			at = i
+		}
+	}
+	if at < 0 {
+		t.Fatalf("%s no longer contains %q, so the tally cannot be found at all", invariantsDoc, tallyMarker)
+	}
+	var para []string
+	for i := at + 1; i < len(lines); i++ {
+		s := strings.TrimSpace(lines[i])
+		if s == "" {
+			if len(para) > 0 {
+				break
+			}
+			continue
+		}
+		para = append(para, s)
+	}
+	if len(para) == 0 {
+		t.Fatalf("%s has nothing after %q", invariantsDoc, tallyMarker)
+	}
+
+	var out []tallyEntry
+	for _, raw := range strings.Split(strings.Join(para, " "), "·") {
+		e := strings.TrimSpace(strings.ReplaceAll(strings.ReplaceAll(raw, "`", ""), "**", ""))
+		cut := strings.LastIndex(e, " ")
+		if cut < 0 {
+			t.Fatalf("%q is not a `label N` tally entry", raw)
+		}
+		n, err := strconv.Atoi(e[cut+1:])
+		if err != nil {
+			t.Fatalf("tally entry %q does not end in a count", raw)
+		}
+		out = append(out, tallyEntry{e[:cut], n})
+	}
+	return out
+}
+
+func sumEntries(es []tallyEntry) int {
+	n := 0
+	for _, e := range es {
+		n += e.N
+	}
+	return n
+}
+
+func entriesText(es []tallyEntry) string {
+	var b strings.Builder
+	for _, e := range es {
+		b.WriteString("  " + e.Label + " " + itoa(e.N) + "\n")
+	}
+	return b.String()
+}
+
+var backtickRE = regexp.MustCompile("`([^`]+)`")
+
+// backticked is every backtick-quoted token of a line, in order.
+func backticked(line string) []string {
+	var out []string
+	for _, m := range backtickRE.FindAllStringSubmatch(line, -1) {
+		out = append(out, m[1])
+	}
+	return out
 }
