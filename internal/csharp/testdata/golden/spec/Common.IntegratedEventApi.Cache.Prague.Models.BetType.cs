@@ -4,8 +4,7 @@ namespace Common.IntegratedEventApi.Cache.Prague.Models;
 
 [MessagePackObject]
 [DataCache(CacheClassName = nameof(BPBetTypeCache))]
-[DataCacheTopic(TopicNames.BrandFromConfigs.BetType)]
-[DataCacheContract(typeof(BetTypeCacheContract), Role = ContractRole.Producer)]
+[DataCacheTopic("Cache.[v:brandId].BetType")]
 public sealed partial class BetType
 {
     [Key(0)]
@@ -42,7 +41,6 @@ public sealed partial class BetType
 
     [Key(24)]
     [DataCacheFromTimestamp]
-    [DataCacheIgnoreEquality]
     public long Timestamp { get; set; }
 
     [Key(25)]

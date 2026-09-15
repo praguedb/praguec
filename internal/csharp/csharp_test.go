@@ -191,6 +191,61 @@ func assertVerbatim(t *testing.T, specPath, fixtureName string) {
 	}
 }
 
+// The sentence of section 1 that says which of the two things the block is:
+// a transcription of the pin, or a picture of what the schema ought to carry.
+// #43 removed three annotations that were the second kind -- `DataCacheContract`
+// and `DataCacheIgnoreEquality` at zero occurrences under corpus/, and
+// `DataCacheTopic` in a member-access form where all eleven corpus sites pass a
+// string literal -- and the sentence is what keeps the next widening from being
+// a judgement call.
+//
+// The rule itself is measured against the corpus by
+// TestSection1AnnotatesOnlyWhatThePinCarries. This pins the statement of it, and
+// the two are not substitutes: a rule no reader can find is broken by the next
+// person to widen the block, and a rule nothing measures is broken by the next
+// `-update`. The seam between them is real and worth knowing -- deleting the
+// paragraph fails this test and not that one; widening the block fails that one
+// and not this.
+//
+// This package carries its own copy of the pin helper for the reason it carries
+// its own fixtures: what a package rests on belongs to the package resting on
+// it.
+func TestSpecSection1SaysItTranscribes(t *testing.T) {
+	assertSpecStates(t, specSection1, section1Transcribes)
+}
+
+const section1Transcribes = "**This section transcribes; it does not aspire.** " +
+	"Every annotation above is written in the form " +
+	"`corpus/prague/payloads/BPSportGameCacheItem.cs` and `BPBetTypeCacheItem.cs` " +
+	"write it — the topic is a string literal, because all eleven " +
+	"`[DataCacheTopic]` sites in the pin pass one and not one of them names a " +
+	"`TopicNames` constant. Annotations no corpus file carries are not shown here " +
+	"at all: `DataCacheContract` and `DataCacheIgnoreEquality` stood in this block " +
+	"until #43 measured them at zero occurrences corpus-wide and removed them."
+
+// assertSpecStates is assertVerbatim for prose. A fenced block is a fixture and
+// can be held byte for byte; a paragraph is written to be read, and a pin that
+// failed on a rewrap would teach the next reader to delete it. Runs of
+// whitespace are collapsed on both sides and nothing else is -- not the words,
+// not the emphasis, not the backticks and not the numbers -- so a reflow passes
+// and an inversion does not.
+func assertSpecStates(t *testing.T, specPath, claim string) {
+	t.Helper()
+	spec, err := os.ReadFile(specPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(collapseSpace(string(spec)), collapseSpace(claim)) {
+		t.Errorf("%s no longer states:\n%s", specPath, claim)
+	}
+}
+
+// collapseSpace renders every run of whitespace as one space, which is the whole
+// of what a prose pin is allowed to forgive.
+func collapseSpace(s string) string {
+	return strings.Join(strings.Fields(s), " ")
+}
+
 // Presence is the whole of protop's nullability axis and the reason it is a
 // property of the type rather than of the member: `list<Odd>?` and `list<Odd?>`
 // are different C#, and a rule that hung the `?` off the member could not tell

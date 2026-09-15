@@ -316,6 +316,8 @@ file prague.protop
   record StaticDataRef
     field id = 1 int64
     field name = 2 string
+    field provider_source_key = 3 string?
+    field provider_key = 4 int64
   record Odd
     field name = 1 string
     field odds_actual = 9 double

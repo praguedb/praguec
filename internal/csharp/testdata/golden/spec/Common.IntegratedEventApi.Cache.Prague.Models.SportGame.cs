@@ -4,8 +4,7 @@ namespace Common.IntegratedEventApi.Cache.Prague.Models;
 
 [MessagePackObject]
 [DataCache(CacheClassName = nameof(BPSportGameCache))]
-[DataCacheTopic(TopicNames.BrandFromConfigs.SportGame)]
-[DataCacheContract(typeof(SportGameCacheContract), Role = ContractRole.Producer)]
+[DataCacheTopic("Cache.[v:brandId].SportGame")]
 public sealed partial class SportGame
 {
     [Key(0)]

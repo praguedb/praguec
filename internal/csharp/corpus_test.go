@@ -995,6 +995,58 @@ func TestCorpusCensus(t *testing.T) {
 	}
 }
 
+// Section 1 says it transcribes rather than aspires, and this is what makes
+// that sentence something other than a promise.
+//
+// Every `[cs: ...]` is passthrough -- section 3 has protopc copy an
+// annotation's contents out without inspecting them -- so no assertion about
+// the emission can tell an annotation the pin carries from one somebody wished
+// for. The goldens are worse than silent about it: `-update` writes the wish
+// into testdata/golden and the suite goes green. That is how `DataCacheContract`
+// and `DataCacheIgnoreEquality` sat in section 1 through every run of this
+// suite at zero occurrences under corpus/, and how `DataCacheTopic` sat there
+// in a member-access form where all eleven corpus sites pass a string literal
+// (#43).
+//
+// So the oracle has to be the corpus, as it is everywhere else in this file:
+// every attribute name section 1 writes is an attribute name the pin uses.
+//
+// What it does not check, said rather than implied: the arguments. Section 1's
+// `nameof(BPSportGameCache)` against the corpus's
+// `nameof(Prague.Models.BPSportGameCache)` is a real divergence this test
+// cannot see, because an argument list is exactly the part protopc is forbidden
+// to understand. Names are the part a census can settle, and all three defects
+// #43 found were names or forms of names.
+func TestSection1AnnotatesOnlyWhatThePinCarries(t *testing.T) {
+	names := csAnnotationNames(readFixture(t, pragueFixture))
+	if len(names) < 3 {
+		t.Fatalf("section 1 writes %d distinct annotations (%v); it had three, and a census of nothing passes for free",
+			len(names), names)
+	}
+	corpus := corpusText(t, corpusRoot)
+	for _, n := range names {
+		// The trailing class is what keeps `DataCache` from being satisfied by
+		// `[DataCacheTopic(`: a prefix match here would have certified the very
+		// annotation #43 was filed about.
+		if !regexp.MustCompile(`\[` + regexp.QuoteMeta(n) + `[\](<]`).MatchString(corpus) {
+			t.Errorf("section 1 writes [cs: %s] and no file under %s uses that attribute; "+
+				"section 1 transcribes the pin, so a form the pin does not carry belongs in a ticket, not in the spec", n, corpusRoot)
+		}
+	}
+}
+
+// csAnnotationNames returns the attribute name of every `[cs: ...]` in a protop
+// source, in source order, each once.
+func csAnnotationNames(src string) []string {
+	var out []string
+	for _, m := range regexp.MustCompile(`\[cs:\s*([A-Za-z_][A-Za-z0-9_]*)`).FindAllStringSubmatch(src, -1) {
+		if !slices.Contains(out, m[1]) {
+			out = append(out, m[1])
+		}
+	}
+	return out
+}
+
 func corpusText(t *testing.T, root string) string {
 	t.Helper()
 	var b strings.Builder

@@ -292,14 +292,15 @@ enum BetTypeStatus
 record StaticDataRef
   int64 id = 1
   string name = 2
+  string? provider_source_key = 3
+  int64 provider_key = 4
 record Odd
   string name = 1
   double odds_actual = 9
   int64 timestamp = 5
 table SportGame
   [cs: DataCache(CacheClassName = nameof(BPSportGameCache))]
-  [cs: DataCacheTopic(TopicNames.BrandFromConfigs.SportGame)]
-  [cs: DataCacheContract(typeof(SportGameCacheContract), Role = ContractRole.Producer)]
+  [cs: DataCacheTopic("Cache.[v:brandId].SportGame")]
   reserved 8..14, 16..23, 25..27, 29..34, 37..46, 48..54
   key int64 event_id = 1
   int64 sport_type_id = 2
@@ -321,8 +322,7 @@ table SportGame
   StaticDataRef? away_team = 59
 table BetType
   [cs: DataCache(CacheClassName = nameof(BPBetTypeCache))]
-  [cs: DataCacheTopic(TopicNames.BrandFromConfigs.BetType)]
-  [cs: DataCacheContract(typeof(BetTypeCacheContract), Role = ContractRole.Producer)]
+  [cs: DataCacheTopic("Cache.[v:brandId].BetType")]
   reserved 5, 6, 10..21, 23, 24
   key key = 1 (event_id, bet_type_id)
   int64 event_id = 2 [references(SportGame)]
@@ -333,7 +333,7 @@ table BetType
   BetTypeStatus? status_manual = 8
   BetTypeStatus? status_watch_dog = 9
   decimal(4)? limit_manual_single = 22
-  int64 timestamp = 25 [cs: DataCacheFromTimestamp] [cs: DataCacheIgnoreEquality]
+  int64 timestamp = 25 [cs: DataCacheFromTimestamp]
   list<Odd> odds = 26
 `)
 
