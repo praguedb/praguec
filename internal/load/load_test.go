@@ -717,11 +717,12 @@ func TestADiagnosticNamesTheFileThatWroteTheImport(t *testing.T) {
 // header would be indistinguishable from the right one.
 //
 // What is underlined is the import statement entire, `;` included, rather than
-// the string inside it. That is deliberate and it is not the shape
-// nanov/protobuf-to-messagepack-sharp#57 objects to elsewhere: there the span
-// covers a container when the thing at fault is one name inside it, and here
-// the whole statement is what protopc could not carry out. There is nothing
-// inside it that is right.
+// the string inside it. That is deliberate, and it is the other side of the
+// rule PROTOP0204 and PROTOP0317 were narrowed to in #57: a span covers a
+// container only when the container is what is wrong. There the fault was one
+// name inside a declaration or an annotation that was otherwise fine, so the
+// caret went under the name. Here the whole statement is what protopc could
+// not carry out, and there is nothing inside it that is right.
 func TestALoaderDiagnosticUnderlinesTheImportThatCausedIt(t *testing.T) {
 	for _, tt := range []struct {
 		name  string

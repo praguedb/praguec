@@ -152,7 +152,19 @@ type Decl struct {
 	// opinion; the backend that reads them is the one that checks them.
 	Annotations []*syntax.Annotation
 
-	Span   source.Span
+	// Span is the declaration entire, keyword to closing brace, and NameSpan is
+	// the name alone.
+	//
+	// Both, because a diagnostic about a declaration is one of two kinds and
+	// they want different underlines. One is about the declaration as a thing
+	// -- what it contains, where it sits -- and points at the whole of it. The
+	// other is about its NAME: two declarations arguing over one, or a name the
+	// language already holds. The whole span there underlines three lines of
+	// which one word is at fault, and the caret clamps to the first line, so
+	// the render is less wrong than the span and the defect survives a reading.
+	Span     source.Span
+	NameSpan source.Span
+
 	byName map[string]*Member
 }
 
@@ -352,8 +364,11 @@ type Relation struct {
 	// Cardinality is derived from the declaring type's key, never declared.
 	Cardinality Cardinality
 
-	// Span is the annotation the relation was written as, whole. The annotation
-	// is what a message about it has to underline: its contents are raw text to
-	// the frontend, and it carries no span of its own for the name inside it.
+	// Span is the annotation the relation was written as, whole. A relation
+	// that resolved is a fact about the annotation rather than about the name
+	// inside it -- what a backend asks is which annotation produced this -- so
+	// the whole bracket is what is kept. A diagnostic about the TARGET does not
+	// use this: it underlines the name, which syntax.Annotation.TextSpan is
+	// what makes locatable.
 	Span source.Span
 }

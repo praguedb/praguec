@@ -454,17 +454,25 @@ func TestScopeIsNotTransitive(t *testing.T) {
 	assertCodes(t, set, bag, diag.UnknownType)
 }
 
-// No assertAt here, deliberately. PROTOP0204's span is dw.decl.Span, the whole
-// three-line declaration, where the duplicated thing is the name -- and
-// check.Decl carries no span for its name, so narrowing it is a model change
-// rather than an argument swap. That is
-// nanov/protobuf-to-messagepack-sharp#57's, and pinning the wide span here
-// would leave #57 arguing with a golden this pass wrote.
+// The underline is the second `S` and nothing else, which is why it is pinned
+// by extent and not merely by position.
+//
+// What is duplicated is one word. The whole declaration is three lines of which
+// two are unobjectionable, the render clamps its caret run to the first of them
+// anyway, and renaming that word is the entire fix -- so an underline of the
+// whole thing said that all of it was wrong and then showed only part of what
+// it claimed. check.Decl carries NameSpan for this.
+//
+// The position inside the message is the other declaration's keyword, and
+// TestAMessageQuotesADeclarationAtItsKeyword is what holds it there: where to
+// point the caret and where to send a reader next are different questions, and
+// this one moving is not a reason for that one to.
 func TestDuplicateDeclarationsAreDiagnosed(t *testing.T) {
 	set, _, bag := checkSet(t, map[string]string{
 		"a.protop": "revision 1;\nnamespace A;\nstruct S {\n  int64 x = 1;\n}\nrecord S {\n  int64 y = 1;\n}\n",
 	})
 	assertCodes(t, set, bag, diag.DuplicateDeclaration)
+	assertAt(t, set, bag, 0, "a.protop:6:8", "S")
 }
 
 // A declaration cannot take a name protop's own type system already holds.
@@ -751,6 +759,12 @@ view V of string {
 // check runs before the name is looked up in the symbol table, so the second
 // declaration is told what is wrong with it before it is told what it collides
 // with.
+//
+// The two diagnostics about the second declaration land in different columns,
+// and that is the point rather than an accident. PROTOP0207 is about the
+// declaration -- this whole thing is unreachable, because nothing can spell its
+// way to it -- so it underlines the whole thing. PROTOP0204 is about the name
+// alone, because renaming that one word is the entire fix.
 func TestTwoDeclarationsOfOneBuiltinNameRaiseBoth(t *testing.T) {
 	set, _, bag := checkSet(t, map[string]string{
 		"a.protop": `revision 1;
@@ -767,7 +781,7 @@ record list {
 		diag.BuiltinTypeDeclared, diag.BuiltinTypeDeclared, diag.DuplicateDeclaration)
 	assertSpanStartsAt(t, bag, 0, "a.protop:3:1")
 	assertSpanStartsAt(t, bag, 1, "a.protop:6:1")
-	assertSpanStartsAt(t, bag, 2, "a.protop:6:1")
+	assertSpanStartsAt(t, bag, 2, "a.protop:6:8")
 }
 
 // A name declared in an imported file is not a duplicate of one declared here.
@@ -1940,23 +1954,40 @@ table T {
   key int64 id = 1;
 }
 `
-	// The first two arms carry no assertAt. PROTOP0317 and PROTOP0318 underline
-	// the whole `[references(Nowhere)]` when the unknown thing is the name
-	// inside it, and the target name's span is not kept on the model -- so it
-	// is the same model change as PROTOP0204's and the same issue,
-	// nanov/protobuf-to-messagepack-sharp#57. The third arm is different and is
-	// pinned: there the annotation as a whole IS what is malformed.
+	// Each arm underlines what its own diagnostic is about, and the three do not
+	// agree -- which is the reason all three are pinned by extent.
+	//
+	// PROTOP0317 and PROTOP0318 are about the NAME. `[references(R)]` is a
+	// well-formed relation naming the wrong sort of thing, and the fix is to
+	// write a different word between the parentheses, so the caret goes under
+	// that word. PROTOP0404 is about the annotation: `[references]` names
+	// nothing at all, there is no word to point at, and what is malformed is
+	// the shape of the whole bracket. That one underlining the whole thing is
+	// correct and is pinned here so it stays that way.
 	t.Run("a record is not a relation target", func(t *testing.T) {
 		set, _, bag := checkSet(t, map[string]string{
 			"a.protop": "revision 1;\nnamespace A;\n" + decls + "table U {\n  key int64 id = 1;\n  int64 r = 2 [references(R)];\n}\n",
 		})
 		assertCodes(t, set, bag, diag.RelationTargetNotATable)
+		assertAt(t, set, bag, 0, "a.protop:11:27", "R")
 	})
 	t.Run("a name that is nothing at all", func(t *testing.T) {
 		set, _, bag := checkSet(t, map[string]string{
 			"a.protop": "revision 1;\nnamespace A;\n" + decls + "table U {\n  key int64 id = 1;\n  int64 r = 2 [references(Missing)];\n}\n",
 		})
 		assertCodes(t, set, bag, diag.RelationTargetNotFound)
+		assertAt(t, set, bag, 0, "a.protop:11:27", "Missing")
+	})
+	t.Run("a name written with room around it", func(t *testing.T) {
+		// The span is computed by walking the annotation's text, so the caret
+		// has to survive whitespace the writer is entitled to. Without this,
+		// an offset measured from the `(` rather than from the name would pass
+		// every other arm here.
+		set, _, bag := checkSet(t, map[string]string{
+			"a.protop": "revision 1;\nnamespace A;\n" + decls + "table U {\n  key int64 id = 1;\n  int64 r = 2 [ references ( Missing ) ];\n}\n",
+		})
+		assertCodes(t, set, bag, diag.RelationTargetNotFound)
+		assertAt(t, set, bag, 0, "a.protop:11:30", "Missing")
 	})
 	t.Run("a relation with no target at all", func(t *testing.T) {
 		set, _, bag := checkSet(t, map[string]string{
@@ -2287,10 +2318,10 @@ func assertAt(t *testing.T, set FileSet, bag *diag.Bag, i int, wantPos, wantText
 //
 // For a diagnostic whose span is a whole declaration, WHERE it points is the
 // fact worth pinning -- #39 was a rule reported at a use site downstream of the
-// declaration that was wrong -- and how much of the declaration it underlines
-// is nanov/protobuf-to-messagepack-sharp#57's question. A golden written here
-// for the extent would only argue with that ticket, which is why PROTOP0204's
-// own test pins neither.
+// declaration that was wrong -- and the extent is then three lines of which the
+// render shows one, so a golden for it would pin more of the rendering rule
+// than of the diagnostic. Use assertAt where the extent is the point, as
+// PROTOP0204 now does: its underline is one word, and that is the fact.
 func assertSpanStartsAt(t *testing.T, bag *diag.Bag, i int, want string) {
 	t.Helper()
 	d := bag.All()[i]

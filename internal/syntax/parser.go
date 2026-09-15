@@ -976,7 +976,7 @@ func (p *parser) parseAnnotation() (*Annotation, bool) {
 	}
 
 	text, whole, ok := p.scanAnnotation(open)
-	a.Text, a.Span = p.src.Slice(text), whole
+	a.Text, a.TextSpan, a.Span = p.src.Slice(text), text, whole
 	return a, ok
 }
 

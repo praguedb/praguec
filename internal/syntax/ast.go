@@ -299,6 +299,21 @@ type Annotation struct {
 	// of the contents to the last. Empty when the brackets hold nothing.
 	Text string
 
+	// TextSpan is where Text was written, so that a stage which reads inside
+	// the contents can report against what it found there rather than against
+	// the whole bracket. The contents are raw text to the parser and stay that
+	// way -- protop's own `references(T)` is read by the checker, and without
+	// this the checker could say `T` is unknown while underlining a bracket
+	// that is otherwise fine.
+	//
+	// An offset into Text is TextSpan.Start plus that offset: Text is the slice
+	// of exactly this span, so the two cannot drift.
+	TextSpan source.Span
+
+	// Span is the whole bracket, `[` to `]`. It is what a diagnostic about the
+	// annotation AS A WHOLE underlines -- one written where the grammar has no
+	// slot for it, or one whose contents are not the shape protop's own
+	// annotation takes.
 	Span source.Span
 }
 

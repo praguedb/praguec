@@ -3,6 +3,7 @@ package check
 import (
 	"slices"
 	"strings"
+	"unicode"
 
 	"github.com/nanov/protobuf-to-messagepack-sharp/internal/diag"
 	"github.com/nanov/protobuf-to-messagepack-sharp/internal/source"
@@ -144,19 +145,24 @@ func (c *checker) declareOne(w *fileWork, d syntax.Decl) *declWork {
 	switch d := d.(type) {
 	case *syntax.Struct:
 		dw.decl.Kind, dw.decl.Name, dw.decl.Annotations, dw.decl.Span = DeclStruct, d.Name.Text, d.Annotations, d.Span
+		dw.decl.NameSpan = d.Name.Span
 		c.declareMembers(w, dw, d.Members)
 	case *syntax.Record:
 		dw.decl.Kind, dw.decl.Name, dw.decl.Annotations, dw.decl.Span = DeclRecord, d.Name.Text, d.Annotations, d.Span
+		dw.decl.NameSpan = d.Name.Span
 		c.declareMembers(w, dw, d.Members)
 	case *syntax.Table:
 		dw.decl.Kind, dw.decl.Name, dw.decl.Annotations, dw.decl.Span = DeclTable, d.Name.Text, d.Annotations, d.Span
+		dw.decl.NameSpan = d.Name.Span
 		c.declareMembers(w, dw, d.Members)
 	case *syntax.View:
 		dw.decl.Kind, dw.decl.Name, dw.decl.Annotations, dw.decl.Span = DeclView, d.Name.Text, d.Annotations, d.Span
+		dw.decl.NameSpan = d.Name.Span
 		dw.view = d
 		c.declareViewMembers(w, dw, d.Members)
 	case *syntax.Enum:
 		dw.decl.Kind, dw.decl.Name, dw.decl.Span = DeclEnum, d.Name.Text, d.Span
+		dw.decl.NameSpan = d.Name.Span
 		for _, m := range d.Members {
 			dw.decl.EnumMembers = append(dw.decl.EnumMembers, &EnumMember{Name: m.Name.Text, Number: m.Number.Value, Span: m.Span})
 		}
@@ -189,8 +195,18 @@ func (c *checker) declareOne(w *fileWork, d syntax.Decl) *declWork {
 			"`%s` already names protop's built-in %s type; a type written `%s` is read as the built-in, so nothing can ever spell its way to this declaration",
 			dw.decl.Name, builtinKindOf(dw.decl.Name), dw.decl.Name)
 	}
+	// The name and not the declaration, at the caret. What is duplicated is the
+	// word `S`, not the three lines under it; underlining the whole of the
+	// second declaration said that all of it was wrong, when renaming one word
+	// fixes it.
+	//
+	// The position INSIDE the message stays at the first declaration's keyword,
+	// which is TestAMessageQuotesADeclarationAtItsKeyword's rule: a message that
+	// says where a declaration is says where it begins, keyword and all. The two
+	// are different questions -- what to underline here, and where to send a
+	// reader next -- and moving the caret is not a reason to move the other one.
 	if first, dup := w.file.byName[dw.decl.Name]; dup {
-		w.sink.Raise(diag.DuplicateDeclaration, dw.decl.Span,
+		w.sink.Raise(diag.DuplicateDeclaration, dw.decl.NameSpan,
 			"`%s` is already declared at %s; which of the two a reference means is not a question protop answers",
 			dw.decl.Name, w.file.Source.Position(first.Span.Start))
 		return nil
@@ -588,8 +604,12 @@ func (c *checker) resolveRelation(w *fileWork, dw *declWork, m *Member, a *synta
 	if a.Prefix != nil || !isRelation(a) {
 		return // a backend's annotation, or one the parser already rejected
 	}
-	target, ok := relationTarget(a)
+	target, at, ok := relationTarget(a)
 	if !ok {
+		// The whole bracket here, and only here. What is wrong is the shape of
+		// the annotation rather than anything inside it -- there is no target
+		// to point at, which is the complaint -- so there is nothing narrower
+		// that would be true.
 		w.sink.Raise(diag.MalformedRelation, a.Span,
 			"`%s` names the table a member points at, as in `[%s(SportGame)]`",
 			syntax.RelationAnnotation, syntax.RelationAnnotation)
@@ -598,13 +618,13 @@ func (c *checker) resolveRelation(w *fileWork, dw *declWork, m *Member, a *synta
 
 	decl, found := w.file.scope[target]
 	if !found {
-		w.sink.Raise(diag.RelationTargetNotFound, a.Span,
+		w.sink.Raise(diag.RelationTargetNotFound, at,
 			"unknown relation target `%s`; a file sees its own declarations and those of the files it imports, and nothing else",
 			target)
 		return
 	}
 	if decl.Kind != DeclTable {
-		w.sink.Raise(diag.RelationTargetNotATable, a.Span,
+		w.sink.Raise(diag.RelationTargetNotATable, at,
 			"`%s` is a %s and cannot be the target of a relation; a relation resolves against a key, and only a `table` has one",
 			target, decl.Kind)
 		return
@@ -661,30 +681,59 @@ func isRelation(a *syntax.Annotation) bool {
 	return word == syntax.RelationAnnotation
 }
 
-// relationTarget reads the T of `references(T)`. The annotation's contents are
-// raw text and the frontend holds no span inside them, so a message about a
-// relation underlines the whole bracket -- which is the thing that is wrong
-// anyway.
-func relationTarget(a *syntax.Annotation) (string, bool) {
-	_, rest := splitWord(strings.TrimSpace(a.Text))
-	rest = strings.TrimSpace(rest)
-	if !strings.HasPrefix(rest, "(") || !strings.HasSuffix(rest, ")") {
-		return "", false
+// relationTarget reads the T of `references(T)` and says where it was written.
+//
+// The span is computed from an offset into the annotation's text rather than
+// taken off a token, because the frontend reads an annotation's contents no
+// further than the prefix and there are no tokens in here to take one off. That
+// is sound and not a guess: syntax.Annotation.Text is the slice of exactly
+// TextSpan, so an offset into the one is an offset into the other, and the two
+// cannot drift apart without the parser changing both.
+//
+// Which is what lets PROTOP0317 and PROTOP0318 underline the name they are
+// about. PROTOP0404 still underlines the whole bracket, and rightly: there the
+// annotation has no target to point at -- that is the mistake.
+func relationTarget(a *syntax.Annotation) (string, source.Span, bool) {
+	text := a.Text
+	i := skipSpace(text, 0)
+	_, i = wordAt(text, i) // `references` itself; isRelation matched it already
+	i = skipSpace(text, i)
+	if i == len(text) || text[i] != '(' {
+		return "", source.Span{}, false
 	}
-	name, tail := splitWord(strings.TrimSpace(rest[1 : len(rest)-1]))
-	if name == "" || strings.TrimSpace(tail) != "" {
-		return "", false
+	i = skipSpace(text, i+1)
+	name, end := wordAt(text, i)
+	if name == "" || strings.TrimSpace(text[end:]) != ")" {
+		return "", source.Span{}, false
 	}
-	return name, true
+	return name, source.Span{
+		Start: a.TextSpan.Start + source.Pos(i),
+		End:   a.TextSpan.Start + source.Pos(end),
+	}, true
 }
 
 // splitWord takes the leading identifier off s and returns it with the rest.
 func splitWord(s string) (word, rest string) {
-	i := 0
-	for i < len(s) && isIdentByte(s[i]) {
-		i++
+	_, end := wordAt(s, 0)
+	return s[:end], s[end:]
+}
+
+// wordAt reads the identifier starting at i and returns it with the offset one
+// past its last byte. An empty word means there was no identifier there.
+func wordAt(s string, i int) (word string, end int) {
+	end = i
+	for end < len(s) && isIdentByte(s[end]) {
+		end++
 	}
-	return s[:i], s[i:]
+	return s[i:end], end
+}
+
+// skipSpace returns the offset of the first non-space byte at or after i. It
+// counts the same runes strings.TrimSpace does, so that a span computed by
+// walking a string agrees with a check written by trimming one.
+func skipSpace(s string, i int) int {
+	rest := s[i:]
+	return i + len(rest) - len(strings.TrimLeftFunc(rest, unicode.IsSpace))
 }
 
 func isIdentByte(b byte) bool {
