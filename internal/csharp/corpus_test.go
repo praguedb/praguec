@@ -1571,6 +1571,89 @@ func corpusText(t *testing.T, root string) string {
 	return b.String()
 }
 
+// backtickedCall is a backticked span containing a `(`, which in section 3's
+// juxtaposition paragraph is the illustration and nothing else.
+var backtickedCall = regexp.MustCompile("`([^`]*\\([^`]*)`")
+
+// The illustration section 3 argues from, read out of the document rather than
+// copied into this file.
+//
+// Reading it rather than pinning it is the whole difference between this and a
+// sentence pin. A pinned string would fail when the sentence was edited, which
+// is what "decoration" means here; this fails when the illustration stops being
+// something the corpus carries, and passes when someone swaps it for a
+// different real one. The document is free to change its mind; it is not free
+// to argue from an attribute that does not exist.
+func section3CommaIllustration(t *testing.T) string {
+	t.Helper()
+	spec, err := os.ReadFile(specSection3)
+	if err != nil {
+		t.Fatal(err)
+	}
+	const lead = "**One bracket, one annotation. Stack by juxtaposition.**"
+	i := strings.Index(string(spec), lead)
+	if i < 0 {
+		t.Fatalf("%s no longer carries the juxtaposition rule, which is what this test is about", specSection3)
+	}
+	para := string(spec)[i:]
+	if j := strings.Index(para, "\n\n"); j >= 0 {
+		para = para[:j]
+	}
+	m := backtickedCall.FindStringSubmatch(para)
+	if m == nil {
+		t.Fatalf("%s argues that annotation contents already contain commas and now shows nothing "+
+			"that does; the paragraph is:\n\n%s", specSection3, para)
+	}
+	return m[1]
+}
+
+// Section 3's reason for having no separator between annotations is that the
+// contents already contain commas, and it shows one. `DataCacheContract` was
+// that one and occurs zero times under corpus/ -- the same name #43 measured at
+// zero and removed from section 1, surviving one file over because #43's census
+// was scoped to section 1 (#59).
+//
+// What goes red, and when. Both assertions are anchors; neither is about the
+// wording:
+//
+//   - the illustration occurs in the pin. Red when a re-pin stops carrying it,
+//     and red when someone substitutes another invention. Not red when the
+//     document swaps in a different attribute the corpus does have, which is
+//     correct: the claim is about the pin, not about which name was chosen.
+//
+//   - the illustration contains a comma. Red when it stops being evidence for
+//     the sentence it is evidence for. The paragraph's reasoning is "a
+//     separator that competes with them buys nothing", and an illustration
+//     whose arguments contain no comma leaves that standing on nothing at all
+//     -- which is a way for this to rot that replacing the name does not fix.
+//
+// Why this one illustration and not a census of the file. Section 1 is a
+// transcription and every name in it is measured; section 3 is a rules file and
+// its illustrations are allowed to be synthetic -- `[go: json:"sportGame"]` is
+// explicitly for a backend that does not exist, and syntax's parser fixture
+// uses a fictional attribute on purpose, because it is testing verbatim copying
+// and makes no claim about the corpus. Extending section 1's census here would
+// forbid all of that. This sentence is different because it says "which the pin
+// carries" out loud: prose that can go false becomes the thing the test reads.
+//
+// The chosen site is the corpus's only multi-argument attribute outside
+// deps/IBaseLiveData.cs, and there is exactly one of it. That is a thin thread
+// and this is what makes it a loud one: if the next pin drops it, this fails
+// and the illustration gets re-chosen, rather than quietly reverting to the
+// state #59 was filed about.
+func TestSection3sCommaIllustrationIsOneThePinCarries(t *testing.T) {
+	illustration := section3CommaIllustration(t)
+
+	if !strings.Contains(illustration, ",") {
+		t.Errorf("section 3 illustrates \"annotation contents already contain commas\" with `%s`, "+
+			"which contains none; the paragraph's reasoning has nothing left to stand on", illustration)
+	}
+	if whole := corpusText(t, corpusRoot); !strings.Contains(collapseSpace(whole), collapseSpace(illustration)) {
+		t.Errorf("section 3 argues from `%s` and says the pin carries it; no file under %s writes it. "+
+			"That is the defect #43 removed from section 1 and #59 found here", illustration, corpusRoot)
+	}
+}
+
 // --- small helpers ------------------------------------------------------------
 
 func keyNumber(id string) (int, bool) {

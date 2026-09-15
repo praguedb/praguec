@@ -57,6 +57,10 @@ const (
 var (
 	specSection1 = filepath.Join("..", "..", "docs", "spec", "protop", "shared-repository.md")
 	specSection2 = filepath.Join("..", "..", "docs", "spec", "protop", "service-repository.md")
+	// Section 3 lends this package no fixture, only the rule its emission obeys.
+	// One sentence of it makes a claim about the pin -- see
+	// TestSection3sCommaIllustrationIsOneThePinCarries.
+	specSection3 = filepath.Join("..", "..", "docs", "spec", "protop", "annotations.md")
 )
 
 func readFixture(t *testing.T, name string) string {

@@ -10,7 +10,7 @@ alias bet_type_id = id [cs: JsonIgnore];             // after the alias
 
 Legal on a table, record, struct, view, field, view member, or alias. Same rule everywhere.
 
-**One bracket, one annotation. Stack by juxtaposition.** No commas between annotations, because annotation contents already contain commas — `DataCacheContract(typeof(X), Role = Y)` — and a separator that competes with them buys nothing. Whitespace between brackets is insignificant, so a head carrying four annotations wraps freely across lines. protopc emits them in source order and never sorts or deduplicates.
+**One bracket, one annotation. Stack by juxtaposition.** No commas between annotations, because annotation contents already contain commas — `DataCacheIndex(nameof(FixtureIdIndex), nameof(FixtureId), DataCacheIndexType.Many)`, which the pin carries — and a separator that competes with them buys nothing. Whitespace between brackets is insignificant, so a head carrying four annotations wraps freely across lines. protopc emits them in source order and never sorts or deduplicates.
 
 **A prefix names the target language. No prefix means protop's own.**
 
