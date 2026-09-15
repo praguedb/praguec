@@ -1256,13 +1256,19 @@ table T {
 			// misunderstanding of what a view is, so the message says what a
 			// view is instead of what the parser expected.
 			//
-			// The `=` underline is #57's last entry, and the one #57 does not
-			// call a defect: the equals sign is where the mistake starts, and
-			// the message names the member anyway. It stays pinned here and in
-			// TestRenderOfTheDiagnosticsThisMilestoneAdds because #57 asks for
-			// the choice to be written down rather than inferred from two
-			// tests -- this is the writing down. If #57 rules it a defect the
-			// two pins move together.
+			// The `=` underline is a ruling and not a leftover. It was filed
+			// as a defect on the grounds that the tag is the offending thing;
+			// it was ruled correct, and parseViewMember carries the three
+			// reasons. In short: no tag would make the line right, so a caret
+			// under `5` invites the reader to try 6; the report is raised on a
+			// peek and `sport_type_id = ;` has no tag to underline at all, so
+			// the `=` is the only span every arm of the mistake has; and the
+			// message names the member, which leaves the caret free to show
+			// the repair -- delete from here to the `;`.
+			//
+			// Pinned here and in TestRenderOfTheDiagnosticsThisMilestoneAdds,
+			// and the arm below is the one that would break first if the span
+			// ever widened to take the tag with it.
 			name: "a tag on a view member",
 			src: `revision 1;
 namespace A;
@@ -1273,6 +1279,23 @@ view V of T {
 			wantCodes:   []diag.Code{diag.TagInViewMember},
 			wantMessage: "a view may not write a tag: `sport_type_id` is pinned to the tag its source gives it, and only the source extends the tag space; a tag added here is never written by the producer, so it would decode to nil forever while squatting a slot the source may later claim",
 			wantLine:    4, wantCol: 17,
+			wantSpan: underlines("="),
+		},
+		{
+			// The same mistake with nothing after the `=`, which is the arm
+			// that settles where PROTOP0308 has to point. There is no tag here
+			// to underline: the report is raised the moment the `=` is seen,
+			// before anything after it is read, and what follows may be
+			// nothing. A span taking in the tag would have no tag to take.
+			name: "a tag on a view member, with no tag written",
+			src: `revision 1;
+namespace A;
+view V of T {
+  sport_type_id = ;
+}
+`,
+			wantCodes: []diag.Code{diag.TagInViewMember},
+			wantLine:  4, wantCol: 17,
 			wantSpan: underlines("="),
 		},
 		{
@@ -1723,6 +1746,10 @@ func TestRenderOfTheDiagnosticsThisMilestoneAdds(t *testing.T) {
 			// The one that explains rather than reports. A tag in a view is not
 			// a token in the wrong place, so the message is about what a view
 			// is and what writing a tag in one would do on the wire.
+			//
+			// The caret is under the `=` deliberately -- see parseViewMember
+			// for why it is not under the tag -- and this golden is one of the
+			// two places that says so.
 			name: "a tag on a view member",
 			src:  "revision 1;\nnamespace A;\nview V of T {\n  sport_type_id = 5;\n}\n",
 			want: "x.protop:4:17: error PROTOP0308: a view may not write a tag: `sport_type_id` is " +

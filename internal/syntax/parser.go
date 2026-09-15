@@ -489,6 +489,27 @@ func (p *parser) parseViewMember() *ViewMember {
 	// reached this diagnostic at all: the `[` is not an `=`, so the member
 	// fell through to the annotations, and the `=` after them was reported as
 	// a missing `;` instead of as the thing it actually is.
+	//
+	// The underline is the `=` and not the number after it, and that is a
+	// ruling rather than an accident -- it was raised as one by the census that
+	// filed nanov/protobuf-to-messagepack-sharp#57, on the grounds that the
+	// offending thing is the tag. Three reasons it stays where it is:
+	//
+	// The number is not what is wrong. There is no tag that would make this
+	// line right, so a caret under `5` invites the reader to try 6 -- which is
+	// precisely the misunderstanding the message is written to undo. The `=` is
+	// the token that turns a selection into a tagged field, and it is therefore
+	// the first token in the line that could not be there.
+	//
+	// It is the only span every arm of this mistake has. The report is raised
+	// on a peek, before the tag is read, and the member is recovered rather
+	// than parsed further -- so `sport_type_id = ;` reaches here with no tag to
+	// underline at all. A span that exists in one spelling of a mistake and not
+	// in another is not a span the diagnostic can be written against.
+	//
+	// And the caret does not have to carry the identification: the message
+	// names the member itself. What the caret is for here is the repair, and
+	// the repair is to delete from the `=` to the `;`.
 	if p.at(KindAssign) {
 		p.bag.Raise(diag.TagInViewMember, p.peek().Span,
 			"a view may not write a tag: `%s` is pinned to the tag its source gives it, and only the source extends the tag space; a tag added here is never written by the producer, so it would decode to nil forever while squatting a slot the source may later claim",
