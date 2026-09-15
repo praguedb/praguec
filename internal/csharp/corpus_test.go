@@ -1237,6 +1237,83 @@ func TestSection1sStaticDataRefIsTheOneTheCorpusChecks(t *testing.T) {
 	}
 }
 
+// section1RunnersCaveat is the note section 1 carries above the member it is
+// about, quoted with that member on the end of it. The member is the citation:
+// #38 was filed because line numbers into these documents had rotted, and a pin
+// that named a line would rot the same way the next time the block moves.
+const section1RunnersCaveat = "  // Element type unverified against the pin. The corpus writes `List<Runner>`\n" +
+	"  // in this slot and `Runner` was never copied, so the pin cannot settle whether\n" +
+	"  // `StaticDataRef` here is faithful, a substitution, or an error.\n" +
+	"  // corpus/prague/SOURCE.md records the gap; tracked on #38.\n" +
+	"  list<StaticDataRef> runners = 47;"
+
+// runnerDeclared matches a C# declaration of Runner. The corpus USES the name
+// -- `List<Runner>` in both SportGame twins -- so an occurrence count would say
+// nothing; what is absent is a definition, which is what an oracle would be.
+var runnerDeclared = regexp.MustCompile(`\b(?:class|struct|record|interface|enum)\s+Runner\b`)
+
+// The one member of section 1 whose element type the pin cannot check, held to
+// the gap that makes that true.
+//
+// Everything else in that block is tied to a corpus line -- by
+// TestSection1AnnotatesOnlyWhatThePinCarries, by the StaticDataRef tie above,
+// by the coverage table. The note is the only thing saying that one member is
+// not, and two adversarial rounds found it deletable in lockstep with the suite
+// green: section 1 would then read as uniformly pin-backed, which is #43's
+// defect arriving by deletion instead of by invention.
+//
+// What goes red, and when. Three assertions and only one of them is about a
+// sentence:
+//
+//   - `List<Runner>` still in the pin, twice. ANCHOR. The note's first clause
+//     is a claim about the corpus; if the next pin drops the member or renames
+//     the type, the clause is false and nothing else in this file would notice.
+//
+//   - no corpus file DECLARES Runner. ANCHOR, and the half that is usually
+//     missed: it fails when the gap CLOSES. The day `Runner` is copied, the
+//     element type has an oracle, the note is a lie, and this is what says so.
+//     A test that only checked the note was present would let that lie stand
+//     forever -- which is the anchor-versus-decoration mistake this repository
+//     has now made six times, in its quieter direction.
+//
+//   - the note is in section 1, above `runners`. DECORATION, and named as
+//     such: what turns it red is someone editing or deleting the note. That is
+//     the half the ticket asked for and it is worth exactly what it costs --
+//     with the two above it, neither side of the pair can move alone.
+//
+// Why not the stronger, derived version. The obvious upgrade is to stop pinning
+// the note's text and instead compute, from the corpus, which of section 1's
+// element types have no declaration there, then require a caveat on exactly
+// those. It does not survive contact: `Odd` has no corpus declaration either
+// and correctly carries no caveat, because its tags are recoverable from
+// SlimOdd, which is a view of it, and Runner's are not. "Has an oracle" is not
+// "is declared", and the difference is a judgement per type -- so the derived
+// rule needs a hand-maintained exception beside it, which is the copy this
+// anchor exists to avoid. The conjunction is what can actually be held.
+func TestSection1sRunnersCaveatStandsExactlyWhileTheGapDoes(t *testing.T) {
+	whole := corpusText(t, corpusRoot)
+
+	if n := strings.Count(whole, "List<Runner>"); n != 2 {
+		t.Errorf("the pin has %d `List<Runner>` sites, not the two SportGame twins section 1's note "+
+			"describes; the note's first clause is about the corpus and has stopped matching it", n)
+	}
+	if decl := runnerDeclared.FindString(whole); decl != "" {
+		t.Errorf("the corpus now declares Runner (`%s`), so the element type of section 1's "+
+			"`list<StaticDataRef> runners = 47` has an oracle and the #38 caveat above it is false. "+
+			"The caveat goes, this assertion goes with it, and the transcription gets checked instead", decl)
+	}
+
+	spec, err := os.ReadFile(specSection1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(spec), section1RunnersCaveat) {
+		t.Errorf("section 1 no longer carries, above its `runners` member:\n\n%s\n\n"+
+			"The gap it records is still open -- the two assertions above just measured it -- so "+
+			"section 1 now reads as uniformly pin-backed when one member is not", section1RunnersCaveat)
+	}
+}
+
 // declText is one top-level declaration, from its head line to the `}` in
 // column zero that closes it.
 func declText(t *testing.T, src, head string) string {
