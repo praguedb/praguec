@@ -30,6 +30,9 @@ const (
 var (
 	specSection1 = filepath.Join("..", "..", "docs", "spec", "protop", "shared-repository.md")
 	specSection2 = filepath.Join("..", "..", "docs", "spec", "protop", "service-repository.md")
+	// Section 4 lends this package no fixture either. It is the authority for
+	// PROTOP0207 -- see TestSection4StatesTheBuiltinNameRuleWithoutCopyingTheSet.
+	specSection4 = filepath.Join("..", "..", "docs", "spec", "protop", "declaration-keywords.md")
 	// Section 5 lends this package no fixture, only rules. One of them is
 	// pinned, the same way and for the same reason a fixture is -- see
 	// assertSpecStates.
@@ -618,6 +621,75 @@ func TestEveryBuiltinTypeNameIsDiagnosedAtItsDeclaration(t *testing.T) {
 			assertSpanStartsAt(t, bag, 0, "a.protop:3:1")
 			assertMessageMentions(t, bag, 0, "`"+name+"` already names protop's built-in ")
 		})
+	}
+}
+
+// section4BuiltinNames is the rule the two tests above implement, quoted out of
+// section 4 -- which had nothing to say about a declaration's name at all until
+// #61, and was where a reader would have looked.
+//
+// The span stops at the reachability clause on purpose. The rule and the reason
+// for it are one claim: dropped to "a declaration may not be named with one of
+// protop's built-in type names" alone it reads as an arbitrary reserved-word
+// list, and a reserved-word list is a thing someone eventually writes out.
+const section4BuiltinNames = "**A declaration may not be named with one of protop's built-in type names.** " +
+	"The set is the language's own — its scalars and its collections — and it is referred to here " +
+	"rather than transcribed, because whether the scalar set is closed at all is one of the things " +
+	"this document deliberately leaves open (see the index's *Deliberately not covered*), and a copy " +
+	"of it in prose is a copy that goes stale without failing anything. The rule is about reachability " +
+	"and not about reserved words: a type written with such a name resolves to the built-in, so no " +
+	"field, view member or relation could ever spell its way to the declaration."
+
+// The citation for the two tests above, and the only assertion in this file
+// about a document rather than about the checker. It stands here rather than
+// with the other spec pins because its argument depends on standing here.
+//
+// Anchor or decoration, in the terms the last six of these were got wrong in.
+// Two halves, and they are not the same kind of thing:
+//
+//   - assertSpecStates is DECORATION, and is labelled that rather than dressed
+//     up. What turns it red is someone editing the sentence. It earns its place
+//     for the one job the section 5 pin does -- a test resting on the spec's
+//     authority should fail when the spec stops saying the thing, instead of
+//     going on enforcing a rule nobody writes down any more -- and it proves
+//     nothing whatever about the rule.
+//
+//   - the walk is the ANCHOR. What turns it red is a fact changing: section 4
+//     coming to name a member of the built-in set in code voice. That happens
+//     when someone transcribes the set into the prose, and it happens when
+//     `scalarTypes` or `collectionTypes` grows to include a word section 4
+//     already writes that way. Neither needs anyone to touch this file, which
+//     is the whole of why it goes through syntax.BuiltinTypeNames() and not
+//     through a list written here -- a list written here would be the fourth
+//     copy of the set, in the file complaining about the third.
+//
+// The rule's own truth is not re-asserted. It is asserted directly above, over
+// the same syntax.BuiltinTypeNames(), so the day the rule narrows to the
+// collections the person repairing those two tests is already reading this one.
+//
+// Where the walk gives up rather than widens: it reads the code form, the bare
+// backticked name, because that is how this document writes a type name and how
+// an enumeration in it would be written. Section 4's `list<T>` is a usage of a
+// collection rather than a naming of the set and passes for that reason. A
+// transcription in running prose with no backticks would pass too, and there is
+// no scan of the plain words to be had instead -- section 4 says "a struct
+// holding a string is allowed" about the English noun, and would fail one.
+func TestSection4StatesTheBuiltinNameRuleWithoutCopyingTheSet(t *testing.T) {
+	assertSpecStates(t, specSection4, section4BuiltinNames)
+
+	spec, err := os.ReadFile(specSection4)
+	if err != nil {
+		t.Fatal(err)
+	}
+	names := syntax.BuiltinTypeNames()
+	if len(names) == 0 {
+		t.Fatal("syntax.BuiltinTypeNames() is empty; the walk below would assert nothing")
+	}
+	for _, name := range names {
+		if strings.Contains(string(spec), "`"+name+"`") {
+			t.Errorf("%s writes `%s`: the rule is stated by reference to the built-in set, "+
+				"and a copy of the set in prose is the copy #32 would leave stale", specSection4, name)
+		}
 	}
 }
 
