@@ -723,8 +723,10 @@ func TestFormatString(t *testing.T) {
 // Format nobody set renders as.
 //
 // It is provisional: docs/research/proto-to-messagepack-csharp.md:924 and :1292
-// both say the MSVS form should be the default. The contradiction is filed, not
-// resolved, and this test is what a resolution would have to come and change.
+// both say the MSVS form should be the default. That contradiction is
+// nanov/protobuf-to-messagepack-sharp#64, filed rather than resolved, and this
+// test is the one thing a ruling for the MSVS form would have to come and
+// change.
 func TestTheDefaultFormatIsTerminalFirst(t *testing.T) {
 	var zero Format
 	if zero != GCC {

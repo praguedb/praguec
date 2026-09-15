@@ -227,8 +227,10 @@ func RenderAll(f *source.File, b *Bag) string {
 // should be the default, on the grounds that MSBuild parses it natively; a
 // terminal-first tool makes the caret renderer the default and the MSVS form a
 // flag, which is what protopc does here. The contradiction is in the record and
-// is filed rather than resolved -- nanov/protobuf-to-messagepack-sharp#49 says
-// to pick terminal-first provisionally and say so, and this is the saying.
+// is filed rather than resolved: nanov/protobuf-to-messagepack-sharp#64 is the
+// question, and until it is ruled the zero value below is the provisional
+// answer. #49 asked for exactly that -- a default picked provisionally, said
+// out loud, and filed -- and this is the saying.
 type Format int
 
 const (
