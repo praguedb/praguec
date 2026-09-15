@@ -404,8 +404,19 @@ func (p *parser) parseViewSource() (Ident, bool) {
 			return p.identOf(p.next()), true
 		}
 	}
-	tok := p.peek()
-	p.bag.Raise(diag.ViewSourceMissing, tok.Span,
+	// The underline is where the source belongs, and that is not the same
+	// place in the two ways of getting it wrong. `view V from T` wrote a word
+	// in the source position and got the word wrong, so the word is what the
+	// caret has to sit under. `view V {` and `view V of {` wrote nothing there
+	// at all, and the token the parser is looking at is the `{` -- the one part
+	// of the head that is RIGHT. Pointing at it says "delete this brace", which
+	// is the one repair that does not work. An empty span at the end of what
+	// was read points at the gap instead, which is where the missing words go.
+	span := source.SpanAt(p.prev().Span.End)
+	if tok := p.peek(); tok.Kind == KindIdent {
+		span = tok.Span
+	}
+	p.bag.Raise(diag.ViewSourceMissing, span,
 		"a view is a subset of one source and declares no members of its own; name that source, as in `view V %s SportGame { ... }`", ofWord)
 	return Ident{}, false
 }
@@ -1003,12 +1014,27 @@ func (p *parser) scanAnnotation(open Token) (text, whole source.Span, ok bool) {
 // is no before-slot, so the brackets are skipped and what follows them is read
 // as though they had not been written -- which is what gets the rest of the
 // line right and keeps one misplaced annotation to one diagnostic.
+//
+// The underline is the whole bracket and not the `[` that opens it. A message
+// reading "write THIS ONE after the member's tag" has to say which one, and a
+// caret under one character of seven does not -- while parseAnnotation, on the
+// accepted path, has always underlined the whole. One construct does not get
+// two spans depending on whether it was allowed.
+//
+// Which is why the scan runs before the report rather than after it: the whole
+// bracket is not known until its `]` is found. The visible consequence is the
+// order of two diagnostics about one `[`. An annotation that is both misplaced
+// and unterminated now reports PROTOP0403 first, and that is the better order
+// anyway -- the bracket that never closes is what has to be fixed before the
+// question of where it belongs is worth asking, and it is also why the
+// misplaced report underlines everything the scan swallowed.
 func (p *parser) rejectAnnotations(after string) {
 	for p.at(KindLBracket) {
 		open := p.next()
-		p.bag.Raise(diag.AnnotationNotAllowed, open.Span,
+		_, whole, ok := p.scanAnnotation(open)
+		p.bag.Raise(diag.AnnotationNotAllowed, whole,
 			"an annotation follows what it describes and there is no before-slot; write this one after %s", after)
-		if _, _, ok := p.scanAnnotation(open); !ok {
+		if !ok {
 			return
 		}
 	}
@@ -1228,6 +1254,17 @@ func (p *parser) parseEnumMember() *EnumMember {
 func (p *parser) peek() Token { return p.toks[p.i] }
 
 func (p *parser) at(k Kind) bool { return p.toks[p.i].Kind == k }
+
+// prev is the token most recently consumed, clamped to the first token so that
+// a caller reading behind the start of the file needs no bounds check. It is
+// what a diagnostic about something MISSING reports against: the gap opens at
+// the end of the last thing that was actually written.
+func (p *parser) prev() Token {
+	if p.i == 0 {
+		return p.toks[0]
+	}
+	return p.toks[p.i-1]
+}
 
 // peekAt looks n tokens ahead, clamped to the EOF token the lexer always emits
 // so that a lookahead past the end of the file needs no bounds check.

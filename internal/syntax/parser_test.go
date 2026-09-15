@@ -603,14 +603,16 @@ func underlines(s string) *string { return &s }
 // to what a user sees, and a test that reads it back out of the source is the
 // only thing that says how wide it is.
 //
-// Seven rows pin nothing, and say why in spanUnpinned. All seven are
-// nanov/protobuf-to-messagepack-sharp#57: PROTOP0100 and PROTOP0104 underline
-// each other's header line, and PROTOP0400 underlines the `[` rather than the
-// annotation its message says to move. Pinning a wrong underline is worse than
-// leaving it open -- it turns a defect into a golden that #57 then has to argue
-// with -- so those spans are left to #57 and the row records the debt instead
-// of hiding it. Three rows that were already pinned that way stay pinned, each
-// with the citation beside it.
+// Three rows pin nothing, and say why in spanUnpinned. All three are the header
+// pair: PROTOP0100 and PROTOP0104 report through headSpan, which is written as
+// the top of the file and renders as an underline of whatever token happens to
+// be first -- so "you are missing your revision" underlines `namespace`, and an
+// empty file degrades to a position with no snippet at all. Whether headSpan is
+// a token span or a file-position marker is a question about what a header
+// diagnostic MEANS rather than a span to swap, and it is filed on its own.
+// Pinning a wrong underline is worse than leaving it open -- it turns a defect
+// into a golden the fix then has to argue with -- so the row records the debt
+// instead of hiding it.
 //
 // Lexical diagnostics come first in the bag whatever their position, because
 // Parse tokenises the whole file before it reads a token of it.
@@ -839,7 +841,7 @@ struct S {
 			wantCodes:   []diag.Code{diag.AnnotationNotAllowed},
 			wantMessage: "an annotation follows what it describes and there is no before-slot; write this one after the declaration's name",
 			wantLine:    3, wantCol: 1,
-			spanUnpinned: "#57: PROTOP0400 underlines the `[` alone, not the annotation it says to move",
+			wantSpan: underlines(`[cs: DataCacheTopic("t")]`),
 		},
 		{
 			name: "annotation before a tag",
@@ -852,7 +854,7 @@ struct S {
 			wantCodes:   []diag.Code{diag.AnnotationNotAllowed},
 			wantMessage: "an annotation follows what it describes and there is no before-slot; write this one after the member's tag",
 			wantLine:    4, wantCol: 11,
-			spanUnpinned: "#57: PROTOP0400 underlines the `[` alone, not the annotation it says to move",
+			wantSpan: underlines("[cs: X]"),
 		},
 		{
 			// A backend protopc does not have. An unknown prefix is an error
@@ -1094,7 +1096,7 @@ struct S {
 			wantCodes:   []diag.Code{diag.AnnotationNotAllowed},
 			wantMessage: "an annotation follows what it describes and there is no before-slot; write this one after the member's tag",
 			wantLine:    4, wantCol: 3,
-			spanUnpinned: "#57: PROTOP0400 underlines the `[` alone, not the annotation it says to move",
+			wantSpan: underlines("[cs: X]"),
 		},
 		{
 			// The position that would have to mean "annotate the type" if any
@@ -1108,7 +1110,7 @@ struct S {
 `,
 			wantCodes: []diag.Code{diag.AnnotationNotAllowed},
 			wantLine:  4, wantCol: 9,
-			spanUnpinned: "#57: PROTOP0400 underlines the `[` alone, not the annotation it says to move",
+			wantSpan: underlines("[cs: Y]"),
 		},
 		{
 			// The backend set is closed, and closed means closed against every
@@ -1277,10 +1279,12 @@ view V of T {
 			// A view is a subset of one source. Without the `of` it is a subset
 			// of nothing, and it carries no tags of its own to fall back on.
 			//
-			// The `{` underline is #57's: the caret lands on the token AFTER
-			// the gap where the source belongs. Already checked in, so it is
-			// left pinned rather than loosened -- #57 moves it, and this pin is
-			// what will say so.
+			// The underline is the gap and not the `{` after it. Nothing was
+			// written where the source goes, and the `{` is the one part of the
+			// head that is right, so an empty span at the end of the name is
+			// what points at the words that are missing. An empty wantSpan is a
+			// pin and not a blank: it is the column that says where, and the
+			// empty slice that says the caret did not swallow the brace.
 			name: "a view with no `of`",
 			src: `revision 1;
 namespace A;
@@ -1290,8 +1294,8 @@ view V {
 `,
 			wantCodes:   []diag.Code{diag.ViewSourceMissing},
 			wantMessage: "a view is a subset of one source and declares no members of its own; name that source, as in `view V of SportGame { ... }`",
-			wantLine:    3, wantCol: 8,
-			wantSpan: underlines("{"),
+			wantLine:    3, wantCol: 7,
+			wantSpan: underlines(""),
 		},
 		{
 			// The word is `of` and not merely some word: a view head is a name,
@@ -1299,8 +1303,10 @@ view V {
 			// found in the middle would read `view V from T` as a view of `T`
 			// with the `from` silently thrown away.
 			//
-			// PROTOP0203's underline is #57's; this arm is the one where it
-			// lands on something the user did type.
+			// The one arm of PROTOP0203 whose underline is a token rather than
+			// a gap, and deliberately: a word WAS written in the source
+			// position and it is the wrong word, so the caret has something to
+			// sit under and sits under it.
 			name: "a view whose source is not introduced by `of`",
 			src: `revision 1;
 namespace A;
@@ -1316,7 +1322,9 @@ view V from T {
 			// The same mistake said the other way, and so the same code: the
 			// `of` is there and names nothing.
 			//
-			// `{` again, and #57's again -- see the `view with no of` row.
+			// The gap again, and after the `of` this time: the word that
+			// introduces the source is there and the source is not, so the
+			// caret sits where the name would have gone.
 			name: "a view whose `of` names nothing",
 			src: `revision 1;
 namespace A;
@@ -1325,8 +1333,8 @@ view V of {
 }
 `,
 			wantCodes: []diag.Code{diag.ViewSourceMissing},
-			wantLine:  3, wantCol: 11,
-			wantSpan: underlines("{"),
+			wantLine:  3, wantCol: 10,
+			wantSpan: underlines(""),
 		},
 		{
 			// The leading name of a view member narrows it to another view. A
@@ -1364,15 +1372,14 @@ view V of T {
 			// Section 3 gives an annotation one position, after what it
 			// describes, and a view body is not an exception to it.
 			//
-			// This is the `wantSpan: "["` #57 calls the trap. PROTOP0400 is
-			// raised with the span of the bracket TOKEN while the accepted
-			// path in the same file uses the whole-bracket span that the
-			// rejected path computes and discards, so a message reading "write
-			// this one after ..." underlines one character of the seven it
-			// means. It is left pinned because it was already checked in and
-			// #57 is what moves it -- but it is not precedent: the four other
-			// PROTOP0400 rows in this table are deliberately unpinned, which is
-			// what spanUnpinned records.
+			// This row used to pin `wantSpan: "["`: PROTOP0400 was raised with
+			// the span of the bracket TOKEN while the accepted path in the same
+			// file used the whole-bracket span that the rejected path computed
+			// and discarded, so a message reading "write this one after ..."
+			// underlined one character of the seven it meant. The rejected path
+			// now uses the same whole span, and the five PROTOP0400 rows in
+			// this table pin it -- one construct, one span, whether or not it
+			// was allowed where it was written.
 			name: "annotation before a view member",
 			src: `revision 1;
 namespace A;
@@ -1383,7 +1390,7 @@ view V of T {
 			wantCodes:   []diag.Code{diag.AnnotationNotAllowed},
 			wantMessage: "an annotation follows what it describes and there is no before-slot; write this one after the member's name",
 			wantLine:    4, wantCol: 3,
-			wantSpan: underlines("["),
+			wantSpan: underlines("[cs: X]"),
 		},
 		{
 			// Imports are grouped under the header. What a file depends on is a
@@ -1731,11 +1738,11 @@ func TestRenderOfTheDiagnosticsThisMilestoneAdds(t *testing.T) {
 			// the mistake is usually not knowing a view has a source at all.
 			name: "a view that names no source",
 			src:  "revision 1;\nnamespace A;\nview V {\n  name;\n}\n",
-			want: "x.protop:3:8: error PROTOP0203: a view is a subset of one source and declares no " +
+			want: "x.protop:3:7: error PROTOP0203: a view is a subset of one source and declares no " +
 				"members of its own; name that source, as in `view V of SportGame { ... }`\n" +
 				"  |\n" +
 				"3 | view V {\n" +
-				"  |        ^",
+				"  |       ^",
 		},
 		{
 			// The underline is the scalar alone and not the whole member: the
@@ -1776,6 +1783,65 @@ func TestRenderOfTheDiagnosticsThisMilestoneAdds(t *testing.T) {
 				t.Errorf("rendered:\n%s\nwant:\n%s", got, tt.want)
 			}
 		})
+	}
+}
+
+// A misplaced annotation is underlined entire, because the message tells the
+// user to move "this one" and a caret under one of twenty-five characters does
+// not say which one. The render is the whole of the point here -- the span and
+// the sentence only work together -- so it is pinned as a render.
+//
+// The accepted path has always underlined the whole bracket. This is the same
+// construct spanned the same way when it is rejected: one construct, one span,
+// and not two depending on whether the grammar had a slot for it.
+func TestRenderOfAMisplacedAnnotationUnderlinesTheWholeAnnotation(t *testing.T) {
+	src := "revision 1;\nnamespace A;\n[cs: DataCacheTopic(\"t\")]\nstruct S {\n  int64 a = 1;\n}\n"
+	f, _, bag := parse(t, src)
+	if bag.Len() != 1 {
+		t.Fatalf("got %d diagnostics, want 1:\n%s", bag.Len(), diag.RenderAll(f, bag))
+	}
+	want := "x.protop:3:1: error PROTOP0400: an annotation follows what it describes and there is " +
+		"no before-slot; write this one after the declaration's name\n" +
+		"  |\n" +
+		"3 | [cs: DataCacheTopic(\"t\")]\n" +
+		"  | ^^^^^^^^^^^^^^^^^^^^^^^^^"
+	if got := diag.Render(f, bag.All()[0]); got != want {
+		t.Errorf("rendered:\n%s\nwant:\n%s", got, want)
+	}
+}
+
+// One `[` that is both in the wrong place and never closed says both things,
+// and says the unclosed one first.
+//
+// The order is a consequence of the span rather than a preference: the whole
+// annotation is not known until its `]` is found, so the scan runs before the
+// report that underlines it, and the scan is what raises PROTOP0403. It is also
+// the order a user wants -- the bracket that never closes is what has to be
+// fixed before where it belongs is worth discussing -- which is why it is
+// pinned here rather than left to fall out.
+//
+// What the misplaced report underlines in this case is how far the unclosed
+// bracket reached: every token after the `[`, up to and including the `}` that
+// stopped the scan -- the brace of the body the annotation sits in, which is
+// where one unclosed bracket is kept from swallowing the declaration around it.
+// The render clamps the caret to the first line, so what a user sees is the run
+// of `^` across the line that was written wrong.
+func TestAMisplacedAnnotationThatIsAlsoUnterminatedSaysBoth(t *testing.T) {
+	f, _, bag := parse(t, "revision 1;\nnamespace A;\nstruct S {\n  int64 a [cs: X = 1;\n}\n")
+
+	var got []diag.Code
+	for _, d := range bag.All() {
+		got = append(got, d.Code)
+	}
+	want := []diag.Code{diag.UnterminatedAnnotation, diag.AnnotationNotAllowed, diag.UnexpectedToken}
+	if !slices.Equal(got, want) {
+		t.Fatalf("codes = %v, want %v:\n%s", got, want, diag.RenderAll(f, bag))
+	}
+	if underlined := f.Slice(bag.All()[0].Span); underlined != "[" {
+		t.Errorf("PROTOP0403 underlines %q, want the `[` that has to be closed", underlined)
+	}
+	if underlined := f.Slice(bag.All()[1].Span); underlined != "[cs: X = 1;\n}" {
+		t.Errorf("PROTOP0400 underlines %q, want how far the unclosed bracket reached", underlined)
 	}
 }
 
