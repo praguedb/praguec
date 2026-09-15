@@ -470,12 +470,26 @@ func TestDuplicateDeclarationsAreDiagnosed(t *testing.T) {
 // A declaration cannot take a name protop's own type system already holds.
 //
 // The language has no keyword token kinds -- that is load-bearing and is not in
-// question here -- so `record list { ... }` parses like any other declaration.
-// Before this rule it was then accepted in silence, and the only complaint came
-// from a downstream `list refs = 2;` as a PROTOP0306 about its arity: a use site
-// telling the user about the wrong line, with the bad declarations above it
-// unremarked. The mistake is the declaration, so the diagnostic is at the
-// declaration.
+// question here -- so `record list { ... }` parses like any other declaration,
+// and before this rule it was then accepted in silence. The mistake is the
+// declaration, so the diagnostic is at the declaration.
+//
+// What the rule does NOT do, written down here because ad53268's commit message
+// and the first version of this comment both claimed otherwise: it does not
+// replace the PROTOP0306 that #39 was reported through. A file that also writes
+// the downstream `list refs = 2;` does not parse -- a bare `list` is the
+// parser's arity diagnostic -- and Check returns nil on a bag that already has
+// errors, so for THAT file no PROTOP0207 is reached at all. The input the
+// ticket was filed about is not the input this rule reports on.
+// TestADownstreamParseErrorKeepsTheBuiltinRuleFromRunning pins that, and
+// whether the gate should hold for the 0200 group is a question of its own and
+// not this rule's to answer by accident.
+//
+// It is worth having for the file that DOES parse, which is most of a schema's
+// life: one under development, or one where the unnameable declaration simply
+// has no use site yet. There the user is told at the declaration -- the only
+// line where a fix exists, because a type written `list` is read as the
+// collection and the declaration has no second spelling that reaches it.
 //
 // All five declaration keywords, and both closed sets. The collections are what
 // #39 was reported about; a scalar has exactly the same shape, and a rule that
@@ -518,6 +532,52 @@ table T {
 	// word is derived from the sets rather than written beside the rule.
 	assertMessageMentions(t, bag, 0, "protop's built-in generic type")
 	assertMessageMentions(t, bag, 2, "protop's built-in scalar type")
+}
+
+// The input #39 was reported through does not reach the rule above, and that is
+// a stated fact rather than an unmentioned surprise.
+//
+// Two unnameable declarations and a downstream `list refs = 2;`: the bare `list`
+// is PROTOP0306 at the PARSER, Check returns nil when the bag already has
+// errors, and so the two declarations above it are told nothing. The user is
+// shown the use site and not the declarations -- which is the complaint #39 was
+// filed about, and is NOT what PROTOP0207 fixed.
+//
+// Pinned, not repaired. Whether a parse error should suppress checker
+// diagnostics is a question about the whole 0200 group, and
+// TestCheckDoesNotRunOnATreeThatDidNotParse below is the deliberate contract
+// that answers it today; widening that here would decide a much larger thing as
+// a side effect of a rule about names. This test is what fails, loudly and with
+// the reason beside it, on the day someone does decide it.
+func TestADownstreamParseErrorKeepsTheBuiltinRuleFromRunning(t *testing.T) {
+	f := source.NewFile("a.protop", `revision 1;
+namespace A;
+record list {
+  int64 x = 1;
+}
+record string {
+  int64 y = 1;
+}
+record Holder {
+  list refs = 2;
+}
+`)
+	var bag diag.Bag
+	set := FileSet{"a.protop": {Source: f, File: syntax.Parse(f, &bag)}}
+	if schema := Check(set, &bag); schema != nil {
+		t.Error("Check returned a model for a file that did not parse")
+	}
+	// Exactly one diagnostic, and it is the parser's, at the use site. NOT the
+	// two PROTOP0207s at 3:1 and 6:1 that the same file without line 10 gets --
+	// the assertion is the absence, so the codes are held as a sequence and not
+	// as a membership test.
+	assertCodes(t, set, &bag, diag.TypeArgumentCountWrong)
+	// Positioned off the source file rather than through assertSpanStartsAt: a
+	// parser diagnostic carries no File, because the parser is handed one and
+	// never has a second to disambiguate against.
+	if got := f.Position(bag.All()[0].Span.Start).String(); got != "a.protop:10:3" {
+		t.Errorf("the one diagnostic is at %s, want the use site at a.protop:10:3", got)
+	}
 }
 
 // Every name in either closed set, walked rather than listed.
@@ -579,6 +639,61 @@ struct my_string {
 		if schema.File("a.protop").Decl(name) == nil {
 			t.Errorf("`%s` is not in the model; it names nothing protop has", name)
 		}
+	}
+}
+
+// A MEMBER may take a built-in type name. The rule is confined to declarations,
+// and this is what holds it there.
+//
+// `int64 string = 1;` is legal and has to stay legal: a member name is looked
+// up in the declaration that carries it and never in the type system, so
+// nothing about it competes with the scalar. Only a DECLARATION's name is what
+// a type gets written as, and so only a declaration's name can be taken.
+//
+// Held by a fixture because it was held by nothing else. Measured: moving the
+// raise out of declareOne and into addMember, guarded by
+// syntax.IsBuiltinTypeName on the member's name, leaves every OTHER test in the
+// repository green and examples/prague/*.protop clean -- no member in the
+// corpus happens to be named like a built-in, so neither the suite nor the
+// corpus knew the boundary was there. This test is the only thing that fails.
+//
+// The field names are read from syntax.BuiltinTypeNames rather than written
+// out, for the same reason the positive walk does: a seventh scalar added to
+// the parser is then also proved still legal on a member, with no edit here.
+// The alias and the view rename are hand-written, because a second loop over
+// the same names would only collide with the fields -- but all three member
+// forms funnel into one addMember, and a fixture of fields alone would leave
+// two of its three callers unpinned.
+func TestAMemberMayTakeABuiltinTypeName(t *testing.T) {
+	names := syntax.BuiltinTypeNames()
+	if len(names) == 0 {
+		t.Fatal("syntax.BuiltinTypeNames() is empty; the fixture below would carry no member")
+	}
+	var b strings.Builder
+	b.WriteString("revision 1;\nnamespace A;\ntable T {\n  key int64 id = 1;\n")
+	for i, name := range names {
+		fmt.Fprintf(&b, "  int64 %s = %d;\n", name, i+2)
+	}
+	b.WriteString("}\ntable U {\n  key int64 id = 1;\n  alias list = id;\n  alias string = id;\n}\nview V of T {\n  id as double;\n}\n")
+
+	schema := checkClean(t, map[string]string{"a.protop": b.String()})
+
+	// Each one arrived under the name it was written with. checkClean says
+	// nothing was reported; this says the members are in the model rather than
+	// silently dropped, which is the other way the rule could have eaten them.
+	f := schema.File("a.protop")
+	for _, name := range names {
+		if f.Decl("T").Member(name) == nil {
+			t.Errorf("`T` has no member named `%s`; a member name is not a type name", name)
+		}
+	}
+	for _, name := range []string{"list", "string"} {
+		if f.Decl("U").Member(name) == nil {
+			t.Errorf("`U` has no alias named `%s`", name)
+		}
+	}
+	if f.Decl("V").Member("double") == nil {
+		t.Error("`V` has no member named `double`; a view rename may land on a built-in name too")
 	}
 }
 
