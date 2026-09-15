@@ -765,6 +765,12 @@ view V of string {
 // declaration -- this whole thing is unreachable, because nothing can spell its
 // way to it -- so it underlines the whole thing. PROTOP0204 is about the name
 // alone, because renaming that one word is the entire fix.
+//
+// Which is why all three are held by EXTENT and not by where they start. A
+// start alone would let 0207 collapse to a caret and let 0204 grow back to the
+// declaration, and either way the sentence above would still read as true while
+// the thing it describes had gone. The extents ARE the decision; the columns
+// are only how it shows.
 func TestTwoDeclarationsOfOneBuiltinNameRaiseBoth(t *testing.T) {
 	set, _, bag := checkSet(t, map[string]string{
 		"a.protop": `revision 1;
@@ -779,9 +785,60 @@ record list {
 	})
 	assertCodes(t, set, bag,
 		diag.BuiltinTypeDeclared, diag.BuiltinTypeDeclared, diag.DuplicateDeclaration)
-	assertSpanStartsAt(t, bag, 0, "a.protop:3:1")
-	assertSpanStartsAt(t, bag, 1, "a.protop:6:1")
-	assertSpanStartsAt(t, bag, 2, "a.protop:6:8")
+	const whole = "record list {\n  int64 a = 1;\n}"
+	assertAt(t, set, bag, 0, "a.protop:3:1", whole)
+	assertAt(t, set, bag, 1, "a.protop:6:1", strings.Replace(whole, "a = 1", "b = 1", 1))
+	assertAt(t, set, bag, 2, "a.protop:6:8", "list")
+}
+
+// PROTOP0204's underline is the name for all five declaration keywords.
+//
+// One row per keyword because the span comes from five separate assignments --
+// check.declareOne type-switches over the five AST types and each arm builds
+// its own Decl -- so covering one covers one. A suite whose every duplicate
+// fixture happened to be `struct S` then `record S` held two of the five and
+// read as though it held them all.
+//
+// A dropped assignment does not widen the underline back to the declaration,
+// which would at least be recognisable. It leaves a zero span, and a zero span
+// is position 0: the diagnostic reports at line 1, column 1, and sends the
+// reader to the `revision` at the top of a file whose fault is forty lines
+// down. That is the failure this pins against, and it is worse than the one
+// the span fix was for.
+//
+// The first declaration is a `struct` in every row so that only the second
+// keyword varies, and the column each row expects is the width of its own
+// keyword plus a space -- which is the assertion, since a span taken from the
+// declaration rather than the name would sit in column 1 for all five and a
+// zero span would sit at 1:1 for all five.
+func TestADuplicateUnderlinesTheNameForEveryDeclarationKeyword(t *testing.T) {
+	const preamble = `revision 1;
+namespace A;
+table Src {
+  key int64 id = 1;
+}
+struct S {
+  int64 x = 1;
+}
+`
+	tests := []struct {
+		kind   string
+		second string
+		at     string
+	}{
+		{"struct", "struct S {\n  int64 y = 1;\n}\n", "a.protop:9:8"},
+		{"record", "record S {\n  int64 y = 1;\n}\n", "a.protop:9:8"},
+		{"table", "table S {\n  key int64 id = 1;\n}\n", "a.protop:9:7"},
+		{"view", "view S of Src {\n  id;\n}\n", "a.protop:9:6"},
+		{"enum", "enum S {\n  A = 0;\n}\n", "a.protop:9:6"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.kind, func(t *testing.T) {
+			set, _, bag := checkSet(t, map[string]string{"a.protop": preamble + tt.second})
+			assertCodes(t, set, bag, diag.DuplicateDeclaration)
+			assertAt(t, set, bag, 0, tt.at, "S")
+		})
+	}
 }
 
 // A name declared in an imported file is not a duplicate of one declared here.
