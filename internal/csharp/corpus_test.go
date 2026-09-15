@@ -1019,40 +1019,41 @@ func TestCorpusCensus(t *testing.T) {
 // #43 found were names or forms of names.
 // Section 1 transcribes the pin, and this is what holds it to that.
 //
-// The predicate is the whole annotation, not its name. `DataCacheTopic` was
-// always a real name in the corpus; what #43 was filed about was the *form* it
-// was written in. A census that matched names certified
-// `[cs: DataCacheTopic(TopicNames.Invented.Nonsense)]` -- the exact defect it
-// was built to fail -- so every `[cs: ...]` in section 1 is normalised to the
-// C# attribute it emits and looked for whole in the pin.
+// Three questions, and the block has to answer all three.
 //
-// What it sits on is part of the match, at both levels. The corpus writes
-// `[JsonIgnore]` and `[DataCacheKey]` on properties and never on a class, and
-// `[DataCacheTopic]` and `[BsonIgnoreExtraElements]` on classes and never on a
-// property -- column zero is the line the corpus files draw themselves. Below
-// that line the match is finer still: a member annotation has to occur in the
-// pin on the property this member emits, because `[DataCacheKey]` is as real an
-// attribute as `[DataCacheFromTimestamp]` and putting it on `timestamp` would
-// otherwise have been free. In the pin it sits on `Id` and on `EventId`, never
-// on a `Timestamp`.
+// *Is it the pin's text?* Not its name: `DataCacheTopic` was always a real name
+// in the corpus, and what #43 was filed about was the form it was written in. A
+// census that matched names certified
+// `[cs: DataCacheTopic(TopicNames.Invented.Nonsense)]`, the exact defect it was
+// built to fail. So the whole annotation is normalised for whitespace and
+// matched whole.
 //
-// Where the pin cannot answer, and where this test gives up rather than widens:
+// *Is it the pin's text on this subject?* The pin is 29 files and matching
+// against all of them at once is a bag of 38 head texts and 6 member texts for
+// the seven slots section 1 uses -- enough slack to swap the two topic strings
+// between the two tables, or to move `[BsonIgnoreExtraElements]` off the record
+// onto a table, with every character still occurring somewhere in the corpus.
+// The prose under the block already says which corpus file each of these
+// follows; section1Follows is that sentence, and each annotation is matched
+// against the one declaration it names. Prose that can go false becomes the
+// thing the test reads.
 //
-//   - Normalisation is whitespace and nothing else. An annotation naming a
-//     section 1 declaration -- `SportGame`, where the pin's class is
-//     `BPSportGameCacheItem` -- would match no corpus line and this test would
-//     fail it. None does today. If one ever must, the answer is a second and
-//     explicitly narrower assertion for that annotation, not a widening of this
-//     one: a census that falls back to matching the name is the census this
-//     replaced.
-//   - A type-level annotation is matched against the whole pin and not against
-//     the class section 1's declaration corresponds to, because it does not
-//     correspond to one: `SportGame` is emitted from this block and
-//     `BPSportGameCacheItem` is a hand-written file, and the coverage table
-//     above is where that relation is stated. So moving a real class attribute
-//     from one table head to the other would pass here.
-//   - An attribute the corpus wrapped over two lines would fail here rather
-//     than pass quietly. There is none.
+// *Is it protopc's to write?* An annotation naming an attribute the emitter
+// already emits is not a transcription question at all -- it is CS0579 in the
+// one block of the spec that claims to be emittable. `[cs: MessagePackObject]`
+// on a table emits the attribute twice and the worked example stops compiling.
+// That set is derived from the emitter rather than listed here, by emitting
+// section 1 with its annotations stripped and reading back what protopc wrote
+// unbidden, so a fifth attribute added to the backend joins it without anyone
+// remembering to.
+//
+// Where the census gives up rather than widens: normalisation is whitespace and
+// nothing else, so an annotation naming a section 1 declaration -- `SportGame`,
+// where the pin's class is `BPSportGameCacheItem` -- would match nothing and
+// fail here. None does today. Order within one member's stack is pinned by
+// `want` against section 1 and is not measured against the corpus; it is
+// meaningful to protopc, which emits in source order and never sorts, but
+// inert to C#.
 func TestSection1AnnotatesOnlyWhatThePinCarries(t *testing.T) {
 	got := csAnnotations(readFixture(t, pragueFixture))
 
@@ -1062,40 +1063,155 @@ func TestSection1AnnotatesOnlyWhatThePinCarries(t *testing.T) {
 	// three. These are the seven, in source order, and any edit to the block's
 	// annotations is meant to be an edit to this list as well.
 	want := []csAnnotation{
-		{onType: true, text: "[BsonIgnoreExtraElements]"},
-		{onType: true, text: "[DataCache(CacheClassName = nameof(Prague.Models.BPSportGameCache))]"},
-		{onType: true, text: `[DataCacheTopic("Cache.[v:brandId].SportGame")]`},
-		{onType: true, text: "[DataCache(CacheClassName = nameof(Prague.Models.BPBetTypeCache))]"},
-		{onType: true, text: `[DataCacheTopic("Cache.[v:brandId].BetType")]`},
-		{member: "Timestamp", text: "[DataCacheIndex(DataCacheIndexType.Range)]"},
-		{member: "Timestamp", text: "[DataCacheFromTimestamp]"},
+		{decl: "StaticDataRef", text: "[BsonIgnoreExtraElements]"},
+		{decl: "SportGame", text: "[DataCache(CacheClassName = nameof(Prague.Models.BPSportGameCache))]"},
+		{decl: "SportGame", text: `[DataCacheTopic("Cache.[v:brandId].SportGame")]`},
+		{decl: "BetType", text: "[DataCache(CacheClassName = nameof(Prague.Models.BPBetTypeCache))]"},
+		{decl: "BetType", text: `[DataCacheTopic("Cache.[v:brandId].BetType")]`},
+		{decl: "BetType", member: "timestamp", text: "[DataCacheIndex(DataCacheIndexType.Range)]"},
+		{decl: "BetType", member: "timestamp", text: "[DataCacheFromTimestamp]"},
 	}
 	if !slices.Equal(got, want) {
 		t.Errorf("section 1 writes these annotations:\n  %v\nand this test expects:\n  %v", got, want)
 	}
 
-	// The census runs over what section 1 actually writes rather than over the
-	// list above, so that editing both in lockstep -- which is what a change to
-	// the block looks like -- still has to answer to the corpus.
-	onType, onMember := corpusAttributes(corpusText(t, corpusRoot))
-	if len(onType) == 0 || len(onMember) == 0 {
-		t.Fatalf("read %d declaration-head attributes and %d property attributes out of %s; a census of nothing passes for free",
-			len(onType), len(onMember), corpusRoot)
-	}
+	// Everything below runs over what section 1 actually writes rather than over
+	// the list above, so that editing both in lockstep -- which is what a change
+	// to the block looks like -- still has to answer to the corpus.
 	if len(got) == 0 {
 		t.Fatalf("section 1 writes no `[cs: ...]` at all; nothing was censused")
 	}
+
+	emits := protopcsOwnAttributes(t)
+	if len(emits) == 0 {
+		t.Fatal("read no attributes at all out of an emission of section 1; the collision check would pass for free")
+	}
+	seen := map[csAnnotation]bool{}
 	for _, a := range got {
-		where, ok := "on any type", onType[a.text]
-		if !a.onType {
-			where, ok = "on its property "+a.member, onMember[[2]string{a.member, a.text}]
+		if n := attributeName(a.text); slices.Contains(emits, n) {
+			t.Errorf("section 1 writes %s and protopc emits [%s] on its own; "+
+				"the two land in the same attribute list and C# rejects the duplicate (CS0579), "+
+				"so this is not a form the block can carry however the pin writes it", a, n)
 		}
+		if seen[a] {
+			t.Errorf("section 1 writes %s twice; protopc emits annotations in source order and "+
+				"never deduplicates, so the emission carries both and C# rejects it (CS0579)", a)
+		}
+		seen[a] = true
+	}
+
+	for _, a := range got {
+		subject := a.decl
+		if a.member != "" {
+			subject += "." + a.member
+		}
+		file, ok := section1Follows[subject]
 		if !ok {
-			t.Errorf("section 1 writes %s and no file under %s carries that attribute %s; "+
-				"section 1 transcribes the pin, so a form the pin does not carry belongs in a ticket, not in the spec",
-				a, corpusRoot, where)
+			t.Errorf("section 1 annotates %s and the paragraph under the block does not say which "+
+				"corpus declaration %s follows; an annotation with no named subject has no oracle, so "+
+				"either the paragraph gains a clause and section1Follows gains a row, or the annotation "+
+				"belongs in a ticket", subject, subject)
+			continue
+		}
+		onType, onMember := corpusFileAttributes(t, file)
+		if len(onType)+len(onMember) == 0 {
+			t.Fatalf("read no attributes at all out of %s; a census of nothing passes for free", file)
+		}
+		where, carried := "on its type", onType[a.text]
+		if a.member != "" {
+			where, carried = "on its property "+pascal(a.member), onMember[[2]string{pascal(a.member), a.text}]
+		}
+		if !carried {
+			t.Errorf("section 1 writes %s and %s -- the file the paragraph under the block says it "+
+				"follows -- does not carry that attribute %s; section 1 transcribes the pin, so a form "+
+				"the pin does not carry there belongs in a ticket, not in the spec", a, file, where)
 		}
 	}
+}
+
+// section1Follows is the paragraph under section 1's block, as a map.
+//
+// The paragraph is docs/spec/protop/shared-repository.md:114, the one that
+// opens "This section transcribes; it does not aspire."
+//
+// That paragraph names a corpus file for every annotation in the block: the two
+// table heads follow the two BP payload files, the record head follows
+// deps/StaticDataRef.cs, and the pair on `timestamp` follows SlimBetType.cs --
+// which is a different file from the one BetType's head follows, because
+// BPBetTypeCacheItem.cs writes `Timestamp` with nothing on it but its `[Key]`.
+//
+// It is hand-written because it is that sentence's own claim and not an
+// inference from anything: no rule relates section 1's `SportGame` to the pin's
+// `BPSportGameCacheItem`, the coverage table above is where that relation is
+// stated, and a map derived from a guess would agree with whatever it guessed.
+// The two must move together -- editing the paragraph without editing this map
+// leaves the spec asserting one thing and the test checking another, which is
+// the shape of the defect #43 was filed about.
+var section1Follows = map[string]string{
+	"StaticDataRef":     corpusRoot + "/deps/StaticDataRef.cs",
+	"SportGame":         corpusRoot + "/payloads/BPSportGameCacheItem.cs",
+	"BetType":           corpusRoot + "/payloads/BPBetTypeCacheItem.cs",
+	"BetType.timestamp": corpusRoot + "/payloads/SlimBetType.cs",
+}
+
+// protopcsOwnAttributes is every attribute name protopc writes without being
+// asked, read off an emission of section 1 with its annotations stripped.
+//
+// Derived rather than listed: the emitter writes four today -- csharp.go:197,
+// :242, :322 and :349 -- and section 1 reaches all four, having a simple key, a
+// composite key and an alias in it. A fifth added to the backend appears here
+// the moment it is emitted, which a hand-written list would not do.
+func protopcsOwnAttributes(t *testing.T) []string {
+	t.Helper()
+	var out []string
+	for _, u := range emitSource(t, map[string]string{"stripped.protop": stripCSAnnotations(readFixture(t, pragueFixture))}) {
+		for _, ln := range strings.Split(u.Source, "\n") {
+			trimmed := strings.TrimSpace(ln)
+			if !strings.HasPrefix(trimmed, "[") {
+				continue
+			}
+			if n := attributeName(trimmed); n != "" && !slices.Contains(out, n) {
+				out = append(out, n)
+			}
+		}
+	}
+	sort.Strings(out)
+	return out
+}
+
+// stripCSAnnotations removes every `[cs: ...]` from a protop source and leaves
+// the rest of it parseable.
+func stripCSAnnotations(src string) string {
+	var b strings.Builder
+	for _, ln := range strings.Split(src, "\n") {
+		for _, br := range bracketed(ln) {
+			if strings.HasPrefix(br, "[cs:") {
+				ln = strings.Replace(ln, br, "", 1)
+			}
+		}
+		b.WriteString(strings.TrimRight(ln, " \t"))
+		b.WriteString("\n")
+	}
+	return b.String()
+}
+
+// attributeName is the identifier an attribute leads with: `Key` out of
+// `[Key(24)]`, `DataCacheTopic` out of `[DataCacheTopic("...")]`.
+func attributeName(attr string) string {
+	m := regexp.MustCompile(`^\[\s*([A-Za-z_][A-Za-z0-9_]*)`).FindStringSubmatch(attr)
+	if m == nil {
+		return ""
+	}
+	return m[1]
+}
+
+func corpusFileAttributes(t *testing.T, path string) (map[string]bool, map[[2]string]bool) {
+	t.Helper()
+	b, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return corpusAttributes(string(b))
 }
 
 // Section 1's `record StaticDataRef` is the same declaration as
@@ -1147,19 +1263,18 @@ func readExample(t *testing.T, name string) string {
 }
 
 // csAnnotation is one `[cs: ...]` site in a protop source: the C# attribute it
-// emits, whether it sits on a declaration head or on a member, and -- when it is
-// a member's -- the property name that member emits.
+// emits and the subject it is written on -- a declaration, or a member of one.
 type csAnnotation struct {
-	onType bool
+	decl   string
 	member string
 	text   string
 }
 
 func (a csAnnotation) String() string {
-	if a.onType {
-		return a.text + " (on a declaration head)"
+	if a.member == "" {
+		return a.text + " on " + a.decl
 	}
-	return a.text + " (on the member " + a.member + ")"
+	return a.text + " on " + a.decl + "." + a.member
 }
 
 // csAnnotations is every `[cs: ...]` in a protop source, in source order, each
@@ -1169,14 +1284,14 @@ func (a csAnnotation) String() string {
 // A declaration's annotations are the ones between its head line, which starts
 // in column zero, and the `{` that opens its body; everything else belongs to a
 // member.
-var declStart = regexp.MustCompile(`^(table|record|struct|view|enum)\s`)
+var declStart = regexp.MustCompile(`^(?:table|record|struct|view|enum)\s+([A-Za-z_][A-Za-z0-9_]*)`)
 
 func csAnnotations(src string) []csAnnotation {
 	var out []csAnnotation
-	inHead := false
+	decl, inHead := "", false
 	for _, ln := range strings.Split(src, "\n") {
-		if declStart.MatchString(ln) {
-			inHead = true
+		if m := declStart.FindStringSubmatch(ln); m != nil {
+			decl, inHead = m[1], true
 		}
 		for _, br := range bracketed(ln) {
 			body, ok := strings.CutPrefix(br, "[cs:")
@@ -1184,9 +1299,9 @@ func csAnnotations(src string) []csAnnotation {
 				continue // `[references(...)]` is protop's own and emits nothing
 			}
 			body = strings.TrimSuffix(body, "]")
-			a := csAnnotation{onType: inHead, text: "[" + collapseSpace(body) + "]"}
+			a := csAnnotation{decl: decl, text: "[" + collapseSpace(body) + "]"}
 			if !inHead {
-				a.member = pascal(memberName(ln))
+				a.member = memberName(ln)
 			}
 			out = append(out, a)
 		}
@@ -1271,6 +1386,65 @@ func memberName(ln string) string {
 // identifier -- RE2 has no greedy submatch, and without that boundary the group
 // is satisfied by the name's last letter alone.
 var csProperty = regexp.MustCompile(`^\s+public\s.*[^A-Za-z0-9_]([A-Za-z_][A-Za-z0-9_]*)\s*(?:\{|=>)`)
+
+// The two levels corpusAttributes draws, asserted directly rather than only
+// through section 1.
+//
+// Both are load-bearing against a real mutation -- `[cs: JsonIgnore]` on a table
+// head is admissible without the column-zero split, and `[cs: DataCacheKey]` on
+// `timestamp` is admissible without the property binding, since the pin carries
+// both texts in the file each maps to. But a guard is only exercised by the
+// mutation it stops, and neither level is visible in a green run: collapsing
+// either one leaves the whole suite passing until someone writes the annotation
+// it was there to catch. This is the test that fails instead.
+//
+// The input is the shape of corpus/prague/payloads/SlimBetType.cs:83-86 and of
+// a class head, which is where the distinction comes from.
+func TestCorpusAttributesKeepsHeadAndPropertyApart(t *testing.T) {
+	onType, onMember := corpusAttributes(`[MessagePackObject]
+[DataCacheTopic("Cache.[v:brandId].BetType")]
+public sealed partial class BPBetTypeCacheItem
+{
+    [Key(24)]
+    [DataCacheIndex(DataCacheIndexType.Range)]
+    [DataCacheFromTimestamp]
+    public long Timestamp { get; set; }
+
+    [JsonIgnore]
+    public long BetTypeId { get; set; }
+}
+`)
+	for _, want := range []string{"[MessagePackObject]", `[DataCacheTopic("Cache.[v:brandId].BetType")]`} {
+		if !onType[want] {
+			t.Errorf("%s is written in column zero and did not land on the type", want)
+		}
+	}
+	for _, notWanted := range []string{"[JsonIgnore]", "[DataCacheFromTimestamp]", "[Key(24)]"} {
+		if onType[notWanted] {
+			t.Errorf("%s is written on a property and landed on the type; "+
+				"without that split, a real property attribute is admissible on a table head", notWanted)
+		}
+	}
+	for _, want := range [][2]string{
+		{"Timestamp", "[DataCacheIndex(DataCacheIndexType.Range)]"},
+		{"Timestamp", "[DataCacheFromTimestamp]"},
+		{"BetTypeId", "[JsonIgnore]"},
+	} {
+		if !onMember[want] {
+			t.Errorf("%s did not land on the property %s", want[1], want[0])
+		}
+	}
+	for _, notWanted := range [][2]string{
+		{"BetTypeId", "[DataCacheFromTimestamp]"},
+		{"Timestamp", "[JsonIgnore]"},
+	} {
+		if onMember[notWanted] {
+			t.Errorf("%s landed on the property %s, which is not the one it annotates; "+
+				"without that binding, any property attribute of a file is admissible on any member of it",
+				notWanted[1], notWanted[0])
+		}
+	}
+}
 
 // corpusAttributes is every C# attribute the pin writes, keyed by what it is
 // written on: a line starting in column zero annotates the type, and an
