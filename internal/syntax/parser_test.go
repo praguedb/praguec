@@ -290,6 +290,7 @@ enum BetTypeStatus
   SUSPENDED = 2
   CLOSED = 3
 record StaticDataRef
+  [cs: BsonIgnoreExtraElements]
   int64 id = 1
   string name = 2
   string? provider_source_key = 3
@@ -299,7 +300,7 @@ record Odd
   double odds_actual = 9
   int64 timestamp = 5
 table SportGame
-  [cs: DataCache(CacheClassName = nameof(BPSportGameCache))]
+  [cs: DataCache(CacheClassName = nameof(Prague.Models.BPSportGameCache))]
   [cs: DataCacheTopic("Cache.[v:brandId].SportGame")]
   reserved 8..14, 16..23, 25..27, 29..34, 37..46, 48..54
   key int64 event_id = 1
@@ -321,7 +322,7 @@ table SportGame
   StaticDataRef? home_team = 58
   StaticDataRef? away_team = 59
 table BetType
-  [cs: DataCache(CacheClassName = nameof(BPBetTypeCache))]
+  [cs: DataCache(CacheClassName = nameof(Prague.Models.BPBetTypeCache))]
   [cs: DataCacheTopic("Cache.[v:brandId].BetType")]
   reserved 5, 6, 10..21, 23, 24
   key key = 1 (event_id, bet_type_id)
@@ -333,7 +334,7 @@ table BetType
   BetTypeStatus? status_manual = 8
   BetTypeStatus? status_watch_dog = 9
   decimal(4)? limit_manual_single = 22
-  int64 timestamp = 25 [cs: DataCacheFromTimestamp]
+  int64 timestamp = 25 [cs: DataCacheIndex(DataCacheIndexType.Range)] [cs: DataCacheFromTimestamp]
   list<Odd> odds = 26
 `)
 

@@ -212,16 +212,35 @@ func assertVerbatim(t *testing.T, specPath, fixtureName string) {
 // it.
 func TestSpecSection1SaysItTranscribes(t *testing.T) {
 	assertSpecStates(t, specSection1, section1Transcribes)
+	assertSpecStates(t, specSection1, section1RuleForWhatIsAbsent)
 }
 
+// Two paragraphs, and the second is the load-bearing one.
+//
+// The first says what the block does; TestSection1AnnotatesOnlyWhatThePinCarries
+// is what actually holds the block to it, and this pin only keeps the section
+// from quietly dropping the claim. The second states the forward-looking rule --
+// a form the pin does not yet show belongs in a ticket -- which no test can
+// derive from the block, because it is about what is *absent* from it. Deleting
+// that paragraph used to pass green; it is pinned here for that reason.
 const section1Transcribes = "**This section transcribes; it does not aspire.** " +
-	"Every annotation above is written in the form " +
+	"Every annotation above is written in the form some corpus file writes it, on " +
+	"the kind of declaration that file writes it on: the two table heads follow " +
 	"`corpus/prague/payloads/BPSportGameCacheItem.cs` and `BPBetTypeCacheItem.cs` " +
-	"write it — the topic is a string literal, because all eleven " +
-	"`[DataCacheTopic]` sites in the pin pass one and not one of them names a " +
-	"`TopicNames` constant. Annotations no corpus file carries are not shown here " +
-	"at all: `DataCacheContract` and `DataCacheIgnoreEquality` stood in this block " +
-	"until #43 measured them at zero occurrences corpus-wide and removed them."
+	"down to the qualified `nameof`, the record head follows " +
+	"`corpus/prague/deps/StaticDataRef.cs`, and the pair on `timestamp` follows " +
+	"`corpus/prague/payloads/SlimBetType.cs`. The topic is a string literal, " +
+	"because all eleven `[DataCacheTopic]` sites in the pin pass one and not one " +
+	"of them names a `TopicNames` constant. Annotations no corpus file carries are " +
+	"not shown here at all: `DataCacheContract` and `DataCacheIgnoreEquality` " +
+	"stood in this block until #43 measured them at zero occurrences corpus-wide " +
+	"and removed them."
+
+const section1RuleForWhatIsAbsent = "The rule that produced those edits is the " +
+	"one worth keeping. A form protop should be able to carry, but that the pin " +
+	"does not yet show, belongs in a ticket and not in this section — because the " +
+	"emission of this block is checked against golden files, and a golden file " +
+	"cannot tell aspiration from transcription. It will certify either."
 
 // assertSpecStates is assertVerbatim for prose. A fenced block is a fixture and
 // can be held byte for byte; a paragraph is written to be read, and a pin that

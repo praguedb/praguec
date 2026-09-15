@@ -3,7 +3,7 @@ using MessagePack;
 namespace Common.IntegratedEventApi.Cache.Prague.Models;
 
 [MessagePackObject]
-[DataCache(CacheClassName = nameof(BPSportGameCache))]
+[DataCache(CacheClassName = nameof(Prague.Models.BPSportGameCache))]
 [DataCacheTopic("Cache.[v:brandId].SportGame")]
 public sealed partial class SportGame
 {

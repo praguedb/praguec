@@ -28,7 +28,9 @@ enum BetTypeStatus {
 }
 
 // --- RECORDS ----------------------------------------------------------------
-record StaticDataRef {
+record StaticDataRef
+  [cs: BsonIgnoreExtraElements]
+{
   int64   id                  = 1;
   string  name                = 2;
   string? provider_source_key = 3;
@@ -43,7 +45,7 @@ record Odd {
 
 // --- TABLE, SIMPLE KEY ------------------------------------------------------
 table SportGame
-  [cs: DataCache(CacheClassName = nameof(BPSportGameCache))]
+  [cs: DataCache(CacheClassName = nameof(Prague.Models.BPSportGameCache))]
   [cs: DataCacheTopic("Cache.[v:brandId].SportGame")]
 {
   reserved 8..14, 16..23, 25..27, 29..34, 37..46, 48..54;
@@ -83,7 +85,7 @@ table SportGame
 
 // --- TABLE, COMPOSITE KEY ---------------------------------------------------
 table BetType
-  [cs: DataCache(CacheClassName = nameof(BPBetTypeCache))]
+  [cs: DataCache(CacheClassName = nameof(Prague.Models.BPBetTypeCache))]
   [cs: DataCacheTopic("Cache.[v:brandId].BetType")]
 {
   reserved 5, 6, 10..21, 23, 24;
@@ -103,13 +105,13 @@ table BetType
 
   decimal(4)? limit_manual_single = 22;
 
-  int64 timestamp = 25 [cs: DataCacheFromTimestamp];
+  int64 timestamp = 25 [cs: DataCacheIndex(DataCacheIndexType.Range)] [cs: DataCacheFromTimestamp];
 
   list<Odd> odds = 26;
 }
 ```
 
-**This section transcribes; it does not aspire.** Every annotation above is written in the form `corpus/prague/payloads/BPSportGameCacheItem.cs` and `BPBetTypeCacheItem.cs` write it — the topic is a string literal, because all eleven `[DataCacheTopic]` sites in the pin pass one and not one of them names a `TopicNames` constant. Annotations no corpus file carries are not shown here at all: `DataCacheContract` and `DataCacheIgnoreEquality` stood in this block until #43 measured them at zero occurrences corpus-wide and removed them.
+**This section transcribes; it does not aspire.** Every annotation above is written in the form some corpus file writes it, on the kind of declaration that file writes it on: the two table heads follow `corpus/prague/payloads/BPSportGameCacheItem.cs` and `BPBetTypeCacheItem.cs` down to the qualified `nameof`, the record head follows `corpus/prague/deps/StaticDataRef.cs`, and the pair on `timestamp` follows `corpus/prague/payloads/SlimBetType.cs`. The topic is a string literal, because all eleven `[DataCacheTopic]` sites in the pin pass one and not one of them names a `TopicNames` constant. Annotations no corpus file carries are not shown here at all: `DataCacheContract` and `DataCacheIgnoreEquality` stood in this block until #43 measured them at zero occurrences corpus-wide and removed them.
 
 The rule that produced those edits is the one worth keeping. A form protop should be able to carry, but that the pin does not yet show, belongs in a ticket and not in this section — because the emission of this block is checked against golden files, and a golden file cannot tell aspiration from transcription. It will certify either.
 

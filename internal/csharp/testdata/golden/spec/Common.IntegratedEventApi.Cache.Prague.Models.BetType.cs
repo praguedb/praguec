@@ -3,7 +3,7 @@ using MessagePack;
 namespace Common.IntegratedEventApi.Cache.Prague.Models;
 
 [MessagePackObject]
-[DataCache(CacheClassName = nameof(BPBetTypeCache))]
+[DataCache(CacheClassName = nameof(Prague.Models.BPBetTypeCache))]
 [DataCacheTopic("Cache.[v:brandId].BetType")]
 public sealed partial class BetType
 {
@@ -40,6 +40,7 @@ public sealed partial class BetType
     public decimal? LimitManualSingle { get; set; }
 
     [Key(24)]
+    [DataCacheIndex(DataCacheIndexType.Range)]
     [DataCacheFromTimestamp]
     public long Timestamp { get; set; }
 

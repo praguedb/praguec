@@ -3,6 +3,7 @@ using MessagePack;
 namespace Common.IntegratedEventApi.Cache.Prague.Models;
 
 [MessagePackObject]
+[BsonIgnoreExtraElements]
 public class StaticDataRef
 {
     [Key(0)]

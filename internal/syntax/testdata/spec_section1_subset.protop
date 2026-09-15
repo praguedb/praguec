@@ -23,7 +23,9 @@ enum BetTypeStatus {
 }
 
 // --- RECORDS ----------------------------------------------------------------
-record StaticDataRef {
+record StaticDataRef
+  [cs: BsonIgnoreExtraElements]
+{
   int64   id                  = 1;
   string  name                = 2;
   string? provider_source_key = 3;
@@ -38,7 +40,7 @@ record Odd {
 
 // --- TABLE, SIMPLE KEY ------------------------------------------------------
 table SportGame
-  [cs: DataCache(CacheClassName = nameof(BPSportGameCache))]
+  [cs: DataCache(CacheClassName = nameof(Prague.Models.BPSportGameCache))]
   [cs: DataCacheTopic("Cache.[v:brandId].SportGame")]
 {
   reserved 8..14, 16..23, 25..27, 29..34, 37..46, 48..54;
@@ -78,7 +80,7 @@ table SportGame
 
 // --- TABLE, COMPOSITE KEY ---------------------------------------------------
 table BetType
-  [cs: DataCache(CacheClassName = nameof(BPBetTypeCache))]
+  [cs: DataCache(CacheClassName = nameof(Prague.Models.BPBetTypeCache))]
   [cs: DataCacheTopic("Cache.[v:brandId].BetType")]
 {
   reserved 5, 6, 10..21, 23, 24;
@@ -98,7 +100,7 @@ table BetType
 
   decimal(4)? limit_manual_single = 22;
 
-  int64 timestamp = 25 [cs: DataCacheFromTimestamp];
+  int64 timestamp = 25 [cs: DataCacheIndex(DataCacheIndexType.Range)] [cs: DataCacheFromTimestamp];
 
   list<Odd> odds = 26;
 }
