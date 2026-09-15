@@ -2644,6 +2644,104 @@ table T
 	check("an alias source", alias.Source.Span, "odds")
 }
 
+// Annotation.TextSpan is exactly where Text was written, in every shape an
+// annotation comes in.
+//
+// The field's own doc comment says "Text is the slice of exactly this span, so
+// the two cannot drift", and internal/check leans on that sentence rather than
+// on a check of its own: PROTOP0317 and PROTOP0318 find the relation target by
+// scanning Text for a byte offset and then adding that offset to TextSpan.Start.
+// If the two ever described different stretches of the file, the underline
+// would land somewhere in the file with nothing here objecting, and the only
+// coordinate check downstream is the start -- so a TextSpan that kept the right
+// start and the wrong end would pass the whole suite.
+//
+// It is not unbreakable by construction. It is one line of parseAnnotation
+// holding it: the same span is sliced for Text and stored as TextSpan, and the
+// shapes below are the ones where a plausible edit -- store the token span,
+// store the bracket's, take the end from `whole` -- would separate them.
+//
+// The last row is the one that matters most and is why the list is not just
+// "an annotation". An unterminated annotation is where Text and Span genuinely
+// diverge: the text stops at the last token read, and the bracket span runs on
+// to the `}` the scan gave up at. Everywhere else the wrong end is off by a
+// character or two and might read as right.
+func TestAnAnnotationsTextSpanIsWhereItsTextWasWritten(t *testing.T) {
+	assert := func(t *testing.T, f *source.File, a *Annotation, wantText string) {
+		t.Helper()
+		if a.Text != wantText {
+			t.Errorf("Text is %q, want %q", a.Text, wantText)
+		}
+		if got := f.Slice(a.TextSpan); got != a.Text {
+			t.Errorf("TextSpan covers %q, but Text is %q", got, a.Text)
+		}
+	}
+
+	t.Run("the shapes that parse", func(t *testing.T) {
+		f, file := parseClean(t, `revision 1;
+namespace A;
+table T [cs: Topic("t")] {
+  key int64 id = 1 [references(Other)];
+  int64 a = 2 [cs: Attr(1, "a ] in a string")];
+  int64 b = 3 [   cs:   padded   ];
+  int64 c = 4 [cs: Nested[1]];
+}
+`)
+		tbl, ok := file.Decls[0].(*Table)
+		if !ok {
+			t.Fatalf("the declaration is %T, want *Table", file.Decls[0])
+		}
+		// A prefix is not part of the contents, so the span starts after the
+		// prefix and not after the `[`.
+		assert(t, f, tbl.Annotations[0], `Topic("t")`)
+
+		want := []string{
+			// No prefix: the contents begin at the `[`.
+			"references(Other)",
+			// A `]` inside a string closes nothing, so the contents run past it.
+			`Attr(1, "a ] in a string")`,
+			// Padding is not contents. Text is trimmed of it and the span has
+			// to be trimmed the same way, or the two describe different bytes.
+			"padded",
+			// A bracket inside the contents is balanced rather than closing.
+			"Nested[1]",
+		}
+		for i, w := range want {
+			m, ok := tbl.Members[i].(*Field)
+			if !ok {
+				t.Fatalf("member %d is %T, want *Field", i, tbl.Members[i])
+			}
+			assert(t, f, m.Annotations[0], w)
+		}
+	})
+
+	t.Run("one that does not close", func(t *testing.T) {
+		f, file, bag := parse(t, "revision 1;\nnamespace A;\nstruct S {\n  int64 a = 1 [cs: X = 1;\n}\n")
+		var got []diag.Code
+		for _, d := range bag.All() {
+			got = append(got, d.Code)
+		}
+		if want := []diag.Code{diag.UnterminatedAnnotation}; !slices.Equal(got, want) {
+			t.Fatalf("codes = %v, want %v:\n%s", got, want, diag.RenderAll(f, bag))
+		}
+		st, ok := file.Decls[0].(*Struct)
+		if !ok {
+			t.Fatalf("the declaration is %T, want *Struct", file.Decls[0])
+		}
+		m, ok := st.Members[0].(*Field)
+		if !ok {
+			t.Fatalf("the member is %T, want *Field", st.Members[0])
+		}
+		// The bracket span runs to the `}` the scan gave up at; the text stops
+		// at the last token actually read. This is the row an end taken from
+		// the bracket span fails by a visible amount.
+		assert(t, f, m.Annotations[0], "X = 1;")
+		if got := f.Slice(m.Annotations[0].Span); got != "[cs: X = 1;\n}" {
+			t.Errorf("the bracket spans %q, want it to run to the brace", got)
+		}
+	})
+}
+
 // `key` is written in front of the type, so a member that carries it has to
 // span from the `key` and not from the type -- a stage that quotes the member
 // by span has to get back the line that was written. This is the last leading

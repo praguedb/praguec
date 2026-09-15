@@ -306,8 +306,13 @@ type Annotation struct {
 	// this the checker could say `T` is unknown while underlining a bracket
 	// that is otherwise fine.
 	//
-	// An offset into Text is TextSpan.Start plus that offset: Text is the slice
-	// of exactly this span, so the two cannot drift.
+	// An offset into Text is TextSpan.Start plus that offset, because Text is
+	// the slice of exactly this span. That is one line of parseAnnotation
+	// holding it rather than anything structural -- nothing here would notice a
+	// TextSpan that kept the right start and took its end from the bracket --
+	// so it is pinned as an invariant by
+	// TestAnAnnotationsTextSpanIsWhereItsTextWasWritten, which is where to look
+	// before changing either.
 	TextSpan source.Span
 
 	// Span is the whole bracket, `[` to `]`. It is what a diagnostic about the
