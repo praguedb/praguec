@@ -147,10 +147,12 @@ var coverage = []corpusRow{
 	// The 11 hand-written halves. #25 owns whether protopc emits a shell at
 	// all; until it rules, none of these is protopc's output to check.
 	//
-	// SOURCE.md says every shell is empty. Eight of the eleven are not: the
-	// BO and BP shells carry a `Clear()`, and the Search ones carry more. That
-	// is evidence for #25 rather than against the corpus -- the hand-written
-	// half is not a formality that could be generated away.
+	// SOURCE.md records that only three of the eleven are empty --
+	// LiveObjectCache, SlimBetTypeCache and SlimSportGameCache. The other eight
+	// carry a `Clear()` written against members the generator emits, and the
+	// Search ones carry more. That is evidence for #25 rather than against the
+	// corpus -- the hand-written half is not a formality that could be
+	// generated away.
 	{Path: "shells/BOBetTypeCache.cs", Blocked: shellBlocked},
 	{Path: "shells/BOLiveObjectCache.cs", Blocked: shellBlocked},
 	{Path: "shells/BOSearchCache.cs", Blocked: shellBlocked},
@@ -1215,6 +1217,155 @@ func TestTheInvariantsDocumentMatchesTheCorpus(t *testing.T) {
 		}
 	})
 
+	// The prose around the entries restates numbers the entries already carry.
+	// A restatement is a second copy of a fact, so it is a second place the
+	// document can be wrong in -- and it was: a heading reading 203 over a
+	// paragraph reading 999 is exactly the drift #38 was opened about, one
+	// section later. Every figure below is one this test already derived.
+	t.Run("tally prose", func(t *testing.T) {
+		raw, detwinned := corpusTally(t)
+		u := unwrapped(doc)
+		by := map[string]int{}
+		for _, e := range detwinned {
+			by[e.Label] = e.N
+		}
+		total := sumEntries(detwinned)
+		_, _, payloads := corpusDeclShapes(t)
+
+		// The de-twinning rule's own arithmetic: how many files it starts from,
+		// how many pairs it collapses, how many it counts, and what it gets.
+		m := docPhrase(t, u, reRawProse)
+		wantPayloads, _ := strconv.Atoi(m[1])
+		wantRaw, _ := strconv.Atoi(m[2])
+		if wantPayloads != payloads || wantRaw != raw {
+			t.Errorf("the rule reads %d payload files for %d keyed members; the corpus has %d files and %d",
+				wantPayloads, wantRaw, payloads, raw)
+		}
+		if got := docPhrase(t, u, reTwinPairs)[1]; got != cardinal(t, len(detwinnedDrops)) {
+			t.Errorf("the rule drops %d files, one per twin pair, and calls that %q", len(detwinnedDrops), got)
+		}
+		if got := docPhrase(t, u, reRemaining)[1]; got != cardinal(t, payloads-len(detwinnedDrops)) {
+			t.Errorf("the rule counts %d files and calls that %q", payloads-len(detwinnedDrops), got)
+		}
+		if n, _ := strconv.Atoi(docPhrase(t, u, reDetwinnedProse)[1]); n != total {
+			t.Errorf("the rule's own paragraph says it totals %d; the entries total %d", n, total)
+		}
+
+		// Collapsing relationship 3 as well is the road not taken, and the
+		// document quotes where it leads. It is LiveObjectCacheItem's keys and
+		// nothing else -- the twins' copies of them are already dropped.
+		if n, _ := strconv.Atoi(docPhrase(t, u, reCollapse)[1]); n != total-corpusKeyed(t, "LiveObjectCacheItem.cs") {
+			t.Errorf("collapsing the LiveObject triplet as well gives %d, not the %d the document quotes",
+				total-corpusKeyed(t, "LiveObjectCacheItem.cs"), n)
+		}
+
+		// The sentence that exists because the pair under it was transposed.
+		// Both halves of it are the tally: the ratio and the sum.
+		nonNull, nullable := by["StaticDataRef"], by["StaticDataRef?"]
+		if nullable == 0 || nonNull%nullable != 0 {
+			t.Fatalf("StaticDataRef %d against StaticDataRef? %d is not a whole ratio, so the "+
+				"document's \"N to one\" phrasing cannot be checked as written", nonNull, nullable)
+		}
+		if got := docPhrase(t, u, reRatio)[1]; got != cardinal(t, nonNull/nullable) {
+			t.Errorf("StaticDataRef %d outnumbers StaticDataRef? %d %s to one, not %q",
+				nonNull, nullable, cardinal(t, nonNull/nullable), got)
+		}
+		if got := docPhrase(t, u, reTenUses)[1]; got != cardinal(t, nonNull+nullable) {
+			t.Errorf("StaticDataRef is used by %d members, not %q", nonNull+nullable, got)
+		}
+		// Written once as a word above and as a digit in the section it cites.
+		// Every place it is written has to agree, and one of them has to exist.
+		uses := reUsedBy.FindAllStringSubmatch(u, -1)
+		if len(uses) == 0 {
+			t.Fatalf("%s no longer says how many members use StaticDataRef anywhere", invariantsDoc)
+		}
+		for _, hit := range uses {
+			if n, _ := strconv.Atoi(hit[1]); n != nonNull+nullable {
+				t.Errorf("%q, but %d members are typed StaticDataRef or StaticDataRef?", hit[0], nonNull+nullable)
+			}
+		}
+
+		// The money/odds split and the int count, each restated a paragraph
+		// after the entry it restates.
+		m = docPhrase(t, u, reMoneyOdds)
+		for i, label := range []string{"decimal?", "double", "double?"} {
+			if n, _ := strconv.Atoi(m[i+1]); n != by[label] {
+				t.Errorf("the money/odds sentence says %s %d; the tally says %d", label, n, by[label])
+			}
+		}
+		if got := docPhrase(t, u, reNinthInt)[1]; got != ordinal(t, by["int"]+1) {
+			t.Errorf("`int` is %d keyed members, so the unkeyed FixtureIdIndex is the %s in the "+
+				"directory, not the %q", by["int"], ordinal(t, by["int"]+1), got)
+		}
+		if n, _ := strconv.Atoi(docPhrase(t, u, reValueTuple)[1]); n != by["ValueTuple"] {
+			t.Errorf("the document counts %d ValueTuple members in prose and %d in the tally", n, by["ValueTuple"])
+		}
+
+		// `Absent entirely` is the tally's complement, so a type cannot be in
+		// both. Nothing else about the list is checked -- `Guid` and `float`
+		// are absences, and a test cannot derive a name that is not there.
+		for _, name := range backticked(docParagraph(t, u, "Absent entirely: ")) {
+			for _, label := range []string{name, name + "?"} {
+				if _, in := by[label]; in {
+					t.Errorf("`%s` is listed as absent entirely and carries %d members in the tally",
+						name, by[label])
+				}
+			}
+		}
+	})
+
+	// The one figure in this document that changes with the de-twinning rule,
+	// and the reason the rule is keep-BP rather than keep-BO. It decided which
+	// copy the tally counts, and until now nothing derived it: on a re-pin,
+	// TestMemberAttributesAreEnumerated fails and gets updated, and this rots
+	// in silence.
+	t.Run("attribute co-tenancy", func(t *testing.T) {
+		dci := corpusDataCacheIndex(t)
+		u := unwrapped(doc)
+
+		// Under the rule, they are all on members. If a re-pin ever leaves a
+		// type-level one standing, the sentence below stops being true and no
+		// count in it would say so.
+		if dci.OnTypes != 0 {
+			t.Errorf("the de-twinning rule leaves %d type-level [DataCacheIndex] standing, and the "+
+				"document says the annotations sit on members", dci.OnTypes)
+		}
+		for _, re := range []*regexp.Regexp{reDCIMembers, reDCIAgain} {
+			if n, _ := strconv.Atoi(docPhrase(t, u, re)[1]); n != dci.OnMembers {
+				t.Errorf("%v reads %d member-level [DataCacheIndex]; under the rule there are %d",
+					re, n, dci.OnMembers)
+			}
+		}
+
+		// The raw count is the one the document tells its reader to trust,
+		// because it is the one no rule can move.
+		_, _, payloads := corpusDeclShapes(t)
+		m := docPhrase(t, u, reDCIRaw)
+		wantPayloads, _ := strconv.Atoi(m[1])
+		wantRaw, _ := strconv.Atoi(m[2])
+		wantMembers, _ := strconv.Atoi(m[3])
+		if wantPayloads != payloads {
+			t.Errorf("the raw count reads %d payload files; there are %d", wantPayloads, payloads)
+		}
+		if wantRaw != dci.RawOnMembers+dci.RawOnTypes || wantMembers != dci.RawOnMembers {
+			t.Errorf("the corpus writes %d [DataCacheIndex], %d of them on members; the document says %d and %d",
+				dci.RawOnMembers+dci.RawOnTypes, dci.RawOnMembers, wantRaw, wantMembers)
+		}
+		if got := m[4]; got != cardinal(t, dci.RawOnTypes) {
+			t.Errorf("%d sit on a type, not %q", dci.RawOnTypes, got)
+		}
+
+		// And the road not taken, quoted so the choice can be re-examined
+		// rather than taken on faith.
+		m = docPhrase(t, u, reDCIKeepBO)
+		if n, _ := strconv.Atoi(m[1]); n != dci.KeepBOOnMembers {
+			t.Errorf("keeping the BO side gives %d member-level [DataCacheIndex], not %d", dci.KeepBOOnMembers, n)
+		}
+		if got := m[2]; got != cardinal(t, dci.KeepBOOnTypes) {
+			t.Errorf("keeping the BO side leaves %d type-level, not %q", dci.KeepBOOnTypes, got)
+		}
+	})
+
 	t.Run("declaration shape", func(t *testing.T) {
 		sealed, exceptions, total := corpusDeclShapes(t)
 
@@ -1230,6 +1381,13 @@ func TestTheInvariantsDocumentMatchesTheCorpus(t *testing.T) {
 		// wrong: SlimOdd is a bare `public class`, which csharp.go's view row
 		// and TestCorpusCensus's three declaration rows both already encode,
 		// and which the document used to contradict.
+		//
+		// Copy-editor's warning: this reads every backticked name up to the
+		// first ". ", so the sentence has to name the three and then stop.
+		// "`BOVenue` and `Venue` are both `struct`, and `SlimOdd`" is true and
+		// fails here, because `struct` is not a type name. That is the safe
+		// direction -- it fails loudly and in front of you rather than
+		// silently agreeing -- but reword the second sentence, not the first.
 		exLine := docLine(t, doc, "- The exceptions are ")
 		if cut := strings.Index(exLine, ". "); cut >= 0 {
 			exLine = exLine[:cut]
@@ -1373,6 +1531,209 @@ var (
 	reTallyHeading = regexp.MustCompile(`^## Type tally \((\d+) de-twinned members; (\d+) raw\)$`)
 	reShapeBullet  = regexp.MustCompile("^- (\\d+) of (\\d+) payloads are `public sealed partial class`")
 )
+
+// The figures the prose restates. These are matched against the document with
+// its paragraphs unwrapped, because prose wraps and a claim that moved onto the
+// next line is not a claim that changed. Each still has to match in exactly one
+// place: a number restated twice is a number that can disagree with itself.
+var (
+	reRawProse       = regexp.MustCompile(`across all (\d+) payload files that is (\d+)\.`)
+	reTwinPairs      = regexp.MustCompile(`the (\w+) BO \x{2194} BP twin pairs`)
+	reRemaining      = regexp.MustCompile(`counts the remaining (\w+) files once each`)
+	reDetwinnedProse = regexp.MustCompile(`That is (\d+)\.`)
+	reCollapse       = regexp.MustCompile(`Collapsing that as well gives (\d+)\.`)
+	reRatio          = regexp.MustCompile("`StaticDataRef` outnumbers `StaticDataRef[?]` (\\w+) to one")
+	reTenUses        = regexp.MustCompile(`the (\w+) uses line up with`)
+	reUsedBy         = regexp.MustCompile(`Used by (\d+) members`)
+	reMoneyOdds      = regexp.MustCompile("The `decimal[?]` (\\d+) are all money and the `double` (\\d+) / `double[?]` (\\d+) are all odds")
+	reNinthInt       = regexp.MustCompile("`FixtureIdIndex` is a (\\w+) `public int`")
+	reValueTuple     = regexp.MustCompile(`ValueTuple counts [*]members[*], (\d+) of them`)
+
+	reDCIMembers = regexp.MustCompile("(\\d+) `\\[DataCacheIndex\\]` annotations sit on [*][*]members[*][*] under the de-twinning rule")
+	reDCIAgain   = regexp.MustCompile(`That (\d+) is the one figure here`)
+	reDCIRaw     = regexp.MustCompile(`across all (\d+) payload files there are (\d+) \x{2014} (\d+) on members and (\w+) on a type`)
+	reDCIKeepBO  = regexp.MustCompile(`Keeping the BO side instead gives (\d+) member-level and that (\w+) type-level`)
+)
+
+// dataCacheIndexCensus is how many `[DataCacheIndex]` the payload directory
+// writes, split by where they sit and by which twin a rule keeps.
+//
+// The split by rule is the whole point. The keyed members are identical on both
+// sides of every twin pair, so the tally does not move; this does, and it is the
+// figure that chose the rule. Keeping BP leaves 22 on members and none on a
+// type; keeping BO leaves 23 and the corpus's one type-level annotation.
+type dataCacheIndexCensus struct {
+	RawOnMembers, RawOnTypes       int
+	OnMembers, OnTypes             int // under the document's rule: drop BO
+	KeepBOOnMembers, KeepBOOnTypes int
+}
+
+// detwinnedDropsKeepingBO is the other half of the choice: the BP-side copy of
+// each pair, dropped by the rule the document did not take. It is here so the
+// road not taken is derived rather than remembered, and so a re-pin that adds a
+// twin pair breaks both lists at once instead of only the live one.
+var detwinnedDropsKeepingBO = []string{
+	"BPBetTypeCacheItem.cs",
+	"BPLiveObjectCacheItem.cs",
+	"BPSearchCacheItem.cs",
+	"BPSportGameCacheItem.cs",
+	"Venue.cs",
+}
+
+// corpusDataCacheIndex counts the annotations off the source text rather than
+// through readCS.
+//
+// readCS is right for members and wrong here. It drops the `[DataCacheIndex]`
+// on BOSportGameCacheItem's computed `FixtureIdIndex`, which is why the census
+// TestMemberAttributesAreEnumerated holds says 29 where the document says 30 --
+// both correct, about different things. The document counts what the corpus
+// writes, so this counts that: every attribute occurrence, type-level ones
+// separated by their indentation, which is how C# writes the distinction.
+func corpusDataCacheIndex(t *testing.T) dataCacheIndexCensus {
+	t.Helper()
+	ents, err := os.ReadDir(filepath.Join(corpusRoot, "payloads"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var c dataCacheIndexCensus
+	seen := map[string]bool{}
+	for _, e := range ents {
+		if !strings.HasSuffix(e.Name(), ".cs") {
+			continue
+		}
+		seen[e.Name()] = true
+		b, err := os.ReadFile(filepath.Join(corpusRoot, "payloads", e.Name()))
+		if err != nil {
+			t.Fatal(err)
+		}
+		var onMembers, onTypes int
+		for _, line := range strings.Split(string(b), "\n") {
+			if !strings.HasPrefix(strings.TrimSpace(line), "[DataCacheIndex") {
+				continue
+			}
+			if line == strings.TrimSpace(line) {
+				onTypes++ // unindented: it annotates the type
+			} else {
+				onMembers++
+			}
+		}
+		c.RawOnMembers += onMembers
+		c.RawOnTypes += onTypes
+		if !slicesContains(detwinnedDrops, e.Name()) {
+			c.OnMembers += onMembers
+			c.OnTypes += onTypes
+		}
+		if !slicesContains(detwinnedDropsKeepingBO, e.Name()) {
+			c.KeepBOOnMembers += onMembers
+			c.KeepBOOnTypes += onTypes
+		}
+	}
+	// A twin pair has exactly two sides, so the two drop lists have to be the
+	// same length and name no file in common. Without this, a name going
+	// missing from the keep-BO list is invisible whenever the file it names
+	// carries no annotation -- which `Venue.cs` and `BPLiveObjectCacheItem.cs`
+	// both do today, so two fifths of that list would be holding nothing.
+	if len(detwinnedDropsKeepingBO) != len(detwinnedDrops) {
+		t.Fatalf("the rule drops %d files and its mirror drops %d; a twin pair has two sides",
+			len(detwinnedDrops), len(detwinnedDropsKeepingBO))
+	}
+	for _, name := range detwinnedDropsKeepingBO {
+		if !seen[name] {
+			t.Fatalf("the rule this document did not take drops payloads/%s, which is not in the corpus", name)
+		}
+		if slicesContains(detwinnedDrops, name) {
+			t.Fatalf("payloads/%s is dropped by both rules, so it is nobody's twin", name)
+		}
+	}
+	return c
+}
+
+// corpusKeyed is how many keyed members one payload file has.
+func corpusKeyed(t *testing.T, file string) int {
+	t.Helper()
+	d := readCorpus(t, filepath.Join("payloads", file))
+	n := 0
+	for _, id := range d.Order {
+		if _, wire := keyNumber(id); wire {
+			n++
+		}
+	}
+	return n
+}
+
+// cardinal and ordinal are how the document writes a small number when it
+// writes it as a word. The lists stop at fourteen because the corpus does: a
+// figure past the end is a figure this check was not built for, and it says so
+// rather than comparing against an empty string.
+var (
+	cardinals = []string{"zero", "one", "two", "three", "four", "five", "six", "seven",
+		"eight", "nine", "ten", "eleven", "twelve", "thirteen", "fourteen"}
+	ordinals = []string{"zeroth", "first", "second", "third", "fourth", "fifth", "sixth", "seventh",
+		"eighth", "ninth", "tenth", "eleventh", "twelfth", "thirteenth", "fourteenth"}
+)
+
+func cardinal(t *testing.T, n int) string { return numberWord(t, cardinals, n) }
+func ordinal(t *testing.T, n int) string  { return numberWord(t, ordinals, n) }
+
+func numberWord(t *testing.T, words []string, n int) string {
+	t.Helper()
+	if n < 0 || n >= len(words) {
+		t.Fatalf("%d is outside the range this check spells out; write it in digits or extend the list", n)
+	}
+	return words[n]
+}
+
+// unwrapped is doc with each paragraph joined onto one line, so that a phrase
+// can be matched without its line breaks mattering. Markdown's own line breaks
+// inside a paragraph are not content, and a copy-edit that rewraps a paragraph
+// must not change what this test finds in it.
+func unwrapped(doc string) string {
+	var out, para []string
+	flush := func() {
+		if len(para) > 0 {
+			out = append(out, strings.Join(para, " "))
+			para = nil
+		}
+	}
+	for _, line := range strings.Split(doc, "\n") {
+		if strings.TrimSpace(line) == "" {
+			flush()
+			continue
+		}
+		para = append(para, strings.TrimSpace(line))
+	}
+	flush()
+	return strings.Join(out, "\n")
+}
+
+// docPhrase is the submatches of the one place in the unwrapped document that
+// re matches. Exactly one, for docLine's two reasons: a claim restated
+// somewhere else means this is reading whichever came first, and a claim
+// deleted rather than corrected has to fail here rather than pass by leaving
+// nothing to disagree with.
+func docPhrase(t *testing.T, unwrappedDoc string, re *regexp.Regexp) []string {
+	t.Helper()
+	m := re.FindAllStringSubmatch(unwrappedDoc, -1)
+	if len(m) != 1 {
+		t.Fatalf("%d places in %s match %v, want exactly 1", len(m), invariantsDoc, re)
+	}
+	return m[0]
+}
+
+// docParagraph is the one unwrapped paragraph beginning with prefix.
+func docParagraph(t *testing.T, unwrappedDoc, prefix string) string {
+	t.Helper()
+	var found []string
+	for _, para := range strings.Split(unwrappedDoc, "\n") {
+		if strings.HasPrefix(para, prefix) {
+			found = append(found, para)
+		}
+	}
+	if len(found) != 1 {
+		t.Fatalf("%d paragraphs of %s begin %q, want exactly 1", len(found), invariantsDoc, prefix)
+	}
+	return found[0]
+}
 
 // docMatch is the submatches of the one line of doc that re matches.
 //
