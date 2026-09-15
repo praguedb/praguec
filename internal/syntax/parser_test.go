@@ -2851,6 +2851,54 @@ struct S
 `)
 }
 
+// The same for an enum body, and it needs holding separately. Of the four
+// member-start reports this is the one nothing else in the suite reaches:
+// delete the `raiseMemberStart` call from parseEnumMember and the whole repo
+// stays green while `enum E { 5; A = 1; }` compiles CLEAN -- an empty bag,
+// HasErrors false, protopc exiting 0 on a body whose first line is not a name.
+// A diagnostic no test holds is a diagnostic the next edit can delete.
+//
+// It is also the site where the suppression #41 added now sits between the
+// mistake and the report, which is why it is held here rather than left to
+// whoever adds the next enum diagnostic.
+func TestAnEnumBodyLineThatIsNotAName(t *testing.T) {
+	f, file, bag := parse(t, `revision 1;
+namespace A;
+enum E {
+  5;
+  Name = 1;
+}
+struct S {
+  int64 x = 1;
+}
+`)
+	var got []diag.Code
+	for _, d := range bag.All() {
+		got = append(got, d.Code)
+	}
+	if !slices.Equal(got, []diag.Code{diag.UnexpectedToken}) {
+		t.Fatalf("codes = %v, want one UnexpectedToken:\n%s", got, diag.RenderAll(f, bag))
+	}
+	if s := f.Slice(bag.All()[0].Span); s != "5" {
+		t.Errorf("the diagnostic underlines %q, want the token that is not a name", s)
+	}
+
+	// The gate is the half a count cannot give: a body line that is not a name
+	// has to FAIL the compile, not merely be mentioned in passing.
+	assertGate(t, f, bag, got)
+
+	// The member that parsed is kept, no nil reaches the tree, and the
+	// declaration after the enum still parses -- recovery stopped at the body's
+	// `}` rather than eating it.
+	assertDump(t, file, `revision 1
+namespace A
+enum E
+  Name = 1
+struct S
+  int64 x = 1
+`)
+}
+
 // A stray `;` is the one token where it matters that the offending token is
 // left for recovery rather than consumed first. Everywhere else the two are the
 // same, because recoverStmt consumes anything that is not a boundary -- but a
@@ -3489,10 +3537,18 @@ struct S
 // is no second diagnostic to be had -- which is why the fixtures that hold the
 // recovery convention, below, are a different set and not these.
 //
-// The count is the whole of what this holds, so it asserts the code sequence and
-// says nothing about the message or the span. Those belong to #40 and are pinned
-// there; saying them twice would mean this test failing for a reason it was not
-// written to have an opinion about.
+// The count is not the whole of what this holds, and it cannot be. A code
+// sequence of one is also what a BROKEN terminator check produces: silence
+// `expect(KindSemi)` at the alias, reserved, composite-key or enum-member site
+// and the count is still one, because the member-start cascade then fires
+// unsuppressed. Same code, same span, opposite meaning -- and the survivor is
+// the very message the suppression exists to delete. So the survivor is
+// identified as well as counted.
+//
+// It is identified by the one thing that separates the two candidates, and no
+// more: that it is the report about the terminator. The wording past that
+// prefix, and the span, stay #40's -- saying those here would mean this test
+// failing for a reason it was not written to have an opinion about.
 func TestAMissingSemicolonIsReportedOnce(t *testing.T) {
 	for _, tt := range []struct{ name, src string }{
 		{"a field", `revision 1;
@@ -3547,6 +3603,11 @@ view V of T {
 			}
 			if !slices.Equal(got, []diag.Code{diag.UnexpectedToken}) {
 				t.Fatalf("codes = %v, want one:\n%s", got, diag.RenderAll(f, bag))
+			}
+			if msg := bag.All()[0].Message; !strings.HasPrefix(msg, "expected `;`,") {
+				t.Errorf("the one diagnostic is %q, want the missing-`;` report;"+
+					" a count of one is also what a silenced terminator check gives,"+
+					" and what survives that is the cascade this suppresses", msg)
 			}
 			assertGate(t, f, bag, got)
 		})
