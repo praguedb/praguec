@@ -2985,6 +2985,53 @@ view V of Outer
 	}
 }
 
+// The fourth shape is arity *and* position, and this is the position half.
+//
+// Four idents whose third word is not `as` are not the fourth shape. The count
+// alone does not grant it: `SlimInner as of x;` is four words, and reading it
+// as a narrowing would make `as` the member and `of` a stray word, when the
+// only reading it has is the third shape -- select `SlimInner`, rename it to
+// `of` -- with `x` left over and nowhere to put it.
+//
+// It is pinned as a position because that is the only place the two readings
+// differ. Both report one PROTOP0200 and neither parses, so a test that asked
+// only "is this an error" would pass under either. The rename reading stops at
+// the fourth word; the narrowing reading stops at the third. Dropping the
+// `asWord` half of the condition and keeping `run == 4` moves this column from
+// 19 to 16 and changes nothing else in the suite that a view test owns.
+func TestFourIdentsAreTheFourthShapeOnlyWhenTheThirdWordIsAs(t *testing.T) {
+	f, _, bag := parse(t, `revision 1;
+namespace A;
+table Outer {
+  key int64 id = 1;
+  Inner as = 7;
+}
+view V of Outer {
+  SlimInner as of x;
+}
+`)
+
+	var got []diag.Code
+	for _, d := range bag.All() {
+		got = append(got, d.Code)
+	}
+	want := []diag.Code{diag.UnexpectedToken}
+	if !slices.Equal(got, want) {
+		t.Fatalf("codes = %v, want %v:\n%s", got, want, diag.RenderAll(f, bag))
+	}
+	assertGate(t, f, bag, want)
+
+	// Column 19 is `x`, the word the rename reading runs out at. Column 16 is
+	// `of`, where the narrowing reading would stop -- which is the misreading
+	// this is here to catch, so the column is the assertion and not scenery.
+	if pos := f.Position(bag.All()[0].Span.Start); pos.Line != 8 || pos.Column != 19 {
+		t.Errorf("reported at %d:%d, want 8:19 -- the word the rename reading runs out at", pos.Line, pos.Column)
+	}
+	if got := f.Slice(bag.All()[0].Span); got != "x" {
+		t.Errorf("underlines %q, want %q", got, "x")
+	}
+}
+
 // Spans for the nodes this milestone adds, written as the text each one must
 // slice back to -- a hand-computed offset would be a second implementation of
 // the same arithmetic and would agree with a mistake.
