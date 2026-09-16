@@ -2903,6 +2903,88 @@ view V of of
 	}
 }
 
+// The same guarantee as the test above, carried to the one name that exercises
+// every shape at once. A table may have a member named `as`, so a view over
+// that table spells all four of its shapes with an `as` in them -- and in the
+// fourth the member's name and the rename's keyword stand side by side.
+//
+// `SlimInner as as x;` is the line a two-token peek could not read: it claimed
+// the first `as` as the keyword, took the member's own name as the new name,
+// and left `x` with nowhere to go. The count is what settles it. Four idents
+// with `as` third is the fourth shape, so the member named `as` is narrowed to
+// `SlimInner` and called `x`, and no other reading fits four words.
+func TestAViewMemberNamedAsHasAllFourShapes(t *testing.T) {
+	f, file := parseClean(t, `revision 1;
+namespace A;
+table Outer {
+  key int64 id = 1;
+  Inner as = 7;
+}
+view V of Outer {
+  as;
+  SlimInner as;
+  as as o;
+  SlimInner as as x;
+}
+`)
+	assertDump(t, file, `revision 1
+namespace A
+table Outer
+  key int64 id = 1
+  Inner as = 7
+view V of Outer
+  as
+  SlimInner as
+  as as o
+  SlimInner as as x
+`)
+
+	v, ok := file.Decls[1].(*View)
+	if !ok {
+		t.Fatalf("declaration is %T, want *View", file.Decls[1])
+	}
+	if len(v.Members) != 4 {
+		t.Fatalf("members = %d, want the four shapes", len(v.Members))
+	}
+	// Every row pins its span, and pins the whole line: the member a shape was
+	// misread as is a member with a span, and a span held to its first word
+	// alone would have agreed with the misreading.
+	for i, tt := range []struct{ narrow, as, wantSpan string }{
+		{"", "", "as;"},
+		{"SlimInner", "", "SlimInner as;"},
+		{"", "o", "as as o;"},
+		{"SlimInner", "x", "SlimInner as as x;"},
+	} {
+		t.Run(tt.wantSpan, func(t *testing.T) {
+			m := v.Members[i]
+			// The member selected out of the source is the one named `as` in
+			// all four, and it is the half a misread shape takes first.
+			if m.Name.Text != "as" {
+				t.Errorf("the member selected is %q, want the one named `as`", m.Name.Text)
+			}
+			switch {
+			case tt.narrow == "" && m.Narrow != nil:
+				t.Errorf("narrowed to %q, want a member that narrows nothing", m.Narrow.Text)
+			case tt.narrow != "" && m.Narrow == nil:
+				t.Errorf("narrowed to nothing, want it narrowed to %q", tt.narrow)
+			case tt.narrow != "" && m.Narrow.Text != tt.narrow:
+				t.Errorf("narrowed to %q, want %q", m.Narrow.Text, tt.narrow)
+			}
+			switch {
+			case tt.as == "" && m.As != nil:
+				t.Errorf("renamed to %q, want a member that renames nothing", m.As.Text)
+			case tt.as != "" && m.As == nil:
+				t.Errorf("renamed to nothing, want it renamed to %q", tt.as)
+			case tt.as != "" && m.As.Text != tt.as:
+				t.Errorf("renamed to %q, want %q", m.As.Text, tt.as)
+			}
+			if got := f.Slice(m.Span); got != tt.wantSpan {
+				t.Errorf("the member spans %q, want the whole line %q", got, tt.wantSpan)
+			}
+		})
+	}
+}
+
 // Spans for the nodes this milestone adds, written as the text each one must
 // slice back to -- a hand-computed offset would be a second implementation of
 // the same arithmetic and would agree with a mistake.

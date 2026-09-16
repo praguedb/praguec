@@ -429,10 +429,13 @@ func (p *parser) parseViewSource() (Ident, bool) {
 //	SlimOdd odds as o;  narrowed and renamed
 //
 // Each is idents and a `;`, so the shape is told by arity and by position and
-// by nothing else. Two idents in a row are a narrowing -- unless the second is
-// the `as` of a rename, which the ident after it settles. Nothing is reserved
-// anywhere in here: `key as id;` selects the member named `key`, the composite
-// identity's own word, and `SlimOdd as;` would narrow a member named `as`.
+// by nothing else: one ident selects, two narrow, three rename when the middle
+// word is `as`, and four narrow and rename when the third word is. Two idents
+// in a row are a narrowing -- unless the second is the `as` of a rename, and
+// how many words the member has is what says whether it is. Nothing is
+// reserved anywhere in here: `key as id;` selects the member named `key`, the
+// composite identity's own word, and `SlimOdd as;` would narrow a member named
+// `as`.
 func (p *parser) parseViewMember() *ViewMember {
 	p.rejectAnnotations("the member's name")
 
@@ -450,9 +453,25 @@ func (p *parser) parseViewMember() *ViewMember {
 		return nil
 	}
 
+	// The run is counted before a word of it is claimed, because the shape is
+	// arity and position together and the two-token peek that reads `as <name>`
+	// only has the position. Four idents whose third word is `as` are the
+	// fourth shape, so the `as` the peek is sitting on is the member's own name
+	// and the rename's keyword is the word after it: `SlimInner as as x;`
+	// narrows the member named `as` and calls it `x`. Read on the peek alone,
+	// the first `as` was claimed as the keyword and `x` was left over.
+	//
+	// Nothing else consults the count. A run that is none of the four shapes --
+	// four idents with something other than `as` third, or a fifth ident, or a
+	// `;` that was left out so that one member's run walks into the next one --
+	// is not a shape to be read but a mistake to be reported, and it is
+	// reported where it already was: by reading greedily and stopping at the
+	// first word that cannot be there.
+	run := p.identRun()
 	lead := p.identOf(p.next())
 	m := &ViewMember{Name: lead, Span: lead.Span}
-	if p.at(KindIdent) && !p.atRename() {
+	narrowAndRename := run == 4 && p.text(p.peekAt(1)) == asWord
+	if p.at(KindIdent) && (!p.atRename() || narrowAndRename) {
 		narrow := lead
 		m.Narrow = &narrow
 		m.Name = p.identOf(p.next())
@@ -526,8 +545,26 @@ func (p *parser) parseViewMember() *ViewMember {
 // atRename reports whether the parser is at the `as` of `event_id as id`. The
 // ident after it is what makes it one: `SlimOdd as;` narrows a member named
 // `as`, and only the third word tells the two apart.
+//
+// It answers for the position it is standing on and not for the member. In the
+// fourth shape a member named `as` puts two of them side by side, and which is
+// the keyword is a question about the whole run -- so parseViewMember counts
+// the run and overrides this at the first of the two.
 func (p *parser) atRename() bool {
 	return p.at(KindIdent) && p.text(p.peek()) == asWord && p.peekAt(1).Kind == KindIdent
+}
+
+// identRun counts the idents that run from the parser's position to whatever
+// ends them. In a view body that is the member's arity, which is what tells its
+// four shapes apart -- and unlike a peek at a fixed offset it is a number the
+// last word of the member can change, which is the whole of why the count is
+// taken.
+func (p *parser) identRun() int {
+	n := 0
+	for p.peekAt(n).Kind == KindIdent {
+		n++
+	}
+	return n
 }
 
 // checkNarrowing reports a scalar written in a view member's leading position.
