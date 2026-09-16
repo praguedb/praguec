@@ -430,10 +430,17 @@ enum E { UNKNOWN = 0; }
 // had already rejected, which is the worst possible way to report a known
 // error.
 func TestTheEmittersTotalityGuards(t *testing.T) {
-	if got := aliasTarget(&check.Decl{}, &check.Member{Name: "other"}); got != nil {
+	// The declaration has a member, and that is the whole point of it. Against
+	// an empty one aliasTarget's loop never runs, so the guard this pins is
+	// never reached and the assertion holds nothing: found by mutation --
+	// deleting the guard survived an empty declaration and is caught by this
+	// one, because `c.From == m.Aliased` is nil == nil on every member outside
+	// a view and would hand back the first member of whatever was passed in.
+	somewhere := &check.Decl{Members: []*check.Member{{Name: "held"}}}
+	if got := aliasTarget(somewhere, &check.Member{Name: "other"}); got != nil {
 		t.Errorf("aliasTarget(unresolved) = %v, want nil; anything else names a member that is not there", got)
 	}
-	if got := aliasTargetName(&check.Decl{}, &check.Member{Name: "other"}); got != "" {
+	if got := aliasTargetName(somewhere, &check.Member{Name: "other"}); got != "" {
 		t.Errorf("aliasTargetName(unresolved) = %q, want the empty string; anything else names a member that is not there", got)
 	}
 	if got := typeNamespaces(check.Type{Kind: check.TypeDecl}); len(got) != 0 {
@@ -626,13 +633,17 @@ view SlimInner of Inner {
 table Outer {
   key int64 id = 1;
   Inner odds = 7;
+  Inner? spare = 8;
   alias thing = odds;
+  alias spare_thing = spare;
 }
 
 view RenamedOnly of Outer {
   id;
   odds as o;
   thing as t;
+  spare as sp;
+  spare_thing as st;
 }
 
 view NarrowedOnly of Outer {
@@ -657,8 +668,23 @@ view RenamedAndNarrowed of Outer {
 // *type* unresolved (internal/check, resolveAlias: it follows no chain the
 // language has not described), which before #55 reached the emitter as a
 // missing type and emitted `public  Second` -- not valid C# and not a
-// diagnostic either. Nothing here says a chain should be legal; what it says is
-// that while it is legal it has to emit a property.
+// diagnostic either. Nothing here says a chain should be legal.
+//
+// What it holds is one link, and that is the whole of the claim. `second`'s
+// target `first` is an alias whose own type the checker *did* resolve, so the
+// member this lookup finds has a type and `Second` gets one. Add a third link
+// and the fixture stops holding: `alias third = second;` emits `public  Third`
+// today, at exit 0, because `second` is the alias whose type was left
+// unresolved and the lookup faithfully reports that. That is #67 and it is
+// unresolved -- an alias of an alias may turn out to be a diagnostic rather
+// than a chain to follow -- so there is deliberately no depth-3 fixture and no
+// golden for one: #40 ruled that pinning a defect turns it into a golden the
+// fixing ticket then has to argue with. The repro is on #67 as text.
+//
+// The obvious fix is one line -- have the lookup recurse on the target it
+// found -- and it passes this suite and stack-overflows on `alias a = b; alias
+// b = a;`, which protopc accepts today with no diagnostic. Whatever rules #67
+// needs a visited set or a depth bound before it recurses.
 const aliasChain = `revision 1;
 namespace A;
 
@@ -667,6 +693,33 @@ table Chained {
   int64 event_id = 2;
   alias first = event_id;
   alias second = first;
+}
+`
+
+// compositeKeyShapes is a composite key whose two parts are at *different*
+// types, carried through a view that renames nothing.
+//
+// The corpus's only composite key is `(event_id, bet_type_id)` and both parts
+// are `int64`, so on the fixtures alone every tuple element's declared type and
+// every named member's declared type are `long` and the second half of the
+// clause below -- element i is typed as the member read at position i -- agrees
+// with itself no matter which of the two it read. `(long N, string S)` is what
+// makes it an assertion: an emitter that wrote the first part's type for every
+// element, or the parts' types in the wrong order, has to disagree here.
+const compositeKeyShapes = `revision 1;
+namespace A;
+
+table Mixed {
+  key key = 1 (n, s);
+
+  int64  n = 2;
+  string s = 3;
+}
+
+view MixedView of Mixed {
+  key;
+  n;
+  s;
 }
 `
 
@@ -705,13 +758,17 @@ view Narrowing of Outer {
 `,
 }
 
-// The general form of #55, rather than the three spellings of it.
+// The general form of #55, rather than the three spellings of it -- and the
+// general form is not about aliases.
 //
-// An alias emits a property whose body reads and writes another property. Two
-// things make that compile, and neither is about which fixture produced it:
-// the name in the body has to be a property *the same emitted file declares*,
-// and the alias's declared type has to be that property's declared type --
-// a property cannot return `Inner` and assign to a `SlimInner`.
+// Two of the three member shapes protopc emits have a body that *reads other
+// members*: the alias's `get => X; set => X = value;` and the composite key's
+// `=> (A, B)`. Two things make such a body compile, and neither is about which
+// shape or which fixture produced it: every name the body reads has to be a
+// property *the same emitted file declares*, and the type the body's own
+// declaration claims for that name has to be the type that property is declared
+// at -- a property cannot return `Inner` and assign to a `SlimInner`, and a
+// tuple element typed `long` cannot be built out of a `string`.
 //
 // Both are read back out of the emitted C#, so the assertion sees what the
 // compiler would see rather than what the model intended. #55 was two
@@ -720,25 +777,45 @@ view Narrowing of Outer {
 // the *source's* alias, which a narrowing falsifies. Neither spelling appears
 // below; a fixture that grew a fourth way to break the rule would fail here
 // without this test being edited.
-func TestAnAliasPassesThroughToAMemberItsOwnFileDeclares(t *testing.T) {
+//
+// Holding the composite key to the same clause is why it is stated as the
+// general form. #55 fixed the alias and left the identical defect standing in
+// writeCompositeKey next door: a view that renames a member a key is built out
+// of emits `public (long Left, long Right) Id => (L, R)`'s bad twin --
+// `=> (Left, Right)` in a class declaring `L` and `R`, two CS0103 at exit 0.
+// That is #68 and it is a language question, not a bug: whether the element
+// names follow the view, stay the source's, or make the rename a diagnostic
+// decides what the emitter should write, and none of the three is protopc's to
+// pick. So it is not fixed and not pinned -- #40 ruled that pinning a defect
+// turns it into a golden the fixing ticket has to argue with -- and the schema
+// that reaches it is recorded in #68 as text rather than as a fixture. What
+// this test does is make the case impossible to reach quietly: the day a
+// fixture renames a key part, the body fails here instead of compiling nowhere.
+func TestAnExpressionBodyNamesOnlyMembersItsOwnFileDeclares(t *testing.T) {
 	units := emitFixtures(t, pragueFixture, consumerFixture)
 	units = append(units, emitSource(t, map[string]string{"a.protop": aliasShapes})...)
 	units = append(units, emitSource(t, aliasAcrossNamespaces)...)
 	units = append(units, emitSource(t, map[string]string{"a.protop": aliasChain})...)
+	units = append(units, emitSource(t, map[string]string{"a.protop": compositeKeyShapes})...)
 
-	checked := assertAliasesResolve(t, units)
+	checked := assertBodiesNameDeclaredMembers(t, units)
 
-	// An assertion over aliases says nothing if there were no aliases, and the
-	// three combinations are the extent this ticket owes. Named here so that a
-	// fixture losing one fails as a missing case rather than as a smaller loop.
+	// An assertion over bodies says nothing if there were no bodies, and these
+	// are the extent this ticket owes. Named here so that a fixture losing one
+	// fails as a missing case rather than as a smaller loop.
 	for _, want := range []string{
-		"BetType.BetTypeId",    // the corpus's own, in the declaration that wrote it
+		"BetType.BetTypeId",    // the corpus's own alias, in the declaration that wrote it
 		"Outer.Thing",          // the same alias in the table it belongs to
 		"RenamedOnly.T",        // the target renamed, not narrowed
+		"RenamedOnly.St",       // and the same with the target optional: presence is part of the type
 		"NarrowedOnly.T",       // the target narrowed, not renamed
 		"RenamedAndNarrowed.T", // both at once
 		"Narrowing.T",          // and the same again, with the two types in different namespaces
 		"Chained.Second",       // an alias of an alias, which is a member like any other
+		"BetType.Key",          // the other body shape: a composite key where it is declared
+		"SlimBetType.Id",       // and carried through a view, which is where #68 lives
+		"Mixed.Key",            // a key whose parts are at two different types
+		"MixedView.Key",        // and the same one carried through a view
 	} {
 		if !slices.Contains(checked, want) {
 			t.Errorf("no alias was checked on %s; the assertion passed by not running, and the fixtures owe this case", want)
@@ -746,14 +823,22 @@ func TestAnAliasPassesThroughToAMemberItsOwnFileDeclares(t *testing.T) {
 	}
 }
 
-// assertAliasesResolve holds every alias in every emitted unit to the two
-// clauses above and returns "<Type>.<Member>" for each one it checked, so the
-// caller can say which cases it expected to exist.
-func assertAliasesResolve(t *testing.T, units []Unit) []string {
+// assertBodiesNameDeclaredMembers holds every expression-bodied member in every
+// emitted unit to the two clauses above and returns "<Type>.<Member>" for each
+// one it checked, so the caller can say which cases it expected to exist.
+//
+// Which members those are is decided by the *shape of the emitted text* and not
+// by the member's id, deliberately. An alias is identifiable from its id --
+// readCS keys it `alias:<Name>` because it has no wire slot -- but a composite
+// key has a `[Key(N)]` like any field and is keyed by its number, so filtering
+// on the id is exactly how the general clause came to be stated over aliases
+// and enforced over aliases only. A member is checked here because its emission
+// reads other members, which is the property the clause is about.
+func assertBodiesNameDeclaredMembers(t *testing.T, units []Unit) []string {
 	t.Helper()
 	var checked []string
 	for _, u := range units {
-		// An enum has no members in readCS's sense and cannot hold an alias.
+		// An enum has no members in readCS's sense and has no bodies.
 		if u.Decl.Kind == check.DeclEnum {
 			continue
 		}
@@ -763,37 +848,108 @@ func assertAliasesResolve(t *testing.T, units []Unit) []string {
 		}
 		declared := declaredMembers(t, u, d)
 		for _, id := range d.Order {
-			name, isAlias := strings.CutPrefix(id, "alias:")
-			if !isAlias {
+			line := lastLine(d.Members[id])
+			if name, isAlias := strings.CutPrefix(id, "alias:"); isAlias {
+				checked = append(checked, u.TypeName+"."+name)
+				assertPassthroughBody(t, u, declared, name, line, d.Members[id])
 				continue
 			}
-			checked = append(checked, u.TypeName+"."+name)
-			m := reAliasPassthrough.FindStringSubmatch(lastLine(d.Members[id]))
-			if m == nil {
-				t.Errorf("%s.%s is not a passthrough at all: %q", u.TypeName, name, d.Members[id])
-				continue
-			}
-			typ, target, written := m[1], m[3], m[4]
-			if target != written {
-				t.Errorf("%s.%s reads %s and writes %s; a passthrough is one member", u.TypeName, name, target, written)
-			}
-			if target == name {
-				t.Errorf("%s.%s passes through to itself, which is infinite recursion and not an alias", u.TypeName, name)
-				continue
-			}
-			held, ok := declared[target]
-			if !ok {
-				t.Errorf("%s.%s passes through to %s, which %s does not declare -- CS0103:\n%s",
-					u.TypeName, name, target, u.TypeName, u.Source)
-				continue
-			}
-			if held != typ {
-				t.Errorf("%s.%s is declared %s and passes through to %s, which is declared %s; a property cannot return one type and assign another:\n%s",
-					u.TypeName, name, typ, target, held, u.Source)
+			if m := reCompositeKeyBody.FindStringSubmatch(line); m != nil {
+				checked = append(checked, u.TypeName+"."+m[2])
+				assertTupleBody(t, u, declared, m[2], m[1], m[3])
 			}
 		}
 	}
 	return checked
+}
+
+// assertPassthroughBody is the alias half: one name, read and written.
+func assertPassthroughBody(t *testing.T, u Unit, declared map[string]string, name, line, whole string) {
+	t.Helper()
+	m := reAliasPassthrough.FindStringSubmatch(line)
+	if m == nil {
+		t.Errorf("%s.%s is not a passthrough at all: %q", u.TypeName, name, whole)
+		return
+	}
+	typ, target, written := m[1], m[3], m[4]
+	if target != written {
+		t.Errorf("%s.%s reads %s and writes %s; a passthrough is one member", u.TypeName, name, target, written)
+	}
+	if target == name {
+		t.Errorf("%s.%s passes through to itself, which is infinite recursion and not an alias", u.TypeName, name)
+		return
+	}
+	held, ok := declared[target]
+	if !ok {
+		t.Errorf("%s.%s passes through to %s, which %s does not declare -- CS0103:\n%s",
+			u.TypeName, name, target, u.TypeName, u.Source)
+		return
+	}
+	if held != typ {
+		t.Errorf("%s.%s is declared %s and passes through to %s, which is declared %s; a property cannot return one type and assign another:\n%s",
+			u.TypeName, name, typ, target, held, u.Source)
+	}
+}
+
+// assertTupleBody is the composite key half: one name per tuple element, read
+// and not written, and each element's declared type is a claim about the member
+// the same position reads.
+//
+// The arity check is not ceremony. The two lists are written by two separate
+// loops over m.Parts in writeCompositeKey, and a body that dropped an element
+// would otherwise be compared position by position against the wrong names and
+// could agree on every one it still had.
+func assertTupleBody(t *testing.T, u Unit, declared map[string]string, name, elements, body string) {
+	t.Helper()
+	elems := splitTopLevel(elements)
+	reads := splitTopLevel(body)
+	if len(elems) != len(reads) {
+		t.Errorf("%s.%s declares %d tuple elements and builds the tuple out of %d names (%q => (%q))",
+			u.TypeName, name, len(elems), len(reads), elements, body)
+		return
+	}
+	for i, e := range elems {
+		sp := strings.LastIndex(e, " ")
+		if sp < 0 {
+			t.Errorf("%s.%s: tuple element %q has no name", u.TypeName, name, e)
+			continue
+		}
+		typ, read := e[:sp], reads[i]
+		held, ok := declared[read]
+		if !ok {
+			t.Errorf("%s.%s builds its tuple out of %s, which %s does not declare -- CS0103. "+
+				"This is #68: a view renaming a member the key is built out of.\n%s",
+				u.TypeName, name, read, u.TypeName, u.Source)
+			continue
+		}
+		if held != typ {
+			t.Errorf("%s.%s declares tuple element %d as %s and builds it out of %s, which is declared %s:\n%s",
+				u.TypeName, name, i, typ, read, held, u.Source)
+		}
+	}
+}
+
+// splitTopLevel splits a comma-separated list on the commas that are not inside
+// brackets, so that `long Id, List<Dictionary<string, long>> Xs` is two
+// elements and not four. A naive split reports the wrong arity, which reads as
+// a dropped tuple element and sends the next reader looking in the emitter.
+func splitTopLevel(s string) []string {
+	var out []string
+	depth, start := 0, 0
+	for i := 0; i < len(s); i++ {
+		switch s[i] {
+		case '<', '(', '[':
+			depth++
+		case '>', ')', ']':
+			depth--
+		case ',':
+			if depth == 0 {
+				out = append(out, strings.TrimSpace(s[start:i]))
+				start = i + 1
+			}
+		}
+	}
+	return append(out, strings.TrimSpace(s[start:]))
 }
 
 // declaredMembers is every property the emitted file declares, as a map from
@@ -819,6 +975,12 @@ func declaredMembers(t *testing.T, u Unit, d *csDecl) map[string]string {
 // reAliasPassthrough reads the canonical one-line form readCS folds an alias
 // body into.
 var reAliasPassthrough = regexp.MustCompile(`^public (.+) (\w+) \{ get => (\w+); set => (\w+) = value; \}$`)
+
+// reCompositeKeyBody reads a composite key's emission: the tuple it declares,
+// its name, and the tuple it builds. It matches the shape rather than the
+// member, so a computed member that protopc does not emit today would be held
+// to the same clause on the day it does.
+var reCompositeKeyBody = regexp.MustCompile(`^public \((.+)\) (\w+) => \((.+)\);$`)
 
 // declaredTypeAndName splits `public List<Odd?>? MaybeOdds { get; set; }` into
 // its declared type and its name, for every member shape the emitter writes:
