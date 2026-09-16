@@ -116,7 +116,7 @@ func usings(d *check.Decl) []string {
 	}
 	seen[messagePackNamespace] = true
 	for _, m := range d.Members {
-		for _, ns := range typeNamespaces(m.Type) {
+		for _, ns := range typeNamespaces(emittedType(d, m)) {
 			if seen[ns] {
 				continue
 			}
@@ -244,7 +244,7 @@ const dataCacheKeyAttribute = "[DataCacheKey]\n"
 func writeMember(b *strings.Builder, d *check.Decl, m *check.Member) {
 	switch m.Kind {
 	case check.MemberAlias:
-		writeAlias(b, m)
+		writeAlias(b, d, m)
 	case check.MemberCompositeKey:
 		writeCompositeKey(b, d, m)
 	default:
@@ -318,15 +318,15 @@ func writeCompositeKey(b *strings.Builder, d *check.Decl, m *check.Member) {
 // no wire slot. `[IgnoreMember]` is not decoration: #20 measured that `[Key(N)]`
 // is not optional on a member MessagePack can see -- MsgPack004 is a hard error
 // -- so the only way to say "no slot" is to say it explicitly.
-func writeAlias(b *strings.Builder, m *check.Member) {
+func writeAlias(b *strings.Builder, d *check.Decl, m *check.Member) {
 	b.WriteString("    [IgnoreMember]\n")
 	writeAnnotations(b, "    ", m.Annotations)
 	b.WriteString("    public ")
-	b.WriteString(TypeName(m.Type))
+	b.WriteString(TypeName(emittedType(d, m)))
 	b.WriteString(" ")
 	b.WriteString(pascal(m.Name))
 	b.WriteString("\n    {\n")
-	target := pascal(aliasTarget(m))
+	target := pascal(aliasTargetName(d, m))
 	b.WriteString("        get => ")
 	b.WriteString(target)
 	b.WriteString(";\n        set => ")
@@ -334,15 +334,63 @@ func writeAlias(b *strings.Builder, m *check.Member) {
 	b.WriteString(" = value;\n    }\n")
 }
 
-// aliasTarget is the name the passthrough reads and writes. In a view it is the
-// source's member name for the same reason the composite key's parts are: what
-// the alias passes through to is a member of the declaration the alias was
-// written in.
-func aliasTarget(m *check.Member) string {
+// aliasTarget is the member the passthrough reads and writes, resolved against
+// the declaration that is doing the emitting rather than against the one the
+// alias was written in.
+//
+// Outside a view those are the same declaration and the member simply *is*
+// m.Aliased, so the one lookup serves both. Inside a view the alias is a copy
+// whose Aliased still points at the *source's* member
+// (internal/check/check.go, expandViewMember), and the view may hold that
+// member under another name, at another type, or both -- the body has to name
+// it as the view holds it, and declare it at the type the view holds it at, or
+// it names a member the emitted file does not declare and does not compile.
+//
+// Nil is #66 and is unresolved: a view may select an alias and not select the
+// alias's target at all, and there is then no member here to find. Whether
+// that should be a diagnostic, an implicit selection or something else is a
+// design decision this lookup is not entitled to make, so the callers below
+// deliberately fall back to the source's name and the source's type -- what
+// protopc emitted before this lookup existed -- and leave it to #66 to rule.
+// The fallback is not an answer and is not pinned as one.
+func aliasTarget(d *check.Decl, m *check.Member) *check.Member {
+	if m.Aliased == nil {
+		return nil
+	}
+	for _, c := range d.Members {
+		if c == m.Aliased || c.From == m.Aliased {
+			return c
+		}
+	}
+	return nil
+}
+
+// aliasTargetName is the name the passthrough reads and writes, and the empty
+// string when the alias resolves to nothing at all -- which is an alias whose
+// target the checker never resolved, a state no schema reaches a backend in.
+func aliasTargetName(d *check.Decl, m *check.Member) string {
+	if t := aliasTarget(d, m); t != nil {
+		return t.Name
+	}
 	if m.Aliased == nil {
 		return ""
 	}
-	return m.Aliased.Name
+	return m.Aliased.Name // #66, unresolved: see aliasTarget.
+}
+
+// emittedType is the type a member's emission declares. It is the member's own
+// for every kind but an alias, whose declared type has to be the declared type
+// of the member it passes through to -- a property cannot return one type and
+// assign another. usings reads it for the same reason writeAlias does: the
+// namespaces a declaration imports are the namespaces its emitted text names.
+func emittedType(d *check.Decl, m *check.Member) check.Type {
+	if m.Kind != check.MemberAlias {
+		return m.Type
+	}
+	if t := aliasTarget(d, m); t != nil {
+		return t.Type
+	}
+	return m.Type // #66, unresolved: see aliasTarget.
 }
 
 func writeKey(b *strings.Builder, m *check.Member) {

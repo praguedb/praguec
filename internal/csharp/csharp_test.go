@@ -4,6 +4,7 @@ import (
 	"flag"
 	"os"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"sort"
 	"strconv"
@@ -429,8 +430,11 @@ enum E { UNKNOWN = 0; }
 // had already rejected, which is the worst possible way to report a known
 // error.
 func TestTheEmittersTotalityGuards(t *testing.T) {
-	if got := aliasTarget(&check.Member{Name: "other"}); got != "" {
-		t.Errorf("aliasTarget(unresolved) = %q, want the empty string; anything else names a member that is not there", got)
+	if got := aliasTarget(&check.Decl{}, &check.Member{Name: "other"}); got != nil {
+		t.Errorf("aliasTarget(unresolved) = %v, want nil; anything else names a member that is not there", got)
+	}
+	if got := aliasTargetName(&check.Decl{}, &check.Member{Name: "other"}); got != "" {
+		t.Errorf("aliasTargetName(unresolved) = %q, want the empty string; anything else names a member that is not there", got)
 	}
 	if got := typeNamespaces(check.Type{Kind: check.TypeDecl}); len(got) != 0 {
 		t.Errorf("typeNamespaces(unresolved decl type) = %v, want none", got)
@@ -595,6 +599,321 @@ func TestProtopsOwnAnnotationsEmitNothing(t *testing.T) {
 			t.Errorf("%s emits protop's own %q annotation", u.TypeName, syntax.RelationAnnotation)
 		}
 	}
+}
+
+// --- an alias a view carries through (#55) -----------------------------------
+
+// aliasShapes is one table with an alias and the three views that carry it
+// through: renamed, narrowed, and both at once. The view holds the alias's
+// target under a name and at a type that are the view's own, and the
+// passthrough body has to say those and not the source's.
+//
+// The fourth shape -- a view that selects the alias and does not select its
+// target -- is deliberately not here. It is #66, it is unresolved, and it is
+// held by TestAViewThatSelectsAnAliasAndNotItsTargetStillEmits below, which
+// pins that the emitter is total on it and nothing about what it emits.
+const aliasShapes = `revision 1;
+namespace A;
+
+record Inner {
+  int64 x = 1;
+}
+
+view SlimInner of Inner {
+  x;
+}
+
+table Outer {
+  key int64 id = 1;
+  Inner odds = 7;
+  alias thing = odds;
+}
+
+view RenamedOnly of Outer {
+  id;
+  odds as o;
+  thing as t;
+}
+
+view NarrowedOnly of Outer {
+  id;
+  SlimInner odds;
+  thing as t;
+}
+
+view RenamedAndNarrowed of Outer {
+  id;
+  SlimInner odds as o;
+  thing as t;
+}
+`
+
+// aliasChain is an alias whose target is itself an alias.
+//
+// It is here because the rule this ticket applies -- an alias is declared at
+// the declared type of the member its body names -- does not know what kind of
+// member that is, and `Second` reading `First` compiles or does not for exactly
+// the reason `T` reading `O` does. The checker deliberately leaves the chain's
+// *type* unresolved (internal/check, resolveAlias: it follows no chain the
+// language has not described), which before #55 reached the emitter as a
+// missing type and emitted `public  Second` -- not valid C# and not a
+// diagnostic either. Nothing here says a chain should be legal; what it says is
+// that while it is legal it has to emit a property.
+const aliasChain = `revision 1;
+namespace A;
+
+table Chained {
+  key int64 id = 1;
+  int64 event_id = 2;
+  alias first = event_id;
+  alias second = first;
+}
+`
+
+// aliasAcrossNamespaces is the same narrowing spread over three namespaces, so
+// that the two types the fix chooses between -- the source's `Inner` and the
+// view's `SlimInner` -- do not live in the same one. With both in one namespace
+// the import list cannot tell which of them the emission named.
+var aliasAcrossNamespaces = map[string]string{
+	"a.protop": `revision 1;
+namespace A;
+record Inner {
+  int64 x = 1;
+}
+`,
+	"c.protop": `revision 1;
+namespace C;
+import "a.protop";
+view SlimInner of Inner {
+  x;
+}
+`,
+	"b.protop": `revision 1;
+namespace B;
+import "a.protop";
+import "c.protop";
+table Outer {
+  key int64 id = 1;
+  Inner odds = 7;
+  alias thing = odds;
+}
+view Narrowing of Outer {
+  id;
+  SlimInner odds;
+  thing as t;
+}
+`,
+}
+
+// The general form of #55, rather than the three spellings of it.
+//
+// An alias emits a property whose body reads and writes another property. Two
+// things make that compile, and neither is about which fixture produced it:
+// the name in the body has to be a property *the same emitted file declares*,
+// and the alias's declared type has to be that property's declared type --
+// a property cannot return `Inner` and assign to a `SlimInner`.
+//
+// Both are read back out of the emitted C#, so the assertion sees what the
+// compiler would see rather than what the model intended. #55 was two
+// independent breakages of exactly these two clauses: writeAlias named the
+// member as the *source* holds it, which a rename falsifies, and typed it from
+// the *source's* alias, which a narrowing falsifies. Neither spelling appears
+// below; a fixture that grew a fourth way to break the rule would fail here
+// without this test being edited.
+func TestAnAliasPassesThroughToAMemberItsOwnFileDeclares(t *testing.T) {
+	units := emitFixtures(t, pragueFixture, consumerFixture)
+	units = append(units, emitSource(t, map[string]string{"a.protop": aliasShapes})...)
+	units = append(units, emitSource(t, aliasAcrossNamespaces)...)
+	units = append(units, emitSource(t, map[string]string{"a.protop": aliasChain})...)
+
+	checked := assertAliasesResolve(t, units)
+
+	// An assertion over aliases says nothing if there were no aliases, and the
+	// three combinations are the extent this ticket owes. Named here so that a
+	// fixture losing one fails as a missing case rather than as a smaller loop.
+	for _, want := range []string{
+		"BetType.BetTypeId",    // the corpus's own, in the declaration that wrote it
+		"Outer.Thing",          // the same alias in the table it belongs to
+		"RenamedOnly.T",        // the target renamed, not narrowed
+		"NarrowedOnly.T",       // the target narrowed, not renamed
+		"RenamedAndNarrowed.T", // both at once
+		"Narrowing.T",          // and the same again, with the two types in different namespaces
+		"Chained.Second",       // an alias of an alias, which is a member like any other
+	} {
+		if !slices.Contains(checked, want) {
+			t.Errorf("no alias was checked on %s; the assertion passed by not running, and the fixtures owe this case", want)
+		}
+	}
+}
+
+// assertAliasesResolve holds every alias in every emitted unit to the two
+// clauses above and returns "<Type>.<Member>" for each one it checked, so the
+// caller can say which cases it expected to exist.
+func assertAliasesResolve(t *testing.T, units []Unit) []string {
+	t.Helper()
+	var checked []string
+	for _, u := range units {
+		// An enum has no members in readCS's sense and cannot hold an alias.
+		if u.Decl.Kind == check.DeclEnum {
+			continue
+		}
+		d, err := readCS(u.TypeName, u.Source)
+		if err != nil {
+			t.Fatalf("%s does not read back: %v\n%s", u.TypeName, err, u.Source)
+		}
+		declared := declaredMembers(t, u, d)
+		for _, id := range d.Order {
+			name, isAlias := strings.CutPrefix(id, "alias:")
+			if !isAlias {
+				continue
+			}
+			checked = append(checked, u.TypeName+"."+name)
+			m := reAliasPassthrough.FindStringSubmatch(lastLine(d.Members[id]))
+			if m == nil {
+				t.Errorf("%s.%s is not a passthrough at all: %q", u.TypeName, name, d.Members[id])
+				continue
+			}
+			typ, target, written := m[1], m[3], m[4]
+			if target != written {
+				t.Errorf("%s.%s reads %s and writes %s; a passthrough is one member", u.TypeName, name, target, written)
+			}
+			if target == name {
+				t.Errorf("%s.%s passes through to itself, which is infinite recursion and not an alias", u.TypeName, name)
+				continue
+			}
+			held, ok := declared[target]
+			if !ok {
+				t.Errorf("%s.%s passes through to %s, which %s does not declare -- CS0103:\n%s",
+					u.TypeName, name, target, u.TypeName, u.Source)
+				continue
+			}
+			if held != typ {
+				t.Errorf("%s.%s is declared %s and passes through to %s, which is declared %s; a property cannot return one type and assign another:\n%s",
+					u.TypeName, name, typ, target, held, u.Source)
+			}
+		}
+	}
+	return checked
+}
+
+// declaredMembers is every property the emitted file declares, as a map from
+// the emitted name to the emitted declared type. It is read off the emission
+// rather than off the model on purpose: #55 was a body naming a member the
+// model held and the file did not.
+func declaredMembers(t *testing.T, u Unit, d *csDecl) map[string]string {
+	t.Helper()
+	out := make(map[string]string, len(d.Order))
+	for _, id := range d.Order {
+		typ, name, ok := declaredTypeAndName(lastLine(d.Members[id]))
+		if !ok {
+			t.Fatalf("%s: member %q does not read back as a declaration: %q", u.TypeName, id, d.Members[id])
+		}
+		if prev, dup := out[name]; dup {
+			t.Errorf("%s declares %s twice, as %s and as %s", u.TypeName, name, prev, typ)
+		}
+		out[name] = typ
+	}
+	return out
+}
+
+// reAliasPassthrough reads the canonical one-line form readCS folds an alias
+// body into.
+var reAliasPassthrough = regexp.MustCompile(`^public (.+) (\w+) \{ get => (\w+); set => (\w+) = value; \}$`)
+
+// declaredTypeAndName splits `public List<Odd?>? MaybeOdds { get; set; }` into
+// its declared type and its name, for every member shape the emitter writes:
+// the plain property, the composite key's expression body, and the alias's
+// block. The type is whatever precedes the last identifier before the body
+// starts, so a composite key's `(long EventId, long BetTypeId)` survives.
+func declaredTypeAndName(line string) (typ, name string, ok bool) {
+	rest, ok := strings.CutPrefix(line, "public ")
+	if !ok {
+		return "", "", false
+	}
+	i := strings.Index(rest, " { ")
+	if i < 0 {
+		i = strings.Index(rest, " => ")
+	}
+	if i < 0 {
+		return "", "", false
+	}
+	head := rest[:i]
+	sp := strings.LastIndex(head, " ")
+	if sp < 0 {
+		return "", "", false
+	}
+	return head[:sp], head[sp+1:], true
+}
+
+// lastLine drops the attribute lines readCS folds in above a member's text.
+func lastLine(s string) string {
+	if i := strings.LastIndex(s, "\n"); i >= 0 {
+		return s[i+1:]
+	}
+	return s
+}
+
+// A declaration imports the namespaces its emitted text names, so an alias's
+// import has to follow its declared type.
+//
+// #55 moved that type from the source's alias to the member the emitting
+// declaration actually holds. `Narrowing` names `SlimInner` twice -- on the
+// narrowed member and on the passthrough -- and names `Inner` nowhere, so the
+// import list is `C` and not `A`. Emitting `using A;` here is not a compile
+// error, which is exactly why it needs a test: it is the half of the fix a
+// green build would not notice.
+func TestAnAliasCarriedThroughAViewImportsTheTypeItEmits(t *testing.T) {
+	for _, u := range emitSource(t, aliasAcrossNamespaces) {
+		if u.TypeName != "Narrowing" {
+			continue
+		}
+		head, _, _ := strings.Cut(u.Source, "namespace ")
+		if got, want := head, "using C;\nusing MessagePack;\n\n"; got != want {
+			t.Errorf("Narrowing imports %q, want %q -- the alias emits SlimInner, so A is an import for a type the file does not name:\n%s", got, want, u.Source)
+		}
+		return
+	}
+	t.Fatal("nothing emitted Narrowing")
+}
+
+// The fourth shape: a view that selects an alias and does not select the
+// alias's target at all. There is then no member of the view for the emitter's
+// lookup to find.
+//
+// What protopc *should* do about it is #66 -- a diagnostic, an implicit
+// selection, or something else -- and it is unresolved and the user's to rule.
+// So what this test holds is only that the lookup coming up empty is total:
+// the emitter still produces the unit rather than panicking on the missing
+// member. It deliberately does not assert the text, and there is deliberately
+// no golden for this schema: #40 ruled that pinning a defect turns it into a
+// golden the fixing ticket has to argue with, and the emission here is the
+// pre-#55 fallback rather than an answer.
+func TestAViewThatSelectsAnAliasAndNotItsTargetStillEmits(t *testing.T) {
+	units := emitSource(t, map[string]string{"a.protop": `revision 1;
+namespace A;
+record Inner {
+  int64 x = 1;
+}
+table Outer {
+  key int64 id = 1;
+  Inner odds = 7;
+  alias thing = odds;
+}
+view TargetNotSelected of Outer {
+  id;
+  thing as t;
+}
+`})
+	for _, u := range units {
+		if u.TypeName != "TargetNotSelected" {
+			continue
+		}
+		if _, err := readCS(u.TypeName, u.Source); err != nil {
+			t.Fatalf("the emission does not read back: %v\n%s", err, u.Source)
+		}
+		return
+	}
+	t.Fatal("nothing emitted TargetNotSelected")
 }
 
 // A backend's annotation is text and nothing else. protopc does not know what
