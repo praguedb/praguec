@@ -667,13 +667,71 @@ const section4BuiltinNames = "**A declaration may not be named with one of proto
 // the same syntax.BuiltinTypeNames(), so the day the rule narrows to the
 // collections the person repairing those two tests is already reading this one.
 //
-// Where the walk gives up rather than widens: it reads the code form, the bare
-// backticked name, because that is how this document writes a type name and how
-// an enumeration in it would be written. Section 4's `list<T>` is a usage of a
-// collection rather than a naming of the set and passes for that reason. A
-// transcription in running prose with no backticks would pass too, and there is
-// no scan of the plain words to be had instead -- section 4 says "a struct
-// holding a string is allowed" about the English noun, and would fail one.
+// Where the walk reads the code form, and where it stops. The backticked walk
+// reads the code form, the bare backticked name, because that is how this
+// document writes a type name. Section 4's `list<T>` is a usage of a collection
+// rather than a naming of the set and passes for that reason.
+//
+// It is not enough on its own, and #61 said so out loud: a transcription in
+// running prose with no backticks passes it, and so -- found by mutation, not
+// predicted -- does one in a fenced block, which is the more natural way to
+// write a set down. The argument for leaving it there was that no scan of the
+// plain words is possible, because section 4 says "a struct holding a string is
+// allowed" about the English noun and any such scan would fail on it.
+//
+// That argument confuses a mention with a transcription. A transcription is a
+// list, and a list is dense: it puts most of the set in one place. Section 4
+// today names one built-in per paragraph at most -- `string` the English noun
+// in the struct paragraph, `list` in the record one -- and nothing it could
+// reasonably come to say needs three of them in a single paragraph except a
+// copy of the set. So the plain-word walk counts distinct built-ins per
+// paragraph with the backticks and fence markers stripped, and fails at three.
+// Two names together is a comparison. Three is an enumeration.
+//
+// The threshold is the one number here that is a judgement rather than a fact,
+// and it is deliberately loose: the mutations it exists to catch put all eight
+// names in one paragraph, so it has five names of margin, and the room it
+// leaves is room for prose that discusses a pair of built-ins -- which section
+// 4 is entitled to do and has no way to do if the threshold is two.
+const section4Transcription = 3
+
+// section4Paragraphs is the document split on blank lines, with backticks and
+// fence markers stripped. Stripping them is the point: the backticked walk
+// already has the code form, and this one exists for the forms it cannot see.
+func section4Paragraphs(spec string) []string {
+	plain := strings.ReplaceAll(spec, "`", "")
+	var out []string
+	for _, p := range strings.Split(plain, "\n\n") {
+		if strings.TrimSpace(p) != "" {
+			out = append(out, p)
+		}
+	}
+	return out
+}
+
+// namesWholeWord reports whether name occurs in text as a whole word -- so
+// `string` is found in "holding a string" and not in "forbids strings", and
+// `list` is found in "list<T>" because `<` ends a word.
+func namesWholeWord(text, name string) bool {
+	for i := 0; ; {
+		j := strings.Index(text[i:], name)
+		if j < 0 {
+			return false
+		}
+		j += i
+		before := j == 0 || !isWordByte(text[j-1])
+		after := j+len(name) == len(text) || !isWordByte(text[j+len(name)])
+		if before && after {
+			return true
+		}
+		i = j + 1
+	}
+}
+
+func isWordByte(b byte) bool {
+	return b == '_' || b >= '0' && b <= '9' || b >= 'a' && b <= 'z' || b >= 'A' && b <= 'Z'
+}
+
 func TestSection4StatesTheBuiltinNameRuleWithoutCopyingTheSet(t *testing.T) {
 	assertSpecStates(t, specSection4, section4BuiltinNames)
 
@@ -683,12 +741,26 @@ func TestSection4StatesTheBuiltinNameRuleWithoutCopyingTheSet(t *testing.T) {
 	}
 	names := syntax.BuiltinTypeNames()
 	if len(names) == 0 {
-		t.Fatal("syntax.BuiltinTypeNames() is empty; the walk below would assert nothing")
+		t.Fatal("syntax.BuiltinTypeNames() is empty; the walks below would assert nothing")
 	}
 	for _, name := range names {
 		if strings.Contains(string(spec), "`"+name+"`") {
 			t.Errorf("%s writes `%s`: the rule is stated by reference to the built-in set, "+
 				"and a copy of the set in prose is the copy #32 would leave stale", specSection4, name)
+		}
+	}
+	for _, para := range section4Paragraphs(string(spec)) {
+		var found []string
+		for _, name := range names {
+			if namesWholeWord(para, name) {
+				found = append(found, name)
+			}
+		}
+		if len(found) >= section4Transcription {
+			t.Errorf("%s names %d built-ins in one paragraph (%s): that is the set transcribed, "+
+				"whatever it is dressed in, and it is the copy #32 would leave stale. "+
+				"The paragraph is:\n\n%s", specSection4, len(found), strings.Join(found, ", "),
+				strings.TrimSpace(para))
 		}
 	}
 }
