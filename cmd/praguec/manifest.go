@@ -7,16 +7,16 @@ import (
 	"sort"
 )
 
-// Manifest is the ledger of what one `protopc generate` wrote.
+// Manifest is the ledger of what one `praguec generate` wrote.
 //
 // It is specified here and wired to nothing. The reason it can be specified
-// before nanov/protobuf-to-messagepack-sharp#44 rules on when protopc runs is
+// before praguedb/praguec#44 rules on when praguec runs is
 // that the answer does not change who owns stale output. MSBuild's
 // IncrementalClean only reaches $(OutDir) and $(IntermediateOutputPath), and
 // B2Tech.Feed.Cache's generator skips anything under obj/ or bin/ -- so
-// protopc's output has to live outside both, which puts it outside everything
-// MSBuild would clean. Under either answer to #44, protopc is the only thing
-// that can delete a file protopc wrote and no longer writes.
+// praguec's output has to live outside both, which puts it outside everything
+// MSBuild would clean. Under either answer to #44, praguec is the only thing
+// that can delete a file praguec wrote and no longer writes.
 //
 // The format, so that the tool that eventually reads it has something to read:
 //

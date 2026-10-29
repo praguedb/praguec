@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/nanov/protobuf-to-messagepack-sharp/internal/source"
+	"github.com/praguedb/praguec/internal/source"
 )
 
 // Every code and the number it has shipped with, written out. codes.go opens
@@ -213,7 +213,7 @@ func TestEveryCodeIsInTheTable(t *testing.T) {
 
 // Every code and the severity it carries. Severity is what a diagnostic DOES:
 // an error is what HasErrors reports and what stops the driver before it hands
-// a half-read file to a backend, so a code demoted to a warning is protopc
+// a half-read file to a backend, so a code demoted to a warning is praguec
 // accepting a schema it exists to reject. It used to be unpinnable -- the
 // severity was an argument at each of the 56 call sites, chosen by which method
 // name was typed, and nothing about a Code could be asked what it was.
@@ -280,7 +280,7 @@ var wantCodeSeverities = []struct {
 }
 
 // A code keeps its severity the way it keeps its number, and for the same
-// reason: both are what the code MEANS to whoever reads protopc's output, and
+// reason: both are what the code MEANS to whoever reads praguec's output, and
 // neither is the business of the stage that happens to raise it.
 //
 // The collision check is the whole of what holds the table's CODE column, and
@@ -290,7 +290,7 @@ var wantCodeSeverities = []struct {
 // answer is the same word, Error, so the want column carries no identity at
 // all: swap a row's code for another code and the row still passes. Two edits
 // then hide a demotion completely -- register TagIsReserved as a Warning in
-// codes.go, and point its row at TagOutOfRange -- and protopc goes on to
+// codes.go, and point its row at TagOutOfRange -- and praguec goes on to
 // GENERATE C# for a field reusing a retired tag, printing a warning and
 // exiting 0. Measured across the language, 29 of the 45 codes survived that.
 //
@@ -338,7 +338,7 @@ func TestEveryCodeKeepsItsSeverity(t *testing.T) {
 func TestNoCodeIsAdvisoryYet(t *testing.T) {
 	for _, c := range wantCodeSeverities {
 		if got := c.code.Severity(); got != Error {
-			t.Errorf("%s is a %s; protop has no advisory diagnostic, and a code that does not fail the compile is one protopc prints and then accepts the schema anyway", c.name, got)
+			t.Errorf("%s is a %s; protop has no advisory diagnostic, and a code that does not fail the compile is one praguec prints and then accepts the schema anyway", c.name, got)
 		}
 	}
 }
@@ -579,10 +579,10 @@ func TestADiagnosticRaisedOnTheBagNamesNoFile(t *testing.T) {
 // `(line,col,line,col)` or `(line,col-col)`. **The comma between line and
 // column is load-bearing** -- the `(line-col)` in Microsoft's own documentation
 // is a typo with no regex behind it, and a build that got it wrong would log
-// protopc's errors as plain messages and pass.
+// praguec's errors as plain messages and pass.
 //
 // Nothing generates this literal and no flag can rewrite it. It is written out
-// because the format is a contract with a program protopc does not own, and the
+// because the format is a contract with a program praguec does not own, and the
 // only way to hold a contract like that is to write down the other side of it.
 func TestRenderMSVSIsTheShapeMSBuildParses(t *testing.T) {
 	f := source.NewFile("prague.prague", "revision 1;\nstruct S {\n  int64 id = 0;\n}\n")
@@ -605,7 +605,7 @@ func TestRenderMSVSIsTheShapeMSBuildParses(t *testing.T) {
 
 // A diagnostic about no particular file takes the tool name as its origin, with
 // a space before the colon, which is the spelling CanonicalError accepts for a
-// message about no particular place. protopc raises none today -- every
+// message about no particular place. praguec raises none today -- every
 // diagnostic carries a span on purpose -- so this pins the spelling before the
 // first one exists rather than after a build has silently swallowed it.
 func TestRenderMSVSOfADiagnosticWithNoFile(t *testing.T) {
@@ -613,7 +613,7 @@ func TestRenderMSVSOfADiagnosticWithNoFile(t *testing.T) {
 	b.Raise(ImportNotFound, source.SpanAt(0), "no file named %q was found", "gone.prague")
 
 	got := RenderAs(MSVS, nil, b.All()[0])
-	want := `protopc : error PROTOP0107: no file named "gone.prague" was found`
+	want := `praguec : error PROTOP0107: no file named "gone.prague" was found`
 	if got != want {
 		t.Errorf("RenderAs(MSVS) = %q\nwant %q", got, want)
 	}
@@ -627,14 +627,14 @@ func TestRenderGCCOfADiagnosticWithNoFile(t *testing.T) {
 	b.Raise(ImportNotFound, source.SpanAt(0), "no file named %q was found", "gone.prague")
 
 	got := Render(nil, b.All()[0])
-	want := `protopc: error PROTOP0107: no file named "gone.prague" was found`
+	want := `praguec: error PROTOP0107: no file named "gone.prague" was found`
 	if got != want {
 		t.Errorf("Render = %q\nwant %q", got, want)
 	}
 }
 
 // MSBuild's error parser is line-based, so a message that wrapped would have
-// its tail read as an unrelated line of build output. protopc's messages are
+// its tail read as an unrelated line of build output. praguec's messages are
 // long enough for this not to be hypothetical.
 func TestRenderMSVSFlattensAMultiLineMessage(t *testing.T) {
 	f := source.NewFile("a.prague", "revision 1;\n")
@@ -724,7 +724,7 @@ func TestFormatString(t *testing.T) {
 //
 // It is provisional: docs/research/proto-to-messagepack-csharp.md:924 and :1292
 // both say the MSVS form should be the default. That contradiction is
-// nanov/protobuf-to-messagepack-sharp#64, filed rather than resolved, and this
+// praguedb/praguec#64, filed rather than resolved, and this
 // test is the one thing a ruling for the MSVS form would have to come and
 // change.
 func TestTheDefaultFormatIsTerminalFirst(t *testing.T) {

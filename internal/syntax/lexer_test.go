@@ -3,8 +3,8 @@ package syntax
 import (
 	"testing"
 
-	"github.com/nanov/protobuf-to-messagepack-sharp/internal/diag"
-	"github.com/nanov/protobuf-to-messagepack-sharp/internal/source"
+	"github.com/praguedb/praguec/internal/diag"
+	"github.com/praguedb/praguec/internal/source"
 )
 
 // lex tokenises src and fails the test if any lexical diagnostic was raised.

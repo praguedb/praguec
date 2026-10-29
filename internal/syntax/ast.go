@@ -3,7 +3,7 @@ package syntax
 import (
 	"strings"
 
-	"github.com/nanov/protobuf-to-messagepack-sharp/internal/source"
+	"github.com/praguedb/praguec/internal/source"
 )
 
 // The AST is what the parser produces and where the frontend stops. It is a
@@ -285,10 +285,10 @@ func (r ReservedRange) Contains(tag uint64) bool {
 // no second position and no before-slot, and annotations stack by juxtaposition
 // with no comma, because their contents already contain commas.
 //
-// Text is raw, and that is the one place protopc carries something it does not
+// Text is raw, and that is the one place praguec carries something it does not
 // understand. An annotation aimed at a backend is written in that backend's
 // language, so the check that matters happens when the generated code compiles;
-// protopc checks position and prefix and nothing else. Annotations are held in
+// praguec checks position and prefix and nothing else. Annotations are held in
 // source order and are neither sorted nor deduplicated.
 type Annotation struct {
 	// Prefix names the target backend -- the `cs` of `[cs: X]` -- and is nil

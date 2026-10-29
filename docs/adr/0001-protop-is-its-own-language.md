@@ -1,7 +1,7 @@
 # ADR-0001 — protop is its own language, not a strict Protobuf profile
 
 - **Status:** accepted, 2026-09-12
-- **Resolves:** [#29 Does protop stay parseable by protoc?](https://github.com/nanov/protobuf-to-messagepack-sharp/issues/29)
+- **Resolves:** [#29 Does protop stay parseable by protoc?](https://github.com/praguedb/praguec/issues/29)
 - **Leading document:** [`docs/spec/protop.md`](../spec/protop.md)
 
 ## Context
@@ -25,7 +25,7 @@ for it in every line of every schema.
 
 ## Decision
 
-protop is its own language with its own grammar, parsed by protopc alone.
+protop is its own language with its own grammar, parsed by praguec alone.
 `protoc` leaves the pipeline entirely, including as a test dependency.
 
 ## Consequences
@@ -38,7 +38,7 @@ cost. But two closed findings had already measured its reach:
   (#2), so the oracle could say nothing about the presence axis — which is this
   project's entire thesis.
 - `--descriptor_set_out` carries **zero resolved features** (#4), so the harness
-  proved protopc *parses* identically and nothing about whether it *resolved*
+  proved praguec *parses* identically and nothing about whether it *resolved*
   correctly.
 
 The oracle was sound on syntax acceptance and silent on both axes the compiler is
@@ -59,6 +59,6 @@ nullable axis, the MSBuild-task integration shape, the ban on
 the `auto-generated` / `.g.cs` skip trap the emitter must avoid.
 
 **The cost that is not recoverable.** `protoc` is a mature parser with twenty
-years of diagnostics behind it. protopc now owns its grammar, its error
+years of diagnostics behind it. praguec now owns its grammar, its error
 messages and its source spans forever, for one pipeline. That is stated in the
 spec's own Open section and is the largest standing risk in the project.

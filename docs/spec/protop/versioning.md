@@ -4,7 +4,7 @@ Sketched, not decided. Nothing below is implemented.
 
 ### A hash is identity, not a version
 
-A hash says two schemas differ. It cannot say which is newer, or whether the difference broke anything. Both require comparing against the previous schema, so autogeneration needs a checked-in baseline — the last published descriptor — and protopc derives the version by diffing current against it. This is what `buf breaking` does and there is no way around it.
+A hash says two schemas differ. It cannot say which is newer, or whether the difference broke anything. Both require comparing against the previous schema, so autogeneration needs a checked-in baseline — the last published descriptor — and praguec derives the version by diffing current against it. This is what `buf breaking` does and there is no way around it.
 
 ### Versioned per table
 

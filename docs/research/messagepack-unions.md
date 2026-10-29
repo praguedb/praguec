@@ -1,6 +1,6 @@
 # MessagePack-CSharp v3 unions: mechanics and constraints
 
-Primary-source research for [issue #5](https://github.com/nanov/protobuf-to-messagepack-sharp/issues/5). Every claim cites either a file and line in MessagePack-CSharp at **tag `v3.1.4`** (commit `44aa149acce1de32881e007f53fad0f3db7dfdab`) or a byte string produced by a throwaway probe project referencing `MessagePack` **3.1.4** on `net8.0`. Claims that could not be verified against a primary source are labelled **unverified** in place; there are six of them.
+Primary-source research for [issue #5](https://github.com/praguedb/praguec/issues/5). Every claim cites either a file and line in MessagePack-CSharp at **tag `v3.1.4`** (commit `44aa149acce1de32881e007f53fad0f3db7dfdab`) or a byte string produced by a throwaway probe project referencing `MessagePack` **3.1.4** on `net8.0`. Claims that could not be verified against a primary source are labelled **unverified** in place; there are six of them.
 
 **Method.** Two probe projects were built and run, then deleted. The positive probe declared a `[Union]` interface, an abstract-class union, a struct arm, a partial-split union, a nested union, a sparse-key union and an unlisted implementor, and dumped every payload as both hex and `MessagePackSerializer.ConvertToJson`, once through `MessagePackSerializer.DefaultOptions` (which reaches the source generator) and once through a hand-built `CompositeResolver` ending in `DynamicUnionResolver.Instance` (the reflection path). The negative probe compiled seven deliberately-invalid declarations one at a time and captured the compiler diagnostic or the runtime exception chain. Where the two resolver paths disagree, both results are given.
 
@@ -20,13 +20,13 @@ Primary-source research for [issue #5](https://github.com/nanov/protobuf-to-mess
 
 **6. `[Union]` must sit on the base type, and the base must be an interface or an abstract class — but the source generator only treats *interfaces* as generation roots.** `[AttributeUsage(AttributeTargets.Interface | AttributeTargets.Class, AllowMultiple = true, Inherited = false)]` (`Attributes.cs:83`) rules out structs at compile time (`CS0592`). `Inherited = false` plus attribute lookup on the *static* type means `[Union]` on a derived type does nothing — `GetFormatter<IBase>()` returns `null` and serialization throws `FormatterNotRegisteredException`. The generator's syntax predicate is `node is InterfaceDeclarationSyntax` (`MessagePackGenerator.cs:26`), so an abstract-class union is only reached transitively, when some `[MessagePackObject]` type references it (§2, §5).
 
-**7. `[Union]` attributes may be split across `partial` halves of the same declaration.** Verified: `[Union(0, typeof(SplitArm0))]` in one file and `[Union(1, typeof(SplitArm1))]` in another, on the same `partial interface ISplit`, both serialize and round-trip. The mechanism is that Roslyn's `INamedTypeSymbol.GetAttributes()` merges all partial declarations (`TypeCollector.cs:396`) and `FullModel.Combine` dedupes the resulting `UnionSerializationInfo` through an `ImmutableSortedSet` (`FullModel.cs:46, 55`). **Partial declarations cannot span assemblies**, so this permits `protopc` and a third-party generator to each contribute arms *within one project*, and nothing more (§2.3).
+**7. `[Union]` attributes may be split across `partial` halves of the same declaration.** Verified: `[Union(0, typeof(SplitArm0))]` in one file and `[Union(1, typeof(SplitArm1))]` in another, on the same `partial interface ISplit`, both serialize and round-trip. The mechanism is that Roslyn's `INamedTypeSymbol.GetAttributes()` merges all partial declarations (`TypeCollector.cs:396`) and `FullModel.Combine` dedupes the resulting `UnionSerializationInfo` through an `ImmutableSortedSet` (`FullModel.cs:46, 55`). **Partial declarations cannot span assemblies**, so this permits `praguec` and a third-party generator to each contribute arms *within one project*, and nothing more (§2.3).
 
 **8. A union-typed member nested inside a union arm works; a union arm whose declared type is itself a union interface does not.** `IOuter → OuterArm { int Tag; IAnimal Inner }` round-trips as `[0, [9, [0, ["Rex", 4]]]]`. But `[Union(0, typeof(IMid))]` where `IMid` is itself a union interface serializes any `IMid` instance to `C0`, because the dispatch lookup is on the concrete runtime type, which is never `IMid`. Union hierarchies are one level deep, always (§6).
 
-**9. Duplicate union keys and duplicate subtypes are not diagnosed cleanly.** Two arms sharing key `0` either crash the generator at build time (`CS8785: Generator 'MessagePackGenerator' failed to generate source … 'An item with the same key has already been added. Key: 0'`) or — on a clean single-file build — compile with **zero warnings** and then fail at first use with `MessagePackSerializationException` ← `TypeInitializationException` ← `ArgumentException: An item with the same key has already been added. Key: 0`. The same subtype under two keys fails the same way with `Key: System.RuntimeTypeHandle`. `TypeCollector.CollectUnion` performs no duplicate validation at all (`TypeCollector.cs:394-430`); the reflection resolver does, and throws a clear `MessagePackDynamicUnionResolverException` (`DynamicUnionResolver.cs:119, 124`). **protopc must own uniqueness checking**, because the target does not (§9).
+**9. Duplicate union keys and duplicate subtypes are not diagnosed cleanly.** Two arms sharing key `0` either crash the generator at build time (`CS8785: Generator 'MessagePackGenerator' failed to generate source … 'An item with the same key has already been added. Key: 0'`) or — on a clean single-file build — compile with **zero warnings** and then fail at first use with `MessagePackSerializationException` ← `TypeInitializationException` ← `ArgumentException: An item with the same key has already been added. Key: 0`. The same subtype under two keys fails the same way with `Key: System.RuntimeTypeHandle`. `TypeCollector.CollectUnion` performs no duplicate validation at all (`TypeCollector.cs:394-430`); the reflection resolver does, and throws a clear `MessagePackDynamicUnionResolverException` (`DynamicUnionResolver.cs:119, 124`). **praguec must own uniqueness checking**, because the target does not (§9).
 
-**10. On the protop question (issue #9), the evidence favours shape B — a dedicated closed-type construct.** Union keys are an independent, sparse-tolerant, zero-cost number space that a 19-arm `oneof` would needlessly entangle with the parent's field numbering and its dense-array layout; and a `oneof` produces 19 *fields in the parent*, not a substitutable member, so it would have to be reinterpreted rather than translated. Shape B maps 1:1 onto `[Union(n, typeof(T))]` and lets protopc enforce the four things the target leaves unenforced: key uniqueness, subtype uniqueness, arm exhaustiveness, and arm sealedness (§10).
+**10. On the protop question (issue #9), the evidence favours shape B — a dedicated closed-type construct.** Union keys are an independent, sparse-tolerant, zero-cost number space that a 19-arm `oneof` would needlessly entangle with the parent's field numbering and its dense-array layout; and a `oneof` produces 19 *fields in the parent*, not a substitutable member, so it would have to be reinterpreted rather than translated. Shape B maps 1:1 onto `[Union(n, typeof(T))]` and lets praguec enforce the four things the target leaves unenforced: key uniqueness, subtype uniqueness, arm exhaustiveness, and arm sealedness (§10).
 
 **Open questions requiring a decision:**
 
@@ -198,7 +198,7 @@ The mechanism is worth stating precisely, because it is what makes the guarantee
 - `TypeCollector.CollectUnion` reads `type.GetAttributes()` on the `INamedTypeSymbol` (`TypeCollector.cs:396`). Roslyn's symbol model merges attributes from **all** partial declarations into one list, so the collector never sees "halves".
 - Both syntax nodes fire `ForAttributeWithMetadataName`, so the pipeline produces the type twice; `FullModel.Combine` unions the results into `ImmutableSortedSet.CreateBuilder<UnionSerializationInfo>(ResolverRegisterInfoComparer.Default)` (`FullModel.cs:46, 55`), which dedupes rather than emitting two formatters.
 
-**The hard limit: `partial` cannot span assemblies.** So `protopc` and a third-party generator can each contribute arms only if they emit into the *same project*. Cross-assembly arm contribution is impossible by construction, and there is no `[UnionAdd]`-style escape hatch in v3.1.4.
+**The hard limit: `partial` cannot span assemblies.** So `praguec` and a third-party generator can each contribute arms only if they emit into the *same project*. Cross-assembly arm contribution is impossible by construction, and there is no `[UnionAdd]`-style escape hatch in v3.1.4.
 
 ---
 
@@ -379,7 +379,7 @@ A `[Union(0, typeof(Unrelated))]` where `Unrelated` does not implement the base 
 …IBaseFormatter.g.cs(73,15):  error CS0030: Cannot convert type 'Neg.Unrelated' to 'Neg.IBase'
 ```
 
-Loud, but the error points at machine-generated source rather than at the declaration. protopc should reject this in its own front end.
+Loud, but the error points at machine-generated source rather than at the declaration. praguec should reject this in its own front end.
 
 ### 7.3 Arms need not be `sealed` — but they should be
 
@@ -437,7 +437,7 @@ This is the single most important asymmetry with `[Key(N)]`, and it is worth sta
 
 ## 9. The failure-mode inventory
 
-Every negative case run, with the exact diagnostic. This is the checklist protopc's front end must implement, because the target enforces only two of the eight.
+Every negative case run, with the exact diagnostic. This is the checklist praguec's front end must implement, because the target enforces only two of the eight.
 
 | # | Declaration defect | When it surfaces | Diagnostic |
 |---|---|---|---|
@@ -470,9 +470,9 @@ A protobuf `oneof` is *n* fields inlined in the parent message, sharing the pare
 
 ### 10.2 Shape C — refusal — is coherent but concedes the wrong thing
 
-Refusing polymorphism keeps `LiveObjectCacheItem` hand-written and lets protopc generate the other eight corpus types. The argument for it is row 8 of §9: an unlisted implementor is silent, total data loss, and a schema language that cannot prevent that is not obviously better than a hand-written file.
+Refusing polymorphism keeps `LiveObjectCacheItem` hand-written and lets praguec generate the other eight corpus types. The argument for it is row 8 of §9: an unlisted implementor is silent, total data loss, and a schema language that cannot prevent that is not obviously better than a hand-written file.
 
-But that argument cuts the other way. **A hand-maintained 19-arm union is precisely the artefact most exposed to row 8**, and protopc is the only thing that could make the arm list exhaustive by construction. Refusing leaves the single riskiest type in the corpus ungoverned while governing the eight safe ones. Shape C is the right *fallback* if shape B cannot be specified in phase 1, not the right answer on the merits.
+But that argument cuts the other way. **A hand-maintained 19-arm union is precisely the artefact most exposed to row 8**, and praguec is the only thing that could make the arm list exhaustive by construction. Refusing leaves the single riskiest type in the corpus ungoverned while governing the eight safe ones. Shape C is the right *fallback* if shape B cannot be specified in phase 1, not the right answer on the merits.
 
 ### 10.3 Shape B — a closed-type construct — maps 1:1 and is what the evidence supports
 
@@ -499,7 +499,7 @@ emitting
 public partial interface IBaseLiveData { }
 ```
 
-### 10.4 What protopc must enforce, because the target does not
+### 10.4 What praguec must enforce, because the target does not
 
 Directly from §9 and §7:
 

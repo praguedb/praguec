@@ -1,4 +1,4 @@
-# ADR-0002 — protopc is written in Go
+# ADR-0002 — praguec is written in Go
 
 - **Status:** accepted, 2026-09-12
 - **Supersedes:** `docs/research/proto-to-messagepack-csharp.md` §11 ("Recommendation: C#")
@@ -11,7 +11,7 @@ over-determined". It was — on its premises. All three have since failed:
 
 | §11 assumed | now |
 |---|---|
-| protopc is a `protoc` plugin | [ADR-0001](0001-protop-is-its-own-language.md) removed `protoc` from the pipeline entirely |
+| praguec is a `protoc` plugin | [ADR-0001](0001-protop-is-its-own-language.md) removed `protoc` from the pipeline entirely |
 | it ships *inside* a .NET build, as a Roslyn source generator reached through NuGet (§11.2, §11.3) | it runs **before** the build, the way `buf generate` does (#31, and the buf-shaped end goal on the map) |
 | C# is the only backend | the spec plans several: `[go: json:"..."]` is in the annotation table at §3, *"when a Go backend exists"* |
 
@@ -24,11 +24,11 @@ of one of its backends has an asymmetry that is permanent and arbitrary.
 2.83.0 is 22.8 MiB of which **99.8% is native payload across six platform
 folders**, for 48 KB of managed task code. But that argument is against
 smuggling native binaries into a .NET *dependency graph*. It says nothing
-against a compiler installed the way `buf` is, which is what protopc now is.
+against a compiler installed the way `buf` is, which is what praguec now is.
 
 ## Decision
 
-protopc is written in Go.
+praguec is written in Go.
 
 ## Why not Rust
 
@@ -44,11 +44,11 @@ reasoning that transfers is worth separating from the part that does not. Its
 *decisive* reason was port fidelity — ~100k lines of structurally imperative
 TypeScript that Go's GC and reference semantics reproduce almost 1:1, where
 Rust would have forced a data-model redesign. That reason is **not** ours;
-protopc is greenfield. The property underneath it is: compiler IR is a mutable
+praguec is greenfield. The property underneath it is: compiler IR is a mutable
 cyclic graph, and a GC makes that free.
 
 Rust's genuine advantages here — no GC pauses, small binaries, C ABI embedding —
-are ones protopc has no use for.
+are ones praguec has no use for.
 
 ## Consequences
 
@@ -72,7 +72,7 @@ languages, and this delivery shape does not have it.
 
 **Git-tag import resolution (#31) stops being novel work.** Module fetch,
 immutable tags, a lock file and `go.sum`-style content hashing are the ecosystem
-protopc is now written in, not a mechanism to design from scratch.
+praguec is now written in, not a mechanism to design from scratch.
 
 **What is unaffected.** Everything in the spec, and every measured finding about
 the *output*: `Key = tag - 1`, presence as the nullable axis, the ban on
@@ -81,6 +81,6 @@ the deserializing-constructor limit that forces mutable classes (#20), and the
 `auto-generated` / `.g.cs` skip trap (#25). These are properties of the emitted
 C#. The host language of the compiler cannot reach them.
 
-**The cost that is real.** The team's language is C#, and protopc is now a Go
+**The cost that is real.** The team's language is C#, and praguec is now a Go
 codebase they have to maintain, review and hire for. Nothing in this document
 reduces that; it is the price of the frontend/backend split being honest.

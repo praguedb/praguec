@@ -8,8 +8,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/nanov/protobuf-to-messagepack-sharp/internal/diag"
-	"github.com/nanov/protobuf-to-messagepack-sharp/internal/source"
+	"github.com/praguedb/praguec/internal/diag"
+	"github.com/praguedb/praguec/internal/source"
 )
 
 // specSubsetFixture is protop lifted verbatim out of section 1 of the spec. It
@@ -54,7 +54,7 @@ func parseClean(t *testing.T, src string) (*source.File, *File) {
 
 // assertGate holds the bag against what the codes it carries imply about the
 // compile. bag.HasErrors is the gate the driver reads and every later stage
-// inherits, so a diagnostic that is reported without reaching it is one protopc
+// inherits, so a diagnostic that is reported without reaching it is one praguec
 // prints and then accepts anyway.
 //
 // The expectation is derived and never written down: the compile fails exactly
@@ -593,7 +593,7 @@ struct S
 func underlines(s string) *string { return &s }
 
 // Every diagnostic the parser raises, pinned by code sequence and by where it
-// points. Codes are protopc's interface -- an editor filters on them and a
+// points. Codes are praguec's interface -- an editor filters on them and a
 // changelog cites them -- so the sequence is asserted exactly.
 //
 // wantSpan is the text the first diagnostic must underline, written out rather
@@ -610,7 +610,7 @@ func underlines(s string) *string { return &s }
 // empty file degrades to a position with no snippet at all. Whether headSpan is
 // a token span or a file-position marker is a question about what a header
 // diagnostic MEANS rather than a span to swap, and it is
-// nanov/protobuf-to-messagepack-sharp#63. Pinning a wrong underline is worse
+// praguedb/praguec#63. Pinning a wrong underline is worse
 // than leaving it open -- it turns a defect into a golden the fix then has to
 // argue with -- so the row records the debt instead of hiding it.
 //
@@ -640,7 +640,7 @@ func TestParseDiagnostics(t *testing.T) {
 		// is the teaching, and wantMessageHas is the parts that must not drift,
 		// for one built around an interpolated enumeration or a worked example.
 		// A row sets one or the other and never both -- the split is
-		// nanov/protobuf-to-messagepack-sharp#40's census, which also names the
+		// praguedb/praguec#40's census, which also names the
 		// 14 codes that say only what their code name says and earn no golden
 		// at all. Those rows set neither, deliberately, and
 		// loadBearingMessages below is what keeps that a decision rather than
@@ -862,7 +862,7 @@ struct S {
 			wantSpan: underlines("[cs: X]"),
 		},
 		{
-			// A backend protopc does not have. An unknown prefix is an error
+			// A backend praguec does not have. An unknown prefix is an error
 			// rather than a silent drop: a typo that vanishes from the output is
 			// worse than the rule this replaced.
 			name: "unknown annotation prefix",
@@ -875,7 +875,7 @@ struct S {
 			wantCodes: []diag.Code{diag.UnknownAnnotationPrefix},
 			wantMessageHas: []string{
 				"unknown annotation prefix `rs`",
-				"protopc's backends are `cs`, `go`",
+				"praguec's backends are `cs`, `go`",
 				"writing a backend rather than a keyword",
 			},
 			wantLine: 4, wantCol: 16,
@@ -1130,7 +1130,7 @@ struct S {
 			wantCodes: []diag.Code{diag.UnknownAnnotationPrefix},
 			wantMessageHas: []string{
 				"unknown annotation prefix `kt`",
-				"protopc's backends are `cs`",
+				"praguec's backends are `cs`",
 			},
 			wantLine: 4, wantCol: 16,
 			wantSpan: underlines("kt"),
@@ -1633,11 +1633,11 @@ var loadBearingMessages = []diag.Code{
 // was reproduced on. A code sequence says what was noticed; this says what it
 // costs, which is a different claim: bag.HasErrors is the gate every stage
 // after the parser inherits, so a code that does not fail the compile is a file
-// protopc reads, accepts, and generates C# from.
+// praguec reads, accepts, and generates C# from.
 //
 // Both of these were demoted by hand -- PROTOP0202 at the parser's `key` site,
 // PROTOP0303 at its duplicate-tag one -- and the whole suite stayed green while
-// protopc printed a warning and exited 0 on input it exists to reject. The
+// praguec printed a warning and exited 0 on input it exists to reject. The
 // checker's side of PROTOP0303 was never in that state, because
 // TestACheckerDiagnosticIsWhatDecidesTheExitCode reads the exit code; the
 // parser's side had nothing.
@@ -1687,7 +1687,7 @@ struct S {
 				t.Errorf("%s was raised as a %s", tt.want, got)
 			}
 			if !bag.HasErrors() {
-				t.Error("HasErrors is false, so protopc accepts this file and generates from it")
+				t.Error("HasErrors is false, so praguec accepts this file and generates from it")
 			}
 		})
 	}
@@ -1736,7 +1736,7 @@ func TestRenderPointsAtTheOffendingToken(t *testing.T) {
 //
 // Severity was unpinned too, and it is the worst of the three: bag.HasErrors
 // gates every stage after the parser, so a code quietly demoted to a warning
-// means protopc ACCEPTS a view that names no source and hands it to a backend.
+// means praguec ACCEPTS a view that names no source and hands it to a backend.
 // Demoting one now takes a line of internal/diag/codes.go rather than a word at
 // this call site, and diag's own table holds all forty-five of them; the word
 // `error` in each golden says so here as well, and HasErrors is asserted beside
@@ -2102,7 +2102,7 @@ struct S
 // The three closed sets, written out here as literals so that the test has an
 // oracle the implementation cannot move. Each of these sets is a decision --
 // protop's scalars are a census of the spec (#32), the legal annotation
-// prefixes are exactly the backends protopc has, and protop's own annotations
+// prefixes are exactly the backends praguec has, and protop's own annotations
 // are read rather than passed through -- and a set that can be widened or
 // narrowed with the suite green is not closed in any sense that matters.
 var (
@@ -2273,7 +2273,7 @@ func declMembers(d Decl) []Member {
 // Annotations, in the three positions section 1 uses them: after a declaration
 // head, after a tag, and stacked by juxtaposition. Contents are carried
 // verbatim, in source order, and both of the identical ones on `x` are kept,
-// because protopc does not know what any of it would mean to the backend that
+// because praguec does not know what any of it would mean to the backend that
 // reads it.
 //
 // Every run here is written in reverse alphabetical order on purpose. A stage
@@ -3243,7 +3243,7 @@ struct S
 // member-start reports this is the one nothing else in the suite reaches:
 // delete the `raiseMemberStart` call from parseEnumMember and the whole repo
 // stays green while `enum E { 5; A = 1; }` compiles CLEAN -- an empty bag,
-// HasErrors false, protopc exiting 0 on a body whose first line is not a name.
+// HasErrors false, praguec exiting 0 on a body whose first line is not a name.
 // A diagnostic no test holds is a diagnostic the next edit can delete.
 //
 // It is also the site where the suppression #41 added now sits between the

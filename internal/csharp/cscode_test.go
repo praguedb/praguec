@@ -12,7 +12,7 @@ import (
 
 // A very small C# reader, used on both sides of every corpus comparison.
 //
-// It exists because the corpus is hand-written and protopc is not, and the
+// It exists because the corpus is hand-written and praguec is not, and the
 // interesting differences between them are never whitespace. Both the corpus
 // file and the emitted text go through this one function, so a difference that
 // survives it is a difference in what the type *is* -- a member, a key, a type,
@@ -20,7 +20,7 @@ import (
 //
 // Every normalisation it performs is named, and every one that can hide an
 // expressiveness gap records where it fired. TestNormalisationSitesAreEnumerated
-// holds those sites against a checked-in list, so "protopc cannot write
+// holds those sites against a checked-in list, so "praguec cannot write
 // `required`" is a line in a test rather than a silence in a diff.
 
 // errSkip says the line was recognised and is deliberately not a member.
@@ -93,7 +93,7 @@ var (
 )
 
 // readCS reads C# source into a csDecl. It is deliberately not a parser: it
-// recognises the handful of member shapes protopc can emit and reports anything
+// recognises the handful of member shapes praguec can emit and reports anything
 // else, so a corpus file that contains something new fails loudly instead of
 // being quietly half-read.
 func readCS(name, src string) (*csDecl, error) {
@@ -125,7 +125,7 @@ func readCS(name, src string) (*csDecl, error) {
 		return nil, fmt.Errorf("%s: no type declaration", name)
 	}
 	head := lines[i]
-	// N-inherit: a base list is dropped. Nothing protopc emits has one, and the
+	// N-inherit: a base list is dropped. Nothing praguec emits has one, and the
 	// one corpus file that does is a listed gap (#11).
 	if b := strings.Index(head, " : "); b >= 0 {
 		d.Sites = append(d.Sites, "base:"+strings.TrimSpace(head[b+3:]))
@@ -162,7 +162,7 @@ func readCS(name, src string) (*csDecl, error) {
 			continue
 		}
 		// N-ctor: a constructor is the hand-written half arriving in the same
-		// file (#25). protopc emits none, so both sides drop them.
+		// file (#25). praguec emits none, so both sides drop them.
 		if strings.HasPrefix(s, "public "+typeName+"(") {
 			d.Sites = append(d.Sites, "ctor:"+typeName)
 			for ; i < len(lines) && lines[i] != "}"; i++ {
@@ -202,7 +202,7 @@ func readMember(name string, lines []string, i int, id string, attrs []string, d
 			s = strings.Replace(s, w, "", 1)
 		}
 	}
-	// N-init: `init` and `set` differ, and #20 forbids protopc emitting the
+	// N-init: `init` and `set` differ, and #20 forbids praguec emitting the
 	// immutable side. Every site is listed.
 	if strings.Contains(s, "{ get; init; }") {
 		d.Sites = append(d.Sites, "init:"+memberNameOf(s))

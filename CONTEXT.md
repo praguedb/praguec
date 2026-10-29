@@ -1,34 +1,34 @@
 # Context
 
 Glossary for this repo. Terms only — no design, no decisions, no implementation.
-Decisions live on the [map](https://github.com/nanov/protobuf-to-messagepack-sharp/issues/1)
+Decisions live on the [map](https://github.com/praguedb/praguec/issues/1)
 and its tickets; hard-to-reverse ones get an ADR under `docs/adr/`.
 
 ## protop
 
-The language. Its own grammar, parsed by protopc alone — `protoc` cannot read a
+The language. Its own grammar, parsed by praguec alone — `protoc` cannot read a
 `.prague` file and is not in the pipeline at all. The name is inherited from the
 period when protop was a strict profile of Protobuf, and so is the vocabulary:
 *tag*, *field*, *reserved* all keep their Protobuf meanings deliberately. See
 [ADR-0001](docs/adr/0001-protop-is-its-own-language.md); the language itself is
 specified in [`docs/spec/protop.md`](docs/spec/protop.md).
 
-## protopc
+## praguec
 
 The compiler. Reads protop and writes C#. It is not a `protoc` plugin and does
 not invoke `protoc`; it parses protop itself. Written in Go, and run *before*
 the build rather than inside it — see
-[ADR-0002](docs/adr/0002-protopc-is-written-in-go.md).
+[ADR-0002](docs/adr/0002-praguec-is-written-in-go.md).
 
 Split frontend/backend, the way LLVM is: the frontend parses and checks source
 into one resolved **schema model**, and a **backend** turns that model into a
 target language. A backend never sees source or AST. C# is the first backend,
 not the only one — `internal/golang` is the second, emitting consumer-side
-decoders for `github.com/nanov/prague.go` (`protopc generate --lang go`).
+decoders for `github.com/praguedb/prague.go` (`praguec generate --lang go`).
 
 ## oracle
 
-The source of truth a protopc output is checked against. It is **the corpus** —
+The source of truth a praguec output is checked against. It is **the corpus** —
 `corpus/prague/`, real payload types already on the wire — compared as golden
 files. It was `protoc` until ADR-0001; that oracle could only ever check syntax
 acceptance, and was measured blind on both presence and feature resolution.
@@ -101,7 +101,7 @@ Pinned from an external repository at a fixed commit; see `corpus/prague/SOURCE.
 ## payload type
 
 A type whose whole purpose is to be serialized and sent. No behaviour, no
-identity, no lifecycle — just fields and their wire layout. Everything protopc
+identity, no lifecycle — just fields and their wire layout. Everything praguec
 generates is a payload type.
 
 ## projection
@@ -136,8 +136,8 @@ writes. In the corpus, the cache shells are empty by design.
 ## passthrough
 
 Carrying an annotation from protop into the generated C# verbatim, without
-protopc understanding what it means. The mechanism by which protop-generated
-types reach generators protopc knows nothing about — and the reason a concept
+praguec understanding what it means. The mechanism by which protop-generated
+types reach generators praguec knows nothing about — and the reason a concept
 can be expressible without being part of the language.
 
 ## table

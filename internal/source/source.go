@@ -1,4 +1,4 @@
-// Package source holds the text protopc reads and the positions it reports
+// Package source holds the text praguec reads and the positions it reports
 // against.
 //
 // Everything downstream refers to source by byte offset -- a Pos, or a Span of

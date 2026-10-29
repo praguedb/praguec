@@ -20,8 +20,8 @@
 package check
 
 import (
-	"github.com/nanov/protobuf-to-messagepack-sharp/internal/source"
-	"github.com/nanov/protobuf-to-messagepack-sharp/internal/syntax"
+	"github.com/praguedb/praguec/internal/source"
+	"github.com/praguedb/praguec/internal/syntax"
 )
 
 // Schema is every file of one program, resolved.
@@ -147,7 +147,7 @@ type Decl struct {
 	// array, which is why 0 is legal here and is not a tag.
 	EnumMembers []*EnumMember
 
-	// Annotations are carried through verbatim, in source order. protopc does
+	// Annotations are carried through verbatim, in source order. praguec does
 	// not know what a backend's annotation means and is not entitled to an
 	// opinion; the backend that reads them is the one that checks them.
 	Annotations []*syntax.Annotation

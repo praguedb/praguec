@@ -454,14 +454,14 @@ under the generator, at first-serialize under reflection.
 
 ---
 
-## 7. What this means for protopc
+## 7. What this means for praguec
 
 Stated as consequences, not recommendations — the design calls belong to the parent session.
 
-1. **A computed/derived member is not expressible as a wire field without waste.** If protopc ever generates a
+1. **A computed/derived member is not expressible as a wire field without waste.** If praguec ever generates a
    convenience accessor over other fields, giving it a `[Key]` buys nothing on read and costs bytes on write.
    `[IgnoreMember]` is the correct emission for anything the generator knows is derived.
-2. **If protopc emits positional records or constructor-initialized types, it must never emit a get-only
+2. **If praguec emits positional records or constructor-initialized types, it must never emit a get-only
    `[Key]` member** — §6 makes that a build break. The safe emission is: every keyed member is settable or a
    constructor parameter.
 3. **Key→slot identity is positional and permanent.** §1.3 shows a removed member shifts every later key. This
@@ -470,7 +470,7 @@ Stated as consequences, not recommendations — the design calls belong to the p
 4. **Map mode is not a safe default.** §2.2 is a real silent cross-resolver divergence in `keyAsPropertyName`
    mode. Explicit int keys avoid it.
 5. **A migration reading the Prague corpus must expect the wasted slot.** Eight types carry a `[Key(0)]` array
-   element that is written and never read. A faithful protopc schema for those types has to either keep the slot
+   element that is written and never read. A faithful praguec schema for those types has to either keep the slot
    (wire-compatible, wasteful) or drop it and accept a breaking renumber. That is a decision, not a detail.
 
 ---

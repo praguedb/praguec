@@ -5,9 +5,9 @@ import (
 	"strings"
 	"unicode"
 
-	"github.com/nanov/protobuf-to-messagepack-sharp/internal/diag"
-	"github.com/nanov/protobuf-to-messagepack-sharp/internal/source"
-	"github.com/nanov/protobuf-to-messagepack-sharp/internal/syntax"
+	"github.com/praguedb/praguec/internal/diag"
+	"github.com/praguedb/praguec/internal/source"
+	"github.com/praguedb/praguec/internal/syntax"
 )
 
 // Unit is one file as the checker takes it: the tree, and the text its spans

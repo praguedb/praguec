@@ -327,7 +327,7 @@ view SlimSportGame of BPSportGameCacheItem
 // `list<Odd>` to `list<SlimOdd>` -- all three of section 5's view mechanisms in
 // eleven lines.
 //
-// Its last member is the corpus's one array: `SlimOdd[] Odds`. protopc emits
+// Its last member is the corpus's one array: `SlimOdd[] Odds`. praguec emits
 // `List<SlimOdd>`, which is what the other six collection sites write. Picking
 // the array here would be inferring "a view emits T[]" from a single sample,
 // and #24 is where that gets ruled.

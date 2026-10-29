@@ -26,9 +26,9 @@ struct BOVenue
 
 // BOSportGameCacheItem carries one annotation its BP twin does not:
 // `[DataCacheIndex(nameof(FixtureIdIndex), ...)]` names a computed member that
-// lives in the hand-written partial half (#25). protopc copies the text and
+// lives in the hand-written partial half (#25). praguec copies the text and
 // does not look inside it, so the name resolving is the C# compiler's problem
-// and not protopc's -- which is section 3's passthrough rule doing exactly what
+// and not praguec's -- which is section 3's passthrough rule doing exactly what
 // it promises, and also its sharpest edge.
 table BOSportGameCacheItem
   [cs: DataCache(CacheClassName = nameof(BOSportGameCache))]

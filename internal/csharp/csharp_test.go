@@ -11,10 +11,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/nanov/protobuf-to-messagepack-sharp/internal/check"
-	"github.com/nanov/protobuf-to-messagepack-sharp/internal/diag"
-	"github.com/nanov/protobuf-to-messagepack-sharp/internal/source"
-	"github.com/nanov/protobuf-to-messagepack-sharp/internal/syntax"
+	"github.com/praguedb/praguec/internal/check"
+	"github.com/praguedb/praguec/internal/diag"
+	"github.com/praguedb/praguec/internal/source"
+	"github.com/praguedb/praguec/internal/syntax"
 )
 
 // update rewrites every golden from the emitter's current output.
@@ -287,7 +287,7 @@ func TestPresenceComposes(t *testing.T) {
 // one declaration naming another in the same file, and the only using emitted
 // is the MessagePack one. Deleting the own-namespace seed at csharp.go:112
 // emits `using A;` from inside namespace A -- legal C#, and noise in every file
-// protopc writes.
+// praguec writes.
 //
 // It is asserted directly rather than through a golden because a golden is
 // regenerable: `-update` would rewrite the expectation to match the defect and
@@ -683,7 +683,7 @@ view RenamedAndNarrowed of Outer {
 //
 // The obvious fix is one line -- have the lookup recurse on the target it
 // found -- and it passes this suite and stack-overflows on `alias a = b; alias
-// b = a;`, which protopc accepts today with no diagnostic. Whatever rules #67
+// b = a;`, which praguec accepts today with no diagnostic. Whatever rules #67
 // needs a visited set or a depth bound before it recurses.
 const aliasChain = `revision 1;
 namespace A;
@@ -761,7 +761,7 @@ view Narrowing of Outer {
 // The general form of #55, rather than the three spellings of it -- and the
 // general form is not about aliases.
 //
-// Two of the three member shapes protopc emits have a body that *reads other
+// Two of the three member shapes praguec emits have a body that *reads other
 // members*: the alias's `get => X; set => X = value;` and the composite key's
 // `=> (A, B)`. Two things make such a body compile, and neither is about which
 // shape or which fixture produced it: every name the body reads has to be a
@@ -785,7 +785,7 @@ view Narrowing of Outer {
 // `=> (Left, Right)` in a class declaring `L` and `R`, two CS0103 at exit 0.
 // That is #68 and it is a language question, not a bug: whether the element
 // names follow the view, stay the source's, or make the rename a diagnostic
-// decides what the emitter should write, and none of the three is protopc's to
+// decides what the emitter should write, and none of the three is praguec's to
 // pick. So it is not fixed and not pinned -- #40 ruled that pinning a defect
 // turns it into a golden the fixing ticket has to argue with -- and the schema
 // that reaches it is recorded in #68 as text rather than as a fixture. What
@@ -978,7 +978,7 @@ var reAliasPassthrough = regexp.MustCompile(`^public (.+) (\w+) \{ get => (\w+);
 
 // reCompositeKeyBody reads a composite key's emission: the tuple it declares,
 // its name, and the tuple it builds. It matches the shape rather than the
-// member, so a computed member that protopc does not emit today would be held
+// member, so a computed member that praguec does not emit today would be held
 // to the same clause on the day it does.
 var reCompositeKeyBody = regexp.MustCompile(`^public \((.+)\) (\w+) => \((.+)\);$`)
 
@@ -1042,7 +1042,7 @@ func TestAnAliasCarriedThroughAViewImportsTheTypeItEmits(t *testing.T) {
 // alias's target at all. There is then no member of the view for the emitter's
 // lookup to find.
 //
-// What protopc *should* do about it is #66 -- a diagnostic, an implicit
+// What praguec *should* do about it is #66 -- a diagnostic, an implicit
 // selection, or something else -- and it is unresolved and the user's to rule.
 // So what this test holds is only that the lookup coming up empty is total:
 // the emitter still produces the unit rather than panicking on the missing
@@ -1078,7 +1078,7 @@ view TargetNotSelected of Outer {
 	t.Fatal("nothing emitted TargetNotSelected")
 }
 
-// A backend's annotation is text and nothing else. protopc does not know what
+// A backend's annotation is text and nothing else. praguec does not know what
 // `DataCache(CacheClassName = nameof(BPSportGameCache))` names, cannot know
 // which namespace defines it, and therefore never adds a using for one --
 // which is a real limit of section 3's passthrough rule and the reason the

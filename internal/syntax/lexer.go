@@ -4,8 +4,8 @@ import (
 	"strconv"
 	"unicode/utf8"
 
-	"github.com/nanov/protobuf-to-messagepack-sharp/internal/diag"
-	"github.com/nanov/protobuf-to-messagepack-sharp/internal/source"
+	"github.com/praguedb/praguec/internal/diag"
+	"github.com/praguedb/praguec/internal/source"
 )
 
 // Lex tokenises a whole file, appending any lexical diagnostics to bag. The

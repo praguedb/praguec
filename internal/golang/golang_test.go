@@ -6,14 +6,14 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/nanov/protobuf-to-messagepack-sharp/internal/check"
-	"github.com/nanov/protobuf-to-messagepack-sharp/internal/diag"
-	"github.com/nanov/protobuf-to-messagepack-sharp/internal/source"
-	"github.com/nanov/protobuf-to-messagepack-sharp/internal/syntax"
+	"github.com/praguedb/praguec/internal/check"
+	"github.com/praguedb/praguec/internal/diag"
+	"github.com/praguedb/praguec/internal/source"
+	"github.com/praguedb/praguec/internal/syntax"
 )
 
 // The Go backend's oracle is not here. Whether the emitted decoders read what
-// the C# backend's types write is held by github.com/nanov/prague.go, which
+// the C# backend's types write is held by github.com/praguedb/prague.go, which
 // decodes fixtures written by Prague (.NET)'s own serializer from one schema
 // compiled both ways. These tests hold the shape: what lands at which index,
 // and which annotations cross.
@@ -113,7 +113,7 @@ func TestPresenceIsAPointerAndAListIsASlice(t *testing.T) {
 		"History   []*Price",
 		"Status    *Status",
 		"Amount wire.Decimal",
-		`"github.com/nanov/prague.go/wire"`,
+		`"github.com/praguedb/prague.go/wire"`,
 	)
 }
 

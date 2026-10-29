@@ -2,7 +2,7 @@
 
 Primary-source research. Every claim below cites the source that owns it — a spec section, an official doc page, or a file and symbol in real source code. Claims that could not be verified against a primary source are labelled **unverified** in place; there are four of them.
 
-Scope note: this document assumes the settled architecture — **`protopc` compiles protop directly to C#, in one step. protoc is not in the pipeline.** Material that only bore on the rejected alternative has been removed rather than retained as background.
+Scope note: this document assumes the settled architecture — **`praguec` compiles protop directly to C#, in one step. protoc is not in the pipeline.** Material that only bore on the rejected alternative has been removed rather than retained as background.
 
 ---
 
@@ -599,7 +599,7 @@ curl --create-dirs -O --output-dir ./vendor/github.com/bufbuild/protovalidate/bu
 
 as a BSR-generated-code SDK (the Go runtime depends on `buf.build/gen/go/bufbuild/protovalidate/protocolbuffers/go` because it needs the compiled descriptors to resolve the extensions), and as a Bazel/BCR artifact.
 
-For protop the relevant point is narrower: **under the settled architecture, protopc can embed `protop/options.proto` in its own binary** and make it importable without the user vendoring anything — the same way protoc ships `google/protobuf/descriptor.proto` internally. The user only needs a physical copy of the file if they also want stock protoc to compile their schema, which is exactly the compatibility invariant. Ship it in the NuGet package as content, and document the `curl` one-liner.
+For protop the relevant point is narrower: **under the settled architecture, praguec can embed `protop/options.proto` in its own binary** and make it importable without the user vendoring anything — the same way protoc ships `google/protobuf/descriptor.proto` internally. The user only needs a physical copy of the file if they also want stock protoc to compile their schema, which is exactly the compatibility invariant. Ship it in the NuGet package as content, and document the `curl` one-liner.
 
 ---
 
@@ -624,7 +624,7 @@ Source: `google/protobuf/descriptor.proto` (<https://github.com/protocolbuffers/
 
 The language guide asks that extension numbers be registered globally to avoid collisions (<https://protobuf.dev/programming-guides/proto2/#customoptions>; registry at `docs/options.md` in the protobuf repo). The user's `50010`/`50011` are legal but unregistered.
 
-**Under the settled architecture (protopc parses `.proto` itself; protoc is not in the pipeline) the extension *numbers* carry no weight for protop.** protop resolves `(entity)` by name against the `extend google.protobuf.MessageOptions { Entity entity = 50011; }` declaration it parsed. The numbers exist solely so that stock protoc also accepts the file. Recommendation: **reserve one contiguous block (e.g. `50000`–`50099`), document it in the repo, assign numbers once, never reuse.** Cheap insurance; zero runtime cost.
+**Under the settled architecture (praguec parses `.proto` itself; protoc is not in the pipeline) the extension *numbers* carry no weight for protop.** protop resolves `(entity)` by name against the `extend google.protobuf.MessageOptions { Entity entity = 50011; }` declaration it parsed. The numbers exist solely so that stock protoc also accepts the file. Recommendation: **reserve one contiguous block (e.g. `50000`–`50099`), document it in the repo, assign numbers once, never reuse.** Cheap insurance; zero runtime cost.
 
 ### 4.2 The option-literal grammar — the real parser cost
 
@@ -672,7 +672,7 @@ This section synthesises A (what proto can express), B (decimal) and C (what the
 |---|---|---|
 | Syntax of the options file | **`syntax = "proto2"`, every field `optional`** | §3.2. PGV, protovalidate and protoc-gen-ent all do this. proto3's implicit presence makes `scale: 0` indistinguishable from "unstated" — and gorm's 24-field proto3 `GormTag` demonstrates the resulting damage. |
 | Extension numbers | **one contiguous block, e.g. 50000–50099, recorded in a comment** | §4.1. Under the settled architecture the numbers are inert for protop — it resolves `(protop.entity)` by name against the `extend` it parsed. They exist only so stock protoc also accepts the file. Avoid the internal range that bit gorm (`// TODO: The option number 52119 lies within the internally reserved extension range`). |
-| Distribution of `options.proto` | **embedded in the protopc binary**, resolvable as `import "protop/options.proto";` without the file existing on disk | §3.7. protoc does exactly this for `descriptor.proto` and the WKTs; protobuf-net.Reflection embeds `google/protobuf/*.proto` the same way. Also write it to disk on request (`protopc --emit-options-proto`) so stock protoc users can compile the same files. |
+| Distribution of `options.proto` | **embedded in the praguec binary**, resolvable as `import "protop/options.proto";` without the file existing on disk | §3.7. protoc does exactly this for `descriptor.proto` and the WKTs; protobuf-net.Reflection embeds `google/protobuf/*.proto` the same way. Also write it to disk on request (`praguec --emit-options-proto`) so stock protoc users can compile the same files. |
 | Message-typed vs scalar options | **message-typed, one option per concern** | §3.4. `(protop.entity) = { ... }` groups related settings, is extensible without burning extension numbers, and reads like a declaration. |
 | Evolution of the vocabulary itself | **tombstone both number and name on removal** | §3.4 — googleapis reserves both; §3.5 — protovalidate reused the name `MessageRules` across an incompatible break, which is the failure to avoid. |
 
@@ -1442,7 +1442,7 @@ Three viable forms, in order:
 
 1. **A Roslyn source generator** (`netstandard2.0`, `analyzers/dotnet/cs`). `.proto` files arrive as `AdditionalFiles`; generated records never hit disk; IDE feedback is live; diagnostics are real Roslyn diagnostics with real spans and real suppression. This is the best developer experience available and the smallest artifact.
 2. **An MSBuild `ToolTask`** (`netstandard2.0`, or `net472`+`net8.0` multi-targeted with a `$(MSBuildRuntimeType)`-conditioned `UsingTask AssemblyFile=`, exactly as `Grpc.Tools` does). Worth it when generated files should be visible on disk and checked in.
-3. **A `PackAsTool` DotnetTool** (`<PackAsTool>true</PackAsTool>`, `<ToolCommandName>protopc</ToolCommandName>`) for CLI and CI use. One caveat that bites: .NET tools are framework-dependent and **roll-forward does not cross major version boundaries**, so a `net10.0` protopc will not run on an agent that has only the .NET 8 runtime. `protobuf-net.Protogen` sets `<RollForward>LatestMajor</RollForward>` precisely for this; `dotnet tool install --allow-roll-forward` (SDK 9+) is the other half. Ship all three from one core assembly and this is a non-issue for the primary path, since a source generator loads into a compiler process that is already running.
+3. **A `PackAsTool` DotnetTool** (`<PackAsTool>true</PackAsTool>`, `<ToolCommandName>praguec</ToolCommandName>`) for CLI and CI use. One caveat that bites: .NET tools are framework-dependent and **roll-forward does not cross major version boundaries**, so a `net10.0` praguec will not run on an agent that has only the .NET 8 runtime. `protobuf-net.Protogen` sets `<RollForward>LatestMajor</RollForward>` precisely for this; `dotnet tool install --allow-roll-forward` (SDK 9+) is the other half. Ship all three from one core assembly and this is a non-issue for the primary path, since a source generator loads into a compiler process that is already running.
 
 The core parser/validator/emitter should be one `netstandard2.0` library with no MSBuild, Roslyn or CLI dependencies, so all three shells are thin.
 

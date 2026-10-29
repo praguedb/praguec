@@ -1,6 +1,6 @@
 # Build loop
 
-How an autonomous session takes a `protopc` build ticket from claimed to closed.
+How an autonomous session takes a `praguec` build ticket from claimed to closed.
 
 Planning tickets are a different job — see `issue-tracker.md` for the tracker
 operations and `triage-labels.md` for which tickets an agent may rule on at all.
@@ -13,7 +13,7 @@ of scope. The milestones are strictly ordered and each one is blocked by the
 last, so the frontier query returns exactly one:
 
 ```sh
-repo=nanov/protobuf-to-messagepack-sharp
+repo=praguedb/praguec
 for n in $(gh issue list --repo "$repo" --label wayfinder:task --state open \
              --json number,title \
              --jq '.[] | select(.title | test("^M[0-9]+:")) | .number' | sort -n); do
@@ -66,7 +66,7 @@ closed names one. Three writes make it claimable, and all three are easy to
 forget:
 
 ```sh
-repo=nanov/protobuf-to-messagepack-sharp
+repo=praguedb/praguec
 gh issue create --repo "$repo" --label wayfinder:task --title "M<n>: ..." --body ...
 id=$(gh api "repos/$repo/issues/<new>" --jq .id)
 prev_id=$(gh api "repos/$repo/issues/<prev>" --jq .id)
@@ -92,7 +92,7 @@ Breaking one of these is a regression even when the tests pass:
   declarations / 0300 fields / 0900 not-yet. A shipped code keeps its number
   forever; a 0900 code is *deleted* when its milestone lands, never redefined.
 - **A construct the spec defines and the compiler cannot yet read is
-  `NotYetImplemented`, not a syntax error.** The difference is "protopc is
+  `NotYetImplemented`, not a syntax error.** The difference is "praguec is
   behind" versus "you wrote this wrong".
 - **Partial trees.** The parser appends what it managed to read and returns;
   `bag.HasErrors()` is what gates everything downstream. Any stage added after
@@ -109,7 +109,7 @@ Breaking one of these is a regression even when the tests pass:
   resembled the spec. See `TestSpecSubsetIsVerbatim`.
 - **Assert trees with `dump`** — one line per node, compared against a literal,
   so a whole parse is one assertion and a mismatch reads as a diff.
-- **Assert diagnostics as a code sequence**, not a count: codes are protopc's
+- **Assert diagnostics as a code sequence**, not a count: codes are praguec's
   interface. Position via `f.Position` or a whole `diag.Render` snippet — never
   by a hand-computed byte offset.
 - **Pin the behaviour, not the implementation.** If a test would still pass with

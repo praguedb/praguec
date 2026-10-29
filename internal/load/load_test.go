@@ -9,9 +9,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/nanov/protobuf-to-messagepack-sharp/internal/check"
-	"github.com/nanov/protobuf-to-messagepack-sharp/internal/diag"
-	"github.com/nanov/protobuf-to-messagepack-sharp/internal/syntax"
+	"github.com/praguedb/praguec/internal/check"
+	"github.com/praguedb/praguec/internal/diag"
+	"github.com/praguedb/praguec/internal/syntax"
 )
 
 // The fixtures are written here rather than read from testdata because what
@@ -69,7 +69,7 @@ func keys(set check.FileSet) []string {
 }
 
 // codes is the diagnostics as a code sequence, which is the suite's convention:
-// codes are protopc's interface and a count is not.
+// codes are praguec's interface and a count is not.
 func codes(bag *diag.Bag) []string {
 	out := make([]string, 0, bag.Len())
 	for _, d := range bag.All() {
@@ -83,7 +83,7 @@ func codes(bag *diag.Bag) []string {
 //
 // bag.HasErrors is the gate the driver reads. The loader is the first stage to
 // fill a bag, so a loader diagnostic that does not reach the gate is a missing
-// import that protopc prints, and then goes on to parse, check and generate C#
+// import that praguec prints, and then goes on to parse, check and generate C#
 // around the hole it just named.
 //
 // The gate expectation is derived and never written down: the compile fails
@@ -254,7 +254,7 @@ func TestAFileNamedAndImportedIsLoadedOnce(t *testing.T) {
 	}
 }
 
-// With no -I, the root is the directory of each input, so that `protopc
+// With no -I, the root is the directory of each input, so that `praguec
 // generate schemas/a.prague` finds the `import "b.prague"` sitting next to it.
 func TestTheDefaultRootIsTheDirectoryOfEachInput(t *testing.T) {
 	dir := plant(t,
@@ -332,7 +332,7 @@ func TestTwoRootsProvidingOneImportIsDiagnosed(t *testing.T) {
 	// truncating the message there failed nothing in the repo. That tail is
 	// the whole point of PROTOP0108 -- the loader always HAS a file it could
 	// take, and what it is reporting is that which root should win is
-	// nanov/protobuf-to-messagepack-sharp#48 and unsettled. A build whose
+	// praguedb/praguec#48 and unsettled. A build whose
 	// meaning rests on an open question should say so, and if that clause
 	// went missing the diagnostic would read as a plain conflict with a
 	// winner somebody forgot to print.
@@ -346,9 +346,9 @@ func TestTwoRootsProvidingOneImportIsDiagnosed(t *testing.T) {
 }
 
 // The severity of a loader diagnostic, end to end. A code sequence says what
-// was noticed; this says what it costs. bag.HasErrors is what cmd/protopc turns
+// was noticed; this says what it costs. bag.HasErrors is what cmd/praguec turns
 // into an exit code, and the loader is the first stage to fill the bag, so a
-// loader diagnostic that does not fail the compile is an import protopc reports
+// loader diagnostic that does not fail the compile is an import praguec reports
 // as missing and then parses, checks and generates C# around.
 //
 // The wanted severity is written here as a literal, and that is the point --
@@ -393,7 +393,7 @@ func TestALoaderDiagnosticFailsTheCompile(t *testing.T) {
 				t.Errorf("%s raised as a %s, want an Error", tt.want, got)
 			}
 			if !bag.HasErrors() {
-				t.Errorf("%s does not fail the compile; protopc would carry on past it", tt.want)
+				t.Errorf("%s does not fail the compile; praguec would carry on past it", tt.want)
 			}
 		})
 	}
@@ -482,7 +482,7 @@ func TestOneFileReachedUnderTwoImportStringsIsOneUnitUnderBoth(t *testing.T) {
 //   - resolveRoots cleans and dedups, which is what keeps `one` and `one/` from
 //     being two roots. Its only effect is on the list a diagnostic prints,
 //     because everything downstream joins and joining cleans -- so it is the
-//     message that pins it. A user told protopc searched three directories
+//     message that pins it. A user told praguec searched three directories
 //     goes looking for three directories.
 //   - search's seen[abs], which is what keeps `one` and an absolute spelling of
 //     `one` -- which no amount of cleaning makes equal -- from providing one
@@ -721,7 +721,7 @@ func TestADiagnosticNamesTheFileThatWroteTheImport(t *testing.T) {
 // rule PROTOP0204 and PROTOP0317 were narrowed to in #57: a span covers a
 // container only when the container is what is wrong. There the fault was one
 // name inside a declaration or an annotation that was otherwise fine, so the
-// caret went under the name. Here the whole statement is what protopc could
+// caret went under the name. Here the whole statement is what praguec could
 // not carry out, and there is nothing inside it that is right.
 func TestALoaderDiagnosticUnderlinesTheImportThatCausedIt(t *testing.T) {
 	for _, tt := range []struct {

@@ -89,7 +89,7 @@ message SportGame {
   option (protop.shape) = SHAPE_TABLE;
 
   // The topic is no longer a language concept. It is C# attribute text that
-  // protopc copies out without reading — CONTEXT.md's `passthrough`. Note that
+  // praguec copies out without reading — CONTEXT.md's `passthrough`. Note that
   // this option is a bare string protoc will never look inside, which is the
   // same deal the old (protop.cache_topic) offered, minus the pretence that
   // the language understood it.

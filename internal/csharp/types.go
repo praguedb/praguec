@@ -3,7 +3,7 @@ package csharp
 import (
 	"strings"
 
-	"github.com/nanov/protobuf-to-messagepack-sharp/internal/check"
+	"github.com/praguedb/praguec/internal/check"
 )
 
 // csScalars is the mapping table's scalar half: one row per protop scalar
@@ -11,7 +11,7 @@ import (
 //
 // The set is closed here because it is closed there. `scalarTypes` in
 // internal/syntax is hard-coded from a census of the spec and whether it is
-// closed at all is nanov/protobuf-to-messagepack-sharp#32, which is
+// closed at all is praguedb/praguec#32, which is
 // human-in-the-loop and unresolved. **Do not add a row to make a golden pass.**
 // The corpus's `byte ProviderId` (3 sites) has no protop spelling and that is
 // #32's question rather than a gap to fill here; so is the corpus's `DateTime`,

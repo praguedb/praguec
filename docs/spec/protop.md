@@ -1,6 +1,6 @@
 # protop — language specification, revision 1
 
-> **Status: leading document.** This is what protopc implements. It supersedes
+> **Status: leading document.** This is what praguec implements. It supersedes
 > the two specimens under [`prototypes/lang/`](../../prototypes/lang/), which
 > argued whether protop should stay parseable by `protoc`; this document is the
 > native spelling and answers that *no* — see
@@ -15,7 +15,7 @@
 > unions (`IBaseLiveData`'s 19 arms), a temporal type (the corpus and this
 > document both carry instants as `int64`), the closed set of scalar type
 > keywords, and what a `map` means. §1 spells the map syntax and reserves it —
-> protopc parses one in full and reports `PROTOP0900` against it — but its key
+> praguec parses one in full and reports `PROTOP0900` against it — but its key
 > types, its wire form, and whether an absent map and an empty one are the same
 > thing are all open.
 
@@ -55,8 +55,8 @@ resolves.
 ## Open
 
 - **Read-modify-write is closed.** MessagePack-CSharp drops unknown array slots rather than preserving them the way Protobuf preserves unknown fields, so a narrow type read and written back would truncate. Producers cannot use views, so nothing narrow is ever serialized. The hazard was conditional on a case the model forbids.
-- **Descriptor as IR.** Emitting a machine-readable descriptor from protopc, rather than only C#, is what lets service repos consume the shared schema without consuming its source, and what leaves the door open for a non-C# backend.
-- **The tool is buf-shaped, eventually.** `protopc` compiling schemas to C# is
+- **Descriptor as IR.** Emitting a machine-readable descriptor from praguec, rather than only C#, is what lets service repos consume the shared schema without consuming its source, and what leaves the door open for a non-C# backend.
+- **The tool is buf-shaped, eventually.** `praguec` compiling schemas to C# is
   the phase-1 deliverable, not the destination. The destination is what `buf` is
   for Protobuf: `lint` against a rule ladder, `breaking` against a checked-in
   baseline, module resolution over git tags, formatting. Three of those four are

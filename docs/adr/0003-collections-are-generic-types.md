@@ -41,7 +41,7 @@ machinery.
 `map<K, V>` is **reserved, not implemented.** The corpus has no map. The syntax
 is defined so that adding one later fills a slot that already exists rather than
 inventing a third collection form; the key type will be restricted to scalars
-and enums when it lands. protopc parses a `map` in full and reports
+and enums when it lands. praguec parses a `map` in full and reports
 `PROTOP0900 NotYetImplemented` against it, which is the standing rule for a
 construct the spec defines and the compiler is behind on.
 

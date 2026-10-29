@@ -1,4 +1,4 @@
-// Package diag collects the diagnostics protopc reports and renders them
+// Package diag collects the diagnostics praguec reports and renders them
 // against their source.
 //
 // Diagnostics are collected, never thrown. A compiler that stops at the first
@@ -11,7 +11,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/nanov/protobuf-to-messagepack-sharp/internal/source"
+	"github.com/praguedb/praguec/internal/source"
 )
 
 // Severity says whether a diagnostic stops the compile.
@@ -33,7 +33,7 @@ func (s Severity) String() string {
 	}
 }
 
-// Diagnostic is one thing protopc has to say about one place in the source.
+// Diagnostic is one thing praguec has to say about one place in the source.
 //
 // Every diagnostic carries a span. A message without a location is a message
 // the user has to go looking for, and the span is free at the point it is
@@ -217,17 +217,17 @@ func RenderAll(f *source.File, b *Bag) string {
 // annotations, none of which read the GCC form at all.
 //
 // The GCC form is for a terminal and for nothing else. Verified: MSBuild's GCC
-// fallback pattern wants the colon immediately after the severity, so protopc's
+// fallback pattern wants the colon immediately after the severity, so praguec's
 // code between the two kills the match and the line is logged as a plain
-// message -- the build passes with an error in it. Anything reading protopc's
+// message -- the build passes with an error in it. Anything reading praguec's
 // output mechanically wants MSVS.
 //
 // The default is GCC, and it is provisional. docs/research/
 // proto-to-messagepack-csharp.md:924 and :1292 both say the MSVS-shaped form
 // should be the default, on the grounds that MSBuild parses it natively; a
 // terminal-first tool makes the caret renderer the default and the MSVS form a
-// flag, which is what protopc does here. The contradiction is in the record and
-// is filed rather than resolved: nanov/protobuf-to-messagepack-sharp#64 is the
+// flag, which is what praguec does here. The contradiction is in the record and
+// is filed rather than resolved: praguedb/praguec#64 is the
 // question, and until it is ruled the zero value below is the provisional
 // answer. #49 asked for exactly that -- a default picked provisionally, said
 // out loud, and filed -- and this is the saying.
@@ -252,7 +252,7 @@ func (f Format) String() string {
 }
 
 // ParseFormat reads a --error-format value. It reports whether the name is one
-// protopc has, so that the caller can list the ones it does.
+// praguec has, so that the caller can list the ones it does.
 func ParseFormat(name string) (Format, bool) {
 	switch name {
 	case "gcc":
@@ -302,13 +302,13 @@ func RenderAllAs(format Format, f *source.File, b *Bag) string {
 //
 // A diagnostic with no file to report against takes the tool name as its
 // origin, which is the spelling CanonicalError accepts for a message about no
-// particular place. protopc raises none today -- every diagnostic carries a
+// particular place. praguec raises none today -- every diagnostic carries a
 // span, deliberately -- and the branch is here so that the first one to be
 // raised is still parseable rather than a crash.
 //
 // The message is flattened to one line because that parser is line-based: a
 // diagnostic whose text wrapped would have its tail read as an unrelated line
-// of build output, and protopc's messages are long enough that this is not
+// of build output, and praguec's messages are long enough that this is not
 // hypothetical.
 func renderMSVS(f *source.File, d Diagnostic) string {
 	if d.File != nil {
@@ -323,7 +323,7 @@ func renderMSVS(f *source.File, d Diagnostic) string {
 }
 
 // toolName is the origin a diagnostic about no particular file reports under.
-const toolName = "protopc"
+const toolName = "praguec"
 
 // oneLine collapses every line break in a message to a single space.
 func oneLine(s string) string {

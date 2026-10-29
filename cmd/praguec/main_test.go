@@ -55,7 +55,7 @@ const excludedBanner = "auto-generated"
 // which is the opposite of what this comment used to claim.
 //
 // Which way strict runs turns on the direction of the assertion. The predicate
-// makes the downstream generator *skip* the file, so what protopc asserts is
+// makes the downstream generator *skip* the file, so what praguec asserts is
 // that the banner is absent -- and an absence over a wider window is the harder
 // thing to prove. 500 characters spans up to four times the content of 500
 // bytes in UTF-8, so characters is the wider window and characters is the
@@ -65,7 +65,7 @@ const excludedBanner = "auto-generated"
 // Nothing is wrong today: the two windows coincide for ASCII, and ASCII is what
 // the C# backend emits. The constant is left at bytes because it is what the
 // two later sources of the record say and because moving it is a change to
-// which reading protopc holds itself to. If protopc's output ever carries
+// which reading praguec holds itself to. If praguec's output ever carries
 // non-ASCII in its first lines, this has to become a character count -- the
 // comparison below slices a byte prefix, so it would become a rune slice too.
 const bannerWindow = 500
@@ -83,7 +83,7 @@ const bannerWindow = 500
 const caseInsensitive = true
 
 // TestEmittedFilesAreVisibleToTheDownstreamGenerator is the three assertions,
-// over every file a real `protopc generate` wrote.
+// over every file a real `praguec generate` wrote.
 //
 // It is cheap and it is the thing that makes the trap impossible to walk back
 // into. Every ecosystem default here is a trip-wire: obj/ is the conventional
@@ -92,13 +92,13 @@ const caseInsensitive = true
 // three are excluded, and nothing tells you.
 //
 // The paths are checked relative to -o. The directory the user points -o at is
-// the user's, and whether protopc should refuse to write into one named obj/ is
+// the user's, and whether praguec should refuse to write into one named obj/ is
 // output-directory ownership, which is #25 and human-in-the-loop. What is being
-// asserted here is every part of the path protopc itself chose.
+// asserted here is every part of the path praguec itself chose.
 func TestEmittedFilesAreVisibleToTheDownstreamGenerator(t *testing.T) {
 	out := t.TempDir()
 	args := append([]string{"generate", "-I", examplesDir, "-o", out,
-		"--manifest", filepath.Join(out, "protopc.manifest.json")}, exampleFiles(t)...)
+		"--manifest", filepath.Join(out, "praguec.manifest.json")}, exampleFiles(t)...)
 	if code := runCLI(t, args...); code != exitOK {
 		t.Fatalf("generate exited %d", code)
 	}
@@ -114,7 +114,7 @@ func TestEmittedFilesAreVisibleToTheDownstreamGenerator(t *testing.T) {
 		}
 		checked++
 
-		// One: no segment of the path protopc chose is an excluded directory.
+		// One: no segment of the path praguec chose is an excluded directory.
 		for _, seg := range strings.Split(filepath.ToSlash(rel), "/")[:len(strings.Split(filepath.ToSlash(rel), "/"))-1] {
 			for _, bad := range excludedSegments {
 				if fold(seg) == bad {
@@ -269,7 +269,7 @@ func number(t *testing.T, line string) int {
 // ---------------------------------------------------------------------------
 // The manifest.
 
-// The manifest is wired to no build target on purpose -- when protopc runs is
+// The manifest is wired to no build target on purpose -- when praguec runs is
 // #44 and unruled -- so its *shape* is the whole of what this milestone
 // delivers, and a shape nothing asserts is not delivered. The literal below is
 // written out rather than round-tripped through encoding/json, because a
@@ -281,7 +281,7 @@ func number(t *testing.T, line string) int {
 // produce it. Neither half can move alone, and nothing regenerates either.
 func TestTheManifestIsTheShapeItSpecifies(t *testing.T) {
 	dir := t.TempDir()
-	path := filepath.Join(dir, "protopc.manifest.json")
+	path := filepath.Join(dir, "praguec.manifest.json")
 	if err := writeManifest(path, []string{filepath.Join(dir, "Odd.cs"), filepath.Join(dir, "SportGame.cs")}); err != nil {
 		t.Fatal(err)
 	}
@@ -373,13 +373,13 @@ func TestTheManifestMatchesTheShapeItsDocumentationShows(t *testing.T) {
 // Exit codes. A diagnostic is not a crash and a crash is not a diagnostic.
 
 // The three numbers, written out. The const block above main's usage text
-// promises them to anyone scripting protopc, and until now nothing held that
+// promises them to anyone scripting praguec, and until now nothing held that
 // promise: every assertion in this file -- the want column below included --
 // compares runCLI's answer against those same constants, so the oracle only
 // ever asked the implementation whether it agreed with itself. Setting
-// exitDiags to 0 left all seven packages green while `protopc check` printed
+// exitDiags to 0 left all seven packages green while `praguec check` printed
 // PROTOP0300 and exited 0, which is a CI job that passes on every schema
-// protopc rejects.
+// praguec rejects.
 //
 // So the numbers are literals here, for the reason diag's wantCodeNumbers
 // gives for the codes: reading the constant would ask it whether it agrees
@@ -388,8 +388,8 @@ func TestTheManifestMatchesTheShapeItsDocumentationShows(t *testing.T) {
 // something that says what the constants ARE.
 //
 // The message on each says what the number means to the caller, because that
-// is what a caller branches on: 1 is protopc having read the schema and having
-// something to say about it, 2 is protopc never having got that far.
+// is what a caller branches on: 1 is praguec having read the schema and having
+// something to say about it, 2 is praguec never having got that far.
 func TestTheExitCodesAreTheNumbersTheyAreDocumentedAs(t *testing.T) {
 	for _, tc := range []struct {
 		name string
@@ -397,9 +397,9 @@ func TestTheExitCodesAreTheNumbersTheyAreDocumentedAs(t *testing.T) {
 		want int
 		why  string
 	}{
-		{"exitOK", exitOK, 0, "success is 0 or every caller of protopc reads a clean compile as a failure"},
-		{"exitDiags", exitDiags, 1, "1 is what tells a build the SCHEMA is wrong; any other number and a CI job greps protopc's output for trouble, finds errors, and passes anyway"},
-		{"exitUsage", exitUsage, 2, "2 is what tells a build the COMMAND is wrong -- a missing file or a flag protopc does not have -- and is what keeps that apart from a schema protopc read and rejected"},
+		{"exitOK", exitOK, 0, "success is 0 or every caller of praguec reads a clean compile as a failure"},
+		{"exitDiags", exitDiags, 1, "1 is what tells a build the SCHEMA is wrong; any other number and a CI job greps praguec's output for trouble, finds errors, and passes anyway"},
+		{"exitUsage", exitUsage, 2, "2 is what tells a build the COMMAND is wrong -- a missing file or a flag praguec does not have -- and is what keeps that apart from a schema praguec read and rejected"},
 	} {
 		if tc.got != tc.want {
 			t.Errorf("%s = %d, want %d: %s", tc.name, tc.got, tc.want, tc.why)
@@ -430,14 +430,14 @@ func TestExitCodes(t *testing.T) {
 		{"a file that does not parse", []string{"check", unparsable}, exitDiags},
 		{"an import that names no file", []string{"check", missingImport}, exitDiags},
 		{"no arguments at all", nil, exitUsage},
-		{"a command protopc does not have", []string{"lint", good}, exitUsage},
+		{"a command praguec does not have", []string{"lint", good}, exitUsage},
 		{"no input files", []string{"check"}, exitUsage},
 		{"an input that is not there", []string{"check", "nosuch.prague"}, exitUsage},
 		{"a -I that is not there", []string{"check", "-I", "nosuch", good}, exitUsage},
-		{"a format protopc does not have", []string{"check", "--error-format=json", good}, exitUsage},
-		{"a flag protopc does not have", []string{"check", "--strict", good}, exitUsage},
+		{"a format praguec does not have", []string{"check", "--error-format=json", good}, exitUsage},
+		{"a flag praguec does not have", []string{"check", "--strict", good}, exitUsage},
 		{"generate Go", []string{"generate", "--lang", "go", "-I", examplesDir, "-o", t.TempDir(), good}, exitOK},
-		{"a language protopc does not have", []string{"generate", "--lang", "rust", "-o", t.TempDir(), good}, exitUsage},
+		{"a language praguec does not have", []string{"generate", "--lang", "rust", "-o", t.TempDir(), good}, exitUsage},
 		{"--lang on check", []string{"check", "--lang", "go", good}, exitUsage},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -521,7 +521,7 @@ func TestCheckWritesNothing(t *testing.T) {
 }
 
 // `check` does not take -o or --manifest. Accepting a flag and then ignoring it
-// is worse than rejecting it: the user who writes `protopc check -o out`
+// is worse than rejecting it: the user who writes `praguec check -o out`
 // believes something was written there.
 func TestCheckRejectsTheWritingFlags(t *testing.T) {
 	good := filepath.Join(examplesDir, "branded.prague")
@@ -569,7 +569,7 @@ func TestGenerateWritesTheBackendsTextUnchanged(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// The first line of a protopc-emitted unit is its first using, which is
+	// The first line of a praguec-emitted unit is its first using, which is
 	// what the backend writes first. Anything before it is a decoration the
 	// driver added.
 	if first, _, _ := strings.Cut(string(b), "\n"); !strings.HasPrefix(first, "using ") {
@@ -706,7 +706,7 @@ func TestGenerateListsExactlyTheFilesItWroteInSortedOrder(t *testing.T) {
 // seen together.
 func TestTheManifestIsWrittenWhereTheFlagSaysAndNowhereWhenItIsNotGiven(t *testing.T) {
 	out := t.TempDir()
-	path := filepath.Join(out, "protopc.manifest.json")
+	path := filepath.Join(out, "praguec.manifest.json")
 	args := append([]string{"generate", "-I", examplesDir, "-o", out, "--manifest", path}, exampleFiles(t)...)
 	if code := runCLI(t, args...); code != exitOK {
 		t.Fatalf("generate exited %d", code)

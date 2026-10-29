@@ -5,8 +5,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/nanov/protobuf-to-messagepack-sharp/internal/diag"
-	"github.com/nanov/protobuf-to-messagepack-sharp/internal/source"
+	"github.com/praguedb/praguec/internal/diag"
+	"github.com/praguedb/praguec/internal/source"
 )
 
 // protopRevision is the dialect this compiler implements. `revision 1;` stamps
@@ -21,7 +21,7 @@ const scaledScalar = "decimal"
 // returns these six and nothing else.
 //
 // Whether the set is closed at all is one of the four things the spec
-// deliberately leaves open, tracked as nanov/protobuf-to-messagepack-sharp#32.
+// deliberately leaves open, tracked as praguedb/praguec#32.
 // Widening protop's scalars is one edit here.
 var scalarTypes = map[string]bool{
 	"int64":      true,
@@ -112,7 +112,7 @@ func BuiltinTypeNames() []string {
 const RelationAnnotation = "references"
 
 // backends is the legal set of annotation prefixes, which is exactly the
-// backends protopc has: `cs` (internal/csharp) and `go` (internal/golang).
+// backends praguec has: `cs` (internal/csharp) and `go` (internal/golang).
 var backends = map[string]bool{
 	"cs": true,
 	"go": true,
@@ -120,7 +120,7 @@ var backends = map[string]bool{
 
 // protopAnnotations is protop's own set, the annotations written with no
 // prefix. It is closed and read -- an unknown one is an error -- which is the
-// whole difference between it and the text protopc passes through untouched.
+// whole difference between it and the text praguec passes through untouched.
 var protopAnnotations = map[string]bool{
 	RelationAnnotation: true,
 }
@@ -511,7 +511,7 @@ func (p *parser) parseViewMember() *ViewMember {
 	//
 	// The underline is the `=` and not the number after it, and that is a
 	// ruling rather than an accident -- it was raised as one by the census that
-	// filed nanov/protobuf-to-messagepack-sharp#57, on the grounds that the
+	// filed praguedb/praguec#57, on the grounds that the
 	// offending thing is the tag. Three reasons it stays where it is:
 	//
 	// The number is not what is wrong. There is no tag that would make this
@@ -966,7 +966,7 @@ func (p *parser) checkTag(tag IntLit) {
 // commas and a separator that competes with them buys nothing. Whitespace is
 // insignificant, so a head carrying four wraps freely across lines.
 //
-// The order is the source's. protopc never sorts them and never drops a
+// The order is the source's. praguec never sorts them and never drops a
 // duplicate, because it does not know what either would mean to the backend
 // reading them.
 // An unterminated annotation ends the run and is reported false: everything
@@ -985,7 +985,7 @@ func (p *parser) parseAnnotations() ([]*Annotation, bool) {
 }
 
 // parseAnnotation reads one bracket. What it checks is the prefix and nothing
-// else: a prefixed annotation is a backend's language and protopc is not
+// else: a prefixed annotation is a backend's language and praguec is not
 // entitled to an opinion about it, while an unprefixed one is protop's own,
 // where the set is closed and an unknown name is a typo.
 func (p *parser) parseAnnotation() (*Annotation, bool) {
@@ -999,7 +999,7 @@ func (p *parser) parseAnnotation() (*Annotation, bool) {
 		a.Prefix = &prefix
 		if !backends[prefix.Text] {
 			p.bag.Raise(diag.UnknownAnnotationPrefix, prefix.Span,
-				"unknown annotation prefix `%s`; protopc's backends are %s, and adding one means writing a backend rather than a keyword",
+				"unknown annotation prefix `%s`; praguec's backends are %s, and adding one means writing a backend rather than a keyword",
 				prefix.Text, wordList(backends))
 		}
 	case tok.Kind != KindIdent:
@@ -1212,7 +1212,7 @@ func (p *parser) checkTypeRef(t TypeRef) {
 
 	// A collection the spec defines and this milestone does not read is read in
 	// full and then reported against, once per type written -- the difference
-	// between "protopc is behind" and "you wrote this wrong".
+	// between "praguec is behind" and "you wrote this wrong".
 	if notYetCollections[t.Name.Text] {
 		p.bag.Raise(diag.NotYetImplemented, t.Name.Span, "`%s` is not yet implemented", t.Name.Text)
 	}

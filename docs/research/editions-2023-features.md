@@ -1,4 +1,4 @@
-# The Editions 2023 feature surface `protopc` must resolve
+# The Editions 2023 feature surface `praguec` must resolve
 
 Primary-source research for issue #4. Every claim cites either a file and line in real source, an official doc page, or a reproducible `protoc` invocation. Compiler output is marked `[protoc 36.1]` and every such result in this document was produced by running the command shown — the reproduction script is in §10.
 
@@ -10,13 +10,13 @@ One caveat on the version: protoc 36.1 knows editions 2023, 2024 and 2026. This 
 
 ## Bottom line
 
-**1. The edition 2023 feature surface is exactly six features, and all six are settable by a protop author.** `field_presence`, `enum_type`, `repeated_field_encoding`, `utf8_validation`, `message_encoding`, `json_format`. There are three further fields in `FeatureSet` — `enforce_naming_style`, `default_symbol_visibility`, `enforce_proto_limits` — that exist in the message but are **hard-locked at edition 2023**: protoc rejects any attempt to set them with an explicit error, and their 2023 values are fixed constants. That is not a style guideline; it is the compiler (§2.3). protopc must therefore also reject them, with the same reasoning, or it diverges from the oracle on a *diagnostic*.
+**1. The edition 2023 feature surface is exactly six features, and all six are settable by a protop author.** `field_presence`, `enum_type`, `repeated_field_encoding`, `utf8_validation`, `message_encoding`, `json_format`. There are three further fields in `FeatureSet` — `enforce_naming_style`, `default_symbol_visibility`, `enforce_proto_limits` — that exist in the message but are **hard-locked at edition 2023**: protoc rejects any attempt to set them with an explicit error, and their 2023 values are fixed constants. That is not a style guideline; it is the compiler (§2.3). praguec must therefore also reject them, with the same reasoning, or it diverges from the oracle on a *diagnostic*.
 
 **2. The resolution algorithm is four lines and has no surprises except two.** `merged = editionDefaults; merged.MergeFrom(parentMerged); merged.MergeFrom(thisNodesExplicitFeatures)` — a proto3 `MergeFrom` over singular enum fields, i.e. last-set-wins per field (`feature_resolver.cc:523-533`). The two surprises: **a `oneof` is the parent of its fields**, not the message; and **an extension's parent is its declaring scope, not the extendee** (`descriptor.cc:1243-1256`). A naive file→message→field walk gets both wrong.
 
-**3. The decisive finding for the differential harness: `--descriptor_set_out` contains *no resolved features at all*.** It is a faithful round-trip of what the author wrote, at the scope they wrote it, and nothing else. protobuf.dev states it outright — *"The resulting descriptor protos should be a faithful representation of the original proto files, and should contain **unresolved features** inside of the options"* (<https://protobuf.dev/editions/implementation/>) — and the implementation confirms it: `ResolveFeaturesImpl` *strips* `options.features` into a side table (`descriptor.cc:5168-5172`) and `RestoreFeaturesToOptions` puts back only `proto_features_`, the as-written set (`descriptor.cc:1198-1203`). Verified empirically (§6). **Consequence: the harness cannot verify protopc's feature resolution against protoc at all.** It can only verify that protopc *echoes* the same explicit features. Resolution correctness needs its own oracle — see §9.4, which proposes one that works.
+**3. The decisive finding for the differential harness: `--descriptor_set_out` contains *no resolved features at all*.** It is a faithful round-trip of what the author wrote, at the scope they wrote it, and nothing else. protobuf.dev states it outright — *"The resulting descriptor protos should be a faithful representation of the original proto files, and should contain **unresolved features** inside of the options"* (<https://protobuf.dev/editions/implementation/>) — and the implementation confirms it: `ResolveFeaturesImpl` *strips* `options.features` into a side table (`descriptor.cc:5168-5172`) and `RestoreFeaturesToOptions` puts back only `proto_features_`, the as-written set (`descriptor.cc:1198-1203`). Verified empirically (§6). **Consequence: the harness cannot verify praguec's feature resolution against protoc at all.** It can only verify that praguec *echoes* the same explicit features. Resolution correctness needs its own oracle — see §9.4, which proposes one that works.
 
-**4. protoc erases the two post-processing rewrites on the way out, so the descriptor lies about `label` and `type` relative to the in-memory descriptor.** In the `DescriptorPool`, `LEGACY_REQUIRED` rewrites `label_` to `LABEL_REQUIRED` and `DELIMITED` rewrites `type_` to `TYPE_GROUP` (`descriptor.cc:5222-5242`). But `FieldDescriptor::CopyTo` explicitly undoes both for editions files (`descriptor.cc:3130-3147`), so the serialized descriptor shows `LABEL_OPTIONAL` and `TYPE_MESSAGE`. protopc must emit the *undone* form. This is a trap that looks like a bug in your emitter for a full afternoon.
+**4. protoc erases the two post-processing rewrites on the way out, so the descriptor lies about `label` and `type` relative to the in-memory descriptor.** In the `DescriptorPool`, `LEGACY_REQUIRED` rewrites `label_` to `LABEL_REQUIRED` and `DELIMITED` rewrites `type_` to `TYPE_GROUP` (`descriptor.cc:5222-5242`). But `FieldDescriptor::CopyTo` explicitly undoes both for editions files (`descriptor.cc:3130-3147`), so the serialized descriptor shows `LABEL_OPTIONAL` and `TYPE_MESSAGE`. praguec must emit the *undone* form. This is a trap that looks like a bug in your emitter for a full afternoon.
 
 **5. Custom features and custom options are different mechanisms, and protop's 50000–50099 range can only be the latter.** `FeatureSet` extension numbers are restricted to `1000 to 9994`, `9995 to 9999`, and `10000` (`descriptor.proto:1250-1291`). 50000 is rejected outright: `"google.protobuf.FeatureSet" does not declare 50000 as an extension number` `[protoc 36.1]`. So `(protop.*)` at 50000+ are extensions of `FieldOptions`/`MessageOptions`/etc., which **do not inherit** — no file→message→field cascade, no `edition_defaults`, no `feature_support` lifetimes. If protop wants inheritable metadata it has to implement that cascade itself; it cannot borrow the feature machinery (§7).
 
@@ -59,11 +59,11 @@ JsonFormat:              JSON_FORMAT_UNKNOWN=0     ALLOW=1     LEGACY_BEST_EFFOR
 
 `descriptor.proto:1061-1158`. Note `Utf8Validation` skips 1 — `reserved 1;` at `descriptor.proto:1115`. A hand-rolled parser that assumes contiguous enum numbering will assign the wrong wire value to `NONE`.
 
-Every `*_UNKNOWN = 0` value is **not a legal resolved value**. `ValidateMergedFeatures` rejects any feature that resolves to `_UNKNOWN` with *"Feature field `X` must resolve to a known value, found X_UNKNOWN"* (`feature_resolver.cc:285-300`). protopc's resolver should assert the same invariant at the end of resolution; it can only trip if the defaults table is wrong.
+Every `*_UNKNOWN = 0` value is **not a legal resolved value**. `ValidateMergedFeatures` rejects any feature that resolves to `_UNKNOWN` with *"Feature field `X` must resolve to a known value, found X_UNKNOWN"* (`feature_resolver.cc:285-300`). praguec's resolver should assert the same invariant at the end of resolution; it can only trip if the defaults table is wrong.
 
 ### 1.2 Where `features` lives on each options message
 
-protopc has to write these field numbers into its descriptor emitter. They are not uniform:
+praguec has to write these field numbers into its descriptor emitter. They are not uniform:
 
 | Options message | `features` field number | `descriptor.proto` line |
 |---|---|---|
@@ -133,7 +133,7 @@ Defaults column: the dump in §2.1. "Settable on" column: the `targets` annotati
 
 Cross-check against the prose doc at <https://protobuf.dev/editions/features/> — it agrees on every row, and also agrees on the locked features' 2023 values (`STYLE_LEGACY`, `EXPORT_ALL`, `LEGACY_NO_EXPLICIT_LIMITS`). That is a genuine two-source confirmation, since the doc is written by hand and the dump is generated.
 
-### 2.3 What "locked" means, and why protopc must reproduce it
+### 2.3 What "locked" means, and why praguec must reproduce it
 
 Not a warning. A hard error `[protoc 36.1]`:
 
@@ -151,7 +151,7 @@ option features.default_symbol_visibility = EXPORT_ALL;
 
 Note that both of these attempts set the feature to *exactly its locked 2023 value* and are still rejected. The check is on the act of setting, not on the value. Source: `feature_resolver.cc:326-341`, `ValidateFeatureSupport`.
 
-This matters to protop even though protop's dialect is frozen at 2023 and its authors will never write these lines: a protopc that silently accepts `features.enforce_naming_style` is accepting a file protoc rejects, which is a dialect divergence in the permissive direction. Those are the expensive ones.
+This matters to protop even though protop's dialect is frozen at 2023 and its authors will never write these lines: a praguec that silently accepts `features.enforce_naming_style` is accepting a file protoc rejects, which is a dialect divergence in the permissive direction. Those are the expensive ones.
 
 ### 2.4 How the defaults themselves are derived — and the trap in the encoding
 
@@ -180,7 +180,7 @@ Five of the six live features resolve this way at 2023:
 
 `field_presence` is the only one needing an explicit 2023 entry, because it is the only one where edition 2023 differs from proto3 (`EXPLICIT` vs `IMPLICIT`) — which is, in one line, the whole point of editions for this project.
 
-**Implementation guidance.** protopc should not reimplement the `edition_defaults` fallthrough. It is frozen at one edition; it should hard-code the nine resolved constants from §2.1, and carry the dump command in a test that asserts they still match. That converts a subtle algorithm into a one-line regression test.
+**Implementation guidance.** praguec should not reimplement the `edition_defaults` fallthrough. It is frozen at one edition; it should hard-code the nine resolved constants from §2.1, and carry the dump command in a test that asserts they still match. That converts a subtle algorithm into a one-line regression test.
 
 ---
 
@@ -211,7 +211,7 @@ So the effective precedence, per feature, is: **nearest enclosing scope that exp
 
 ### 3.2 The parent chain
 
-`descriptor.cc:1221-1275`. This is the part worth copying verbatim into protopc, because two of the edges are counter-intuitive.
+`descriptor.cc:1221-1275`. This is the part worth copying verbatim into praguec, because two of the edges are counter-intuitive.
 
 | Node | Parent for feature resolution | Line |
 |---|---|---|
@@ -271,7 +271,7 @@ Two things this pseudocode gets right that a first draft usually does not: the r
 
 ### 3.5 Ordering within a file
 
-Feature resolution requires descriptors to be resolved parent-before-child, which falls out of the recursion above. But protopc also needs `message_encoding` and `field_presence` validation to know a field's *type*, which requires name resolution to have completed (`PostProcessFieldFeatures` does the `DELIMITED` check via `LookupSymbol`, `descriptor.cc:5236-5239`). So the phase order is: parse → build symbol table → resolve names → resolve features → validate features. Resolving features before names will work for five of the six and fail on `message_encoding`.
+Feature resolution requires descriptors to be resolved parent-before-child, which falls out of the recursion above. But praguec also needs `message_encoding` and `field_presence` validation to know a field's *type*, which requires name resolution to have completed (`PostProcessFieldFeatures` does the `DELIMITED` check via `LookupSymbol`, `descriptor.cc:5236-5239`). So the phase order is: parse → build symbol table → resolve names → resolve features → validate features. Resolving features before names will work for five of the six and fail on `message_encoding`.
 
 ---
 
@@ -279,13 +279,13 @@ Feature resolution requires descriptors to be resolved parent-before-child, whic
 
 `FieldOptions.FeatureSupport` (`descriptor.proto:820-843`) carries `edition_introduced`, `edition_deprecated`, `deprecation_warning`, `edition_removed`, `removal_error`. At edition 2023 the only one that fires is `edition_introduced` (§2.3); nothing is deprecated or removed at 2023.
 
-There is a second lifetime check protopc should know exists even if it will never trigger for a frozen 2023 dialect: `ValidateFeatureLifetimes` also validates **enum values** of a feature, not just the feature field (`feature_resolver.cc:615-625`). So a feature could gain a new enum value in a later edition and setting *that value* would be rejected earlier, even though the feature itself is available. No 2023 feature has per-value lifetimes today — **unverified** whether any is planned.
+There is a second lifetime check praguec should know exists even if it will never trigger for a frozen 2023 dialect: `ValidateFeatureLifetimes` also validates **enum values** of a feature, not just the feature field (`feature_resolver.cc:615-625`). So a feature could gain a new enum value in a later edition and setting *that value* would be rejected earlier, even though the feature itself is available. No 2023 feature has per-value lifetimes today — **unverified** whether any is planned.
 
 ---
 
 ## 5. Scope validity: what can be set where
 
-Two independent layers of validation, and protopc needs both.
+Two independent layers of validation, and praguec needs both.
 
 ### 5.1 Layer 1 — `targets`, the entity-kind check
 
@@ -303,7 +303,7 @@ Each feature carries `targets = TARGET_TYPE_*` annotations (`descriptor.proto:10
 | `enum_type` on an **enum** | accepted |
 | `json_format` on file / message / enum | accepted |
 
-The resulting matrix for the six live features — this is the table protopc's validator encodes:
+The resulting matrix for the six live features — this is the table praguec's validator encodes:
 
 | | file | msg | field | oneof | enum | enum val | ext range | service | method |
 |---|---|---|---|---|---|---|---|---|---|
@@ -340,13 +340,13 @@ Plus one enum-level check, `descriptor.cc:8218-8224`: an **open** enum's first d
 
 These checks run on **explicitly set** features only, which produces a deliberate asymmetry: a file-level `option features.utf8_validation = NONE;` is legal even in a file full of `int32` fields, because each `int32` field merely *inherits* it and never *sets* it. Only a field that writes `[features.utf8_validation = NONE]` on an `int32` is rejected. Confirmed both in source (`descriptor.cc:8164`, all branches guarded by `field->proto_features_->has_*()`) and empirically — the §6 test file sets `features.utf8_validation = NONE` at file scope over a message containing `int32` fields and compiles clean.
 
-protopc must reproduce this asymmetry exactly. A validator that checks the *resolved* value against the field's type would reject files protoc accepts. This is the single most likely place for a hand-rolled implementation to be *stricter than the oracle by accident*.
+praguec must reproduce this asymmetry exactly. A validator that checks the *resolved* value against the field's type would reject files protoc accepts. This is the single most likely place for a hand-rolled implementation to be *stricter than the oracle by accident*.
 
 Generated map entry fields get an explicit bypass — `descriptor.cc:8155-8162`, *"Skip validation of explicit features on generated map fields. These will be blindly propagated from the original map field."*
 
 ### 5.4 Syntax the editions grammar removes
 
-Not features, but the errors protopc must produce for the same inputs, and they point at features `[protoc 36.1]`:
+Not features, but the errors praguec must produce for the same inputs, and they point at features `[protoc 36.1]`:
 
 ```
 optional int32 a = 1;
@@ -428,7 +428,7 @@ message M {
 
 produces `options { features { field_presence: EXPLICIT } }` on the file *and* on field `a`, and `repeated_field_encoding: PACKED` on `r` `[protoc 36.1]`. The descriptor is a transcript, not a minimisation.
 
-**For the harness this is good news of a narrow kind:** it means the comparison is well-defined and normalisation does not need to decide whether to elide redundant settings. It also means protopc must *not* helpfully optimise them away.
+**For the harness this is good news of a narrow kind:** it means the comparison is well-defined and normalisation does not need to decide whether to elide redundant settings. It also means praguec must *not* helpfully optimise them away.
 
 ### 6.4 The `label` / `type` round-trip trap
 
@@ -469,7 +469,7 @@ field { name: "d" number: 2 label: LABEL_OPTIONAL type: TYPE_MESSAGE type_name: 
         options { features { message_encoding: DELIMITED } } json_name: "d" }
 ```
 
-So the descriptor's `label` and `type` are the *pre-feature* values. protopc, emitting straight from its own AST, gets this right by doing nothing — which is exactly why it is worth writing down: the bug appears only if someone "helpfully" applies the feature to the emitted label.
+So the descriptor's `label` and `type` are the *pre-feature* values. praguec, emitting straight from its own AST, gets this right by doing nothing — which is exactly why it is worth writing down: the bug appears only if someone "helpfully" applies the feature to the emitted label.
 
 **Contrast with legacy syntax.** For a `syntax = "proto2"` file, `IsLegacyEdition` is true (`descriptor.cc:1277-1279`: `edition < EDITION_2023`), so the rewrite is *not* undone: a `required` field emits `LABEL_REQUIRED` and a `group` emits `TYPE_GROUP` `[protoc 36.1]`. And the features that protoc *inferred* from the legacy syntax (`InferLegacyProtoFeatures`, `descriptor.cc:5124-5148`, which sets `LEGACY_REQUIRED` for `required`, `DELIMITED` for groups, and a `repeated_field_encoding` from `[packed]`) are **not emitted either** — they go into `base_features`, never into `proto_features_`. A proto2 descriptor from protoc 36.1 contains zero `features` blocks. Not protop's problem directly, but it is the reason the differential harness cannot use proto2 fixtures to learn anything about features.
 
@@ -484,7 +484,7 @@ options { 50002: 1 }
 
 With `--retain_options`, 50001 reappears. protoc documents the flag: *"When using --descriptor_set_out, do not strip any options from the FileDescriptorProto."*
 
-**Harness consequence:** the differential harness must fix a retention policy and use it on both sides. If protop declares any option with `RETENTION_SOURCE` and the harness does not pass `--retain_options`, protopc must strip it too, or every fixture using that option diverges. The safer default is to pass `--retain_options` and compare everything.
+**Harness consequence:** the differential harness must fix a retention policy and use it on both sides. If protop declares any option with `RETENTION_SOURCE` and the harness does not pass `--retain_options`, praguec must strip it too, or every fixture using that option diverges. The safer default is to pass `--retain_options` and compare everything.
 
 ---
 
@@ -541,7 +541,7 @@ Declared as `extend google.protobuf.FieldOptions { ... }` etc. `FieldOptions` ha
 | Lifetime gating | yes, via `feature_support` | no |
 | In `--descriptor_set_out` | unresolved, as written | as written (retention permitting, §6.5) |
 
-**The consequence protop has to plan for:** there is no free cascade. If `(protop.decimal) { scale: 4 }` should be settable at message scope and inherited by fields, protopc implements that cascade itself. Since protopc already implements the feature cascade (§3.4), the pragmatic move is to write *one* generic inheritance walker parameterised by a "which parent" function, and run both the nine built-in features and protop's own options through it. The parent chain in §3.2 is the right chain for both.
+**The consequence protop has to plan for:** there is no free cascade. If `(protop.decimal) { scale: 4 }` should be settable at message scope and inherited by fields, praguec implements that cascade itself. Since praguec already implements the feature cascade (§3.4), the pragmatic move is to write *one* generic inheritance walker parameterised by a "which parent" function, and run both the nine built-in features and protop's own options through it. The parent chain in §3.2 is the right chain for both.
 
 ### 7.3 Nothing in `pb.csharp` is available at 2023
 
@@ -598,7 +598,7 @@ The decision is the human's. This is the evidence and a recommendation.
 It is the project's core axis (§8.1) and the reason to be on editions at all. `EXPLICIT` and `IMPLICIT` both map cleanly. `LEGACY_REQUIRED` is the interesting one: it gives protop a real `NOT NULL` with parse-time enforcement, which is genuinely valuable for a schema language — but it is a permanent, unremovable wire contract (removing a required field breaks every old reader), and protobuf's own history is that `required` was the single worst mistake in proto2. Recommendation: **allow `LEGACY_REQUIRED` at field scope only, never at file scope.** A file-level `LEGACY_REQUIRED` makes every singular field in the file required by inheritance, which is a foot-gun of a size no one intends. protoc permits it; a strict profile should not.
 
 **`enum_type` — accept and honour.**
-`OPEN` vs `CLOSED` is a real schema decision with a real C# consequence: a closed enum can reject out-of-range values at parse time, an open one stores them. It costs protopc almost nothing (the only extra rule is the zero-first check for open enums, §5.2) and it is exactly the kind of constraint a schema language should be able to express. MessagePack has no unknown-field set, so a `CLOSED` enum's "store out-of-range in unknowns" semantics have no MessagePack analogue — which means protop's `CLOSED` should be interpreted as **reject at parse**, and that difference must be documented rather than silently inherited.
+`OPEN` vs `CLOSED` is a real schema decision with a real C# consequence: a closed enum can reject out-of-range values at parse time, an open one stores them. It costs praguec almost nothing (the only extra rule is the zero-first check for open enums, §5.2) and it is exactly the kind of constraint a schema language should be able to express. MessagePack has no unknown-field set, so a `CLOSED` enum's "store out-of-range in unknowns" semantics have no MessagePack analogue — which means protop's `CLOSED` should be interpreted as **reject at parse**, and that difference must be documented rather than silently inherited.
 
 **`utf8_validation` — accept, low stakes.**
 `VERIFY` (the 2023 default) versus `NONE`. MessagePack's `str` type is nominally UTF-8 and MessagePack-CSharp does not validate by default — **unverified**, worth checking before relying on it. Honouring `NONE` means "treat as bytes". The cost of accepting is one flag on the emitted property; the cost of rejecting is an author who genuinely has legacy non-UTF-8 string data and no way to say so. Mild recommendation: accept.
@@ -607,21 +607,21 @@ It is the project's core axis (§8.1) and the reason to be on editions at all. `
 Pure protobuf wire concern. In MessagePack a repeated field is an array; there is no packed-vs-expanded distinction to honour. Accepting it means accepting a knob that provably does nothing, which is worse than rejecting it. The only argument for accepting is wire-compatibility with an existing protobuf consumer that requires `EXPANDED` — and if that consumer exists, it is reading protobuf, not MessagePack, so it is outside protop's remit. Reject, with a diagnostic that says why.
 
 **`message_encoding` — reject `DELIMITED`.**
-Same reasoning, more strongly. `DELIMITED` is group encoding — the resurrection of a syntax protobuf deleted. It exists in editions purely as a migration path for Google-internal proto1 groups. MessagePack has no groups. And protopc would have to carry the `TYPE_GROUP`/`TYPE_MESSAGE` round-trip complication (§6.4) purely to support a feature it cannot honour. Reject `DELIMITED`; `LENGTH_PREFIXED` is the default and needs no syntax to obtain, so in practice this means rejecting the feature entirely.
+Same reasoning, more strongly. `DELIMITED` is group encoding — the resurrection of a syntax protobuf deleted. It exists in editions purely as a migration path for Google-internal proto1 groups. MessagePack has no groups. And praguec would have to carry the `TYPE_GROUP`/`TYPE_MESSAGE` round-trip complication (§6.4) purely to support a feature it cannot honour. Reject `DELIMITED`; `LENGTH_PREFIXED` is the default and needs no syntax to obtain, so in practice this means rejecting the feature entirely.
 
 **`json_format` — reject.**
 `LEGACY_BEST_EFFORT` exists to accommodate proto2 files whose field names or enum values do not round-trip through protobuf JSON. protop emits MessagePack and C#; it has no JSON mapping to weaken. Accepting the feature would be accepting an annotation with no referent. Reject.
 
 **`enforce_naming_style`, `default_symbol_visibility`, `enforce_proto_limits` — reject, and match protoc's wording.**
-Not a profile decision — protoc rejects them at edition 2023 already (§2.3). protopc must too, or it is more permissive than the oracle. Worth reproducing protoc's message closely, since the differential harness may compare diagnostics.
+Not a profile decision — protoc rejects them at edition 2023 already (§2.3). praguec must too, or it is more permissive than the oracle. Worth reproducing protoc's message closely, since the differential harness may compare diagnostics.
 
 **Summary:** accept 3 of 6 (`field_presence` with a restriction, `enum_type`, `utf8_validation`), reject 3 of 6 as wire/format knobs with no MessagePack referent, reject 3 of 3 locked features as protoc does.
 
 A useful framing for the spec: the three accepted features are all **schema semantics** (does this field have a value; is this enum's domain closed; is this string text). The three rejected ones are all **protobuf wire encoding** (how bytes are laid out). protop is a schema language that happens to have a protobuf-shaped syntax, so that line is the natural place to cut, and it is defensible in one sentence to a user who asks why.
 
-### 9.2 What protopc must implement regardless of the profile
+### 9.2 What praguec must implement regardless of the profile
 
-Even rejecting half the features, protopc still needs the full resolver, because rejection is a *diagnostic* and diagnostics need resolved context:
+Even rejecting half the features, praguec still needs the full resolver, because rejection is a *diagnostic* and diagnostics need resolved context:
 
 1. The nine 2023 constants, hard-coded, with a test asserting they match `--edition_defaults_out` (§2.4).
 2. The parent chain of §3.2, including the oneof link and the extension rule.
@@ -636,12 +636,12 @@ Items 4 and 6 are the ones most likely to be skipped in a first pass and most li
 
 The differential harness compares normalised `--descriptor_set_out` from both compilers. Because protoc emits unresolved features (§6), the harness verifies:
 
-- ✅ that protopc **parses** feature syntax identically (right scope, right value, right enum number);
-- ✅ that protopc **rejects** the same files protoc rejects, if diagnostics are compared;
-- ✅ that protopc emits the same `label` / `type` for `LEGACY_REQUIRED` / `DELIMITED` fields (§6.4) — a real, non-obvious check that the harness gets for free;
-- ❌ **nothing at all about whether protopc resolved a single feature correctly.**
+- ✅ that praguec **parses** feature syntax identically (right scope, right value, right enum number);
+- ✅ that praguec **rejects** the same files protoc rejects, if diagnostics are compared;
+- ✅ that praguec emits the same `label` / `type` for `LEGACY_REQUIRED` / `DELIMITED` fields (§6.4) — a real, non-obvious check that the harness gets for free;
+- ❌ **nothing at all about whether praguec resolved a single feature correctly.**
 
-A protopc whose resolver inherits `json_format` from the wrong parent, or whose 2023 default for `enum_type` is `CLOSED` instead of `OPEN`, produces a **byte-identical descriptor** to a correct one. The harness is blind to the entire subject of this document.
+A praguec whose resolver inherits `json_format` from the wrong parent, or whose 2023 default for `enum_type` is `CLOSED` instead of `OPEN`, produces a **byte-identical descriptor** to a correct one. The harness is blind to the entire subject of this document.
 
 ### 9.4 A second oracle that closes the gap
 
@@ -649,9 +649,9 @@ The gap is closeable, and cheaply, because protoc *will* tell you its resolved v
 
 **(a) `--edition_defaults_out` as a defaults-table oracle.** One command, already working (§2.1), asserts the nine constants. Catches a wrong default. Does not catch a wrong parent chain. **Do this on day one** — it is a single test and it pins the most-likely-wrong thing.
 
-**(b) A generated-code differential.** protoc's own C# backend consumes resolved features. A field resolved `IMPLICIT` versus `EXPLICIT` generates observably different `Google.Protobuf` C# — `HasX` properties, `ClearX` methods. Comparing `protoc --csharp_out` against protopc's *understanding* of presence, per field, is an indirect but real check on the resolver. Cost: a fixture harness that greps generated C#, and a mapping that is itself a guess. Medium confidence, medium cost.
+**(b) A generated-code differential.** protoc's own C# backend consumes resolved features. A field resolved `IMPLICIT` versus `EXPLICIT` generates observably different `Google.Protobuf` C# — `HasX` properties, `ClearX` methods. Comparing `protoc --csharp_out` against praguec's *understanding* of presence, per field, is an indirect but real check on the resolver. Cost: a fixture harness that greps generated C#, and a mapping that is itself a guess. Medium confidence, medium cost.
 
-**(c) A resolved-feature probe.** A tiny `protoc` plugin — or, since the pipeline is C#, a fixture generated once by a throwaway C++/Python program against the C++ `DescriptorPool` — that walks every descriptor and dumps `InternalFeatureHelper::GetFeatures(d)` as a flat `path → resolved FeatureSet` table. protopc emits the same table. Compare. This is the only option that tests the resolver directly and completely, including the oneof and extension parent edges. Cost: one small non-C# tool, run once per fixture-set change, output checked in. **Unverified** whether `InternalFeatureHelper` is reachable from Python or Go bindings without C++ — worth ten minutes before committing to the design, since it collapses the cost if so.
+**(c) A resolved-feature probe.** A tiny `protoc` plugin — or, since the pipeline is C#, a fixture generated once by a throwaway C++/Python program against the C++ `DescriptorPool` — that walks every descriptor and dumps `InternalFeatureHelper::GetFeatures(d)` as a flat `path → resolved FeatureSet` table. praguec emits the same table. Compare. This is the only option that tests the resolver directly and completely, including the oneof and extension parent edges. Cost: one small non-C# tool, run once per fixture-set change, output checked in. **Unverified** whether `InternalFeatureHelper` is reachable from Python or Go bindings without C++ — worth ten minutes before committing to the design, since it collapses the cost if so.
 
 Recommendation: (a) immediately, (c) when the resolver ships. Skip (b) — it tests the resolver through two layers of guesswork.
 

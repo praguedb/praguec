@@ -8,9 +8,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/nanov/protobuf-to-messagepack-sharp/internal/diag"
-	"github.com/nanov/protobuf-to-messagepack-sharp/internal/source"
-	"github.com/nanov/protobuf-to-messagepack-sharp/internal/syntax"
+	"github.com/praguedb/praguec/internal/diag"
+	"github.com/praguedb/praguec/internal/source"
+	"github.com/praguedb/praguec/internal/syntax"
 )
 
 // The two spec sections, under the names the program knows them by: the shared
@@ -96,7 +96,7 @@ func renderAll(set FileSet, bag *diag.Bag) string {
 }
 
 // assertCodes holds a bag against the sequence of codes it should contain.
-// Codes are protopc's interface and a sequence says more than a count: the
+// Codes are praguec's interface and a sequence says more than a count: the
 // order is which mistake was reported first, and a test that counted would pass
 // on the wrong diagnostic.
 func assertCodes(t *testing.T, set FileSet, bag *diag.Bag, want ...diag.Code) {
@@ -118,7 +118,7 @@ func assertCodes(t *testing.T, set FileSet, bag *diag.Bag, want ...diag.Code) {
 
 // assertGate holds the bag against what the codes it carries imply about the
 // compile. bag.HasErrors is the gate the driver reads, and a diagnostic that is
-// reported without reaching it is one protopc prints and then accepts anyway.
+// reported without reaching it is one praguec prints and then accepts anyway.
 //
 // The expectation is derived and never written down: the compile fails exactly
 // when one of the expected codes is an error by diag's own table. So this says
@@ -1058,7 +1058,7 @@ func TestDecimalCarriesItsPrecision(t *testing.T) {
 // The caret underlines the name that is unknown and stops there. `Missing?` is
 // a type written in two pieces and only one of them is the mistake: a caret
 // that swallowed the `?` would tell the reader the presence marker is part of
-// what protopc could not find, and the caret's width is the whole reason spans
+// what praguec could not find, and the caret's width is the whole reason spans
 // are carried instead of positions.
 func TestAnUnknownTypeUnderlinesTheNameAndNotTheWholeTypeReference(t *testing.T) {
 	set, _, bag := checkSet(t, map[string]string{
@@ -1163,9 +1163,9 @@ func TestAViewMemberMustNameAMemberOfItsSource(t *testing.T) {
 
 // The severity of a checker diagnostic, end to end. A code sequence says what
 // was noticed; this says what it costs, which is a different claim. bag.HasErrors
-// is what cmd/protopc turns into an exit code and what every stage after the
+// is what cmd/praguec turns into an exit code and what every stage after the
 // checker inherits, so a checker diagnostic that does not fail the compile is a
-// schema protopc reports on and then generates C# from anyway.
+// schema praguec reports on and then generates C# from anyway.
 //
 // The wanted severity is written here as a literal, and that is the point --
 // assertGate cannot make this claim, because assertGate derives what it expects
@@ -1239,7 +1239,7 @@ record list {
 				t.Errorf("%s raised as a %s, want an Error", tt.want, got)
 			}
 			if !bag.HasErrors() {
-				t.Errorf("%s does not fail the compile; protopc would accept this schema", tt.want)
+				t.Errorf("%s does not fail the compile; praguec would accept this schema", tt.want)
 			}
 		})
 	}
@@ -1611,7 +1611,7 @@ view V of Outer {
 
 // A narrowing that was rejected leaves the member's type alone. The two halves
 // of PROTOP0314 are the message and the retyping that does not happen, and only
-// the first of them is visible to anything that gates on HasErrors -- protopc
+// the first of them is visible to anything that gates on HasErrors -- praguec
 // does, so the driver's tests cannot see this and the CLI never would. A
 // narrowing that reported the mismatch and then applied it anyway would hand
 // the member a view of a declaration it has nothing to do with, which is the
@@ -2090,7 +2090,7 @@ var loadBearingMessages = []diag.Code{
 	diag.MalformedRelation,
 }
 
-// Every shape that can carry an annotation carries it into the model. protopc
+// Every shape that can carry an annotation carries it into the model. praguec
 // does not know what a backend's annotation means and is not entitled to an
 // opinion, so dropping one is not the cautious choice: it is the generated code
 // silently losing an attribute, which nobody notices until the backend that
@@ -2379,7 +2379,7 @@ func TestARelationsTargetIsOneNameInsideMatchedParentheses(t *testing.T) {
 			})
 			assertCodes(t, set, bag, diag.MalformedRelation)
 			// The whole annotation, which is the one shape of it that is
-			// right: nothing inside a malformed relation is a name protopc
+			// right: nothing inside a malformed relation is a name praguec
 			// read, so there is nothing narrower to point at that the user
 			// would recognise.
 			assertAt(t, set, bag, 0, "a.prague:8:21", tt.annotation)

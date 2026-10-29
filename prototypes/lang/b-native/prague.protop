@@ -23,7 +23,7 @@
 //
 // TWO KINDS OF ANNOTATION, TOLD APART BY POSITION:
 //
-//   AFTER the thing, in [ ]   protop's own, a CLOSED set. protopc reads it,
+//   AFTER the thing, in [ ]   protop's own, a CLOSED set. praguec reads it,
 //                             checks it, and an unknown one is an ERROR.
 //                             On a field that is after the tag, which is
 //                             PROTOBUF'S OWN SLOT for field options. On a
@@ -33,7 +33,7 @@
 //
 //                             One rule, both levels: the annotation follows
 //                             what it describes.
-//   BEFORE the declaration    verbatim C# attribute text. protopc copies it
+//   BEFORE the declaration    verbatim C# attribute text. praguec copies it
 //                             and does not read it. This is C#'S OWN SLOT,
 //                             and the text is written exactly as emitted.
 //
@@ -57,7 +57,7 @@
 //   next to the wire contract, which is the one line that should stay legible.
 //
 // So the field line keeps type, name, tag, presence and protop's own checked
-// options — everything protopc UNDERSTANDS — and the text it does not
+// options — everything praguec UNDERSTANDS — and the text it does not
 // understand sits above, quoted by nothing and escaped by nothing.
 //
 // The cost, stated plainly: a reader must learn two positions. That is one
@@ -76,7 +76,7 @@
 // A field may carry both, and they do not collide:
 //
 //   [DataCacheFromTimestamp]              <- copied into the C# output
-//   int64 timestamp = 25 [range_index];   <- read by protopc      (hypothetical)
+//   int64 timestamp = 25 [range_index];   <- read by praguec      (hypothetical)
 //
 // The type-level slot is DEFINED AND EMPTY. protop has no type-level annotation
 // of its own today — the topic went to C# passthrough, the shape is a keyword,
@@ -165,7 +165,7 @@ record Odd {
 // attribute to a modifier, because here it is load-bearing rather than advisory.
 //
 // ANNOTATIONS. Written exactly as C# attributes, because that is what they
-// become: protopc copies the text out and does not read it. Everything that was
+// become: praguec copies the text out and does not read it. Everything that was
 // a keyword and did not earn it now lives here — and the list is honest about
 // how much of the old syntax was decoration.
 [DataCacheTopic("Cache.[v:brandId].SportGame")]

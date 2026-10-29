@@ -1,4 +1,4 @@
-// Command protopc compiles protop schemas.
+// Command praguec compiles protop schemas.
 //
 // The compiler is split the way LLVM is: the frontend under internal/syntax
 // parses source into an AST, a later checking stage resolves it into one
@@ -8,8 +8,8 @@
 //
 // This file is the driver: the stage that opens files, decides where output
 // goes, and turns a bag of diagnostics into an exit code. Nothing about the
-// .NET build is here. Whether protopc runs during an MSBuild build or before
-// one is nanov/protobuf-to-messagepack-sharp#44, unresolved, and a .props or a
+// .NET build is here. Whether praguec runs during an MSBuild build or before
+// one is praguedb/praguec#44, unresolved, and a .props or a
 // .targets written before that ruling would be a guess at half of it.
 package main
 
@@ -23,21 +23,21 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/nanov/protobuf-to-messagepack-sharp/internal/check"
-	"github.com/nanov/protobuf-to-messagepack-sharp/internal/csharp"
-	"github.com/nanov/protobuf-to-messagepack-sharp/internal/diag"
-	"github.com/nanov/protobuf-to-messagepack-sharp/internal/golang"
-	"github.com/nanov/protobuf-to-messagepack-sharp/internal/load"
-	"github.com/nanov/protobuf-to-messagepack-sharp/internal/source"
+	"github.com/praguedb/praguec/internal/check"
+	"github.com/praguedb/praguec/internal/csharp"
+	"github.com/praguedb/praguec/internal/diag"
+	"github.com/praguedb/praguec/internal/golang"
+	"github.com/praguedb/praguec/internal/load"
+	"github.com/praguedb/praguec/internal/source"
 )
 
 // The exit codes, which are an interface in the same way the diagnostic codes
 // are: a build script branches on them.
 //
 // The distinction that matters is the last two. A diagnostic is not a crash and
-// a crash is not a diagnostic: exit 1 means protopc ran, read the schema, and
+// a crash is not a diagnostic: exit 1 means praguec ran, read the schema, and
 // has something to say about it, and a CI job should show those lines to the
-// author. Exit 2 means protopc never got far enough to have an opinion -- a
+// author. Exit 2 means praguec never got far enough to have an opinion -- a
 // file that is not there, a flag it does not have -- and the fix is to the
 // command, not to the schema.
 const (
@@ -48,10 +48,10 @@ const (
 
 func main() { os.Exit(run(os.Args[1:], os.Stdout, os.Stderr)) }
 
-const usage = `protopc compiles protop schemas to C# or Go.
+const usage = `praguec compiles protop schemas to C# or Go.
 
 Usage:
-        protopc <command> [flags] <file.prague>...
+        praguec <command> [flags] <file.prague>...
 
 Commands:
         generate   parse, check, and write code for the named files
@@ -89,7 +89,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprint(stdout, usage)
 		return exitOK
 	default:
-		fmt.Fprintf(stderr, "protopc: unknown command %q\n\n", args[0])
+		fmt.Fprintf(stderr, "praguec: unknown command %q\n\n", args[0])
 		fmt.Fprint(stderr, usage)
 		return exitUsage
 	}
@@ -107,7 +107,7 @@ func (r *repeated) Set(v string) error { *r = append(*r, v); return nil }
 // two drift into checking different things -- which is the one property a
 // `check` command has to have.
 func compile(name string, args []string, write bool, stdout, stderr io.Writer) int {
-	fs := flag.NewFlagSet("protopc "+name, flag.ContinueOnError)
+	fs := flag.NewFlagSet("praguec "+name, flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	fs.Usage = func() { fmt.Fprint(stderr, usage) }
 
@@ -117,7 +117,7 @@ func compile(name string, args []string, write bool, stdout, stderr io.Writer) i
 
 	// `check` writes nothing, so it does not have -o or --manifest at all.
 	// Accepting a flag and then ignoring it is worse than rejecting it: the
-	// user who writes `protopc check -o out` believes something was written.
+	// user who writes `praguec check -o out` believes something was written.
 	outDir, manifestPath, lang, goPkg := new(string), new(string), new(string), new(string)
 	if write {
 		outDir = fs.String("o", ".", "output directory")
@@ -131,16 +131,16 @@ func compile(name string, args []string, write bool, stdout, stderr io.Writer) i
 	}
 	errFormat, ok := diag.ParseFormat(*format)
 	if !ok {
-		fmt.Fprintf(stderr, "protopc: unknown --error-format %q; protopc has gcc and msvs\n", *format)
+		fmt.Fprintf(stderr, "praguec: unknown --error-format %q; praguec has gcc and msvs\n", *format)
 		return exitUsage
 	}
 	if write && *lang != "cs" && *lang != "go" {
-		fmt.Fprintf(stderr, "protopc: unknown --lang %q; protopc has cs and go\n", *lang)
+		fmt.Fprintf(stderr, "praguec: unknown --lang %q; praguec has cs and go\n", *lang)
 		return exitUsage
 	}
 	inputs := fs.Args()
 	if len(inputs) == 0 {
-		fmt.Fprintf(stderr, "protopc %s: no input files\n\n", name)
+		fmt.Fprintf(stderr, "praguec %s: no input files\n\n", name)
 		fmt.Fprint(stderr, usage)
 		return exitUsage
 	}
@@ -148,7 +148,7 @@ func compile(name string, args []string, write bool, stdout, stderr io.Writer) i
 	var bag diag.Bag
 	res, err := load.Load(inputs, roots, &bag)
 	if err != nil {
-		fmt.Fprintln(stderr, "protopc:", err)
+		fmt.Fprintln(stderr, "praguec:", err)
 		return exitUsage
 	}
 
@@ -171,12 +171,12 @@ func compile(name string, args []string, write bool, stdout, stderr io.Writer) i
 		written, err = emit(*outDir, schema, res.Targets)
 	}
 	if err != nil {
-		fmt.Fprintln(stderr, "protopc:", err)
+		fmt.Fprintln(stderr, "praguec:", err)
 		return exitUsage
 	}
 	if *manifestPath != "" {
 		if err := writeManifest(*manifestPath, written); err != nil {
-			fmt.Fprintln(stderr, "protopc:", err)
+			fmt.Fprintln(stderr, "praguec:", err)
 			return exitUsage
 		}
 	}
@@ -214,7 +214,7 @@ func report(w io.Writer, format diag.Format, res *load.Result, bag *diag.Bag) {
 //
 // Only the targets. A file that is in the set because something imported it was
 // read to make sense of the ones that were named, and writing it would mean
-// `protopc generate one.prague` rewriting files the user did not mention.
+// `praguec generate one.prague` rewriting files the user did not mention.
 //
 // The file name is <TypeName>.cs, flat under -o, and it is provisional. Whether
 // a declaration gets its own file, what a generated file's banner says, and who
@@ -242,7 +242,7 @@ func emit(dir string, schema *check.Schema, targets []string) ([]string, error) 
 		// until it does, the collision is an error and not a coin toss.
 		if prev, clash := by[path]; clash {
 			return nil, fmt.Errorf("%s and %s would both be written to %s; "+
-				"the output layout is nanov/protobuf-to-messagepack-sharp#25 and does not yet separate them",
+				"the output layout is praguedb/praguec#25 and does not yet separate them",
 				prev, u.Namespace+"."+u.TypeName, path)
 		}
 		by[path] = u.Namespace + "." + u.TypeName

@@ -10,10 +10,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/nanov/protobuf-to-messagepack-sharp/internal/check"
-	"github.com/nanov/protobuf-to-messagepack-sharp/internal/diag"
-	"github.com/nanov/protobuf-to-messagepack-sharp/internal/source"
-	"github.com/nanov/protobuf-to-messagepack-sharp/internal/syntax"
+	"github.com/praguedb/praguec/internal/check"
+	"github.com/praguedb/praguec/internal/diag"
+	"github.com/praguedb/praguec/internal/source"
+	"github.com/praguedb/praguec/internal/syntax"
 )
 
 // The corpus is the oracle.
@@ -21,14 +21,14 @@ import (
 // The goldens under testdata/golden are the emitter held against itself: they
 // catch a change, and `-update` can rewrite them. Nothing in this file can be
 // rewritten by a flag. corpus/prague/ is 29 hand-written C# files copied from a
-// running system, and every assertion here is protopc's output measured against
+// running system, and every assertion here is praguec's output measured against
 // them.
 //
 // The shape of the measurement is a coverage table with one row per corpus
 // file. A row either names the declaration that reproduces it or names the
 // ticket that blocks it, and TestCoverageTableNamesEveryCorpusFile makes the
 // table exhaustive -- so a corpus file this milestone cannot emit is a line of
-// evidence rather than a silence. Within a covered row, a key protopc does not
+// evidence rather than a silence. Within a covered row, a key praguec does not
 // write is listed in Missing with its ticket, and a key it writes differently
 // is listed in Diverges with what the difference is.
 
@@ -36,7 +36,7 @@ const corpusRoot = "../../corpus/prague"
 
 const examplesDir = "../../examples/prague"
 
-// corpusRow is one corpus file and what protopc does about it.
+// corpusRow is one corpus file and what praguec does about it.
 type corpusRow struct {
 	// Path is relative to corpus/prague.
 	Path string
@@ -46,13 +46,13 @@ type corpusRow struct {
 	Decl string
 
 	// Blocked says why, when Decl is "". Every one of them names a ticket or a
-	// reason that is not protopc's to fix.
+	// reason that is not praguec's to fix.
 	Blocked string
 
-	// Extra are the corpus's using lines protopc cannot derive. Section 3 has
-	// protopc never inspect an annotation's contents, so a namespace that is
+	// Extra are the corpus's using lines praguec cannot derive. Section 3 has
+	// praguec never inspect an annotation's contents, so a namespace that is
 	// only reachable through an attribute is not reachable at all -- and a
-	// member protopc does not write takes its namespace with it.
+	// member praguec does not write takes its namespace with it.
 	Extra []string
 
 	// Missing are corpus keys the emission does not contain, and why. Each is
@@ -139,13 +139,13 @@ var coverage = []corpusRow{
 	{Path: "payloads/SlimBetType.cs", Decl: "SlimBetType",
 		Extra: []string{cacheCore},
 		Diverges: map[int]string{
-			25: "#24. The corpus writes `SlimOdd[]` here and `List<T>` at its other six collection sites; protopc writes the majority form. Inferring `a view emits T[]` from one sample is a language ruling.",
+			25: "#24. The corpus writes `SlimOdd[]` here and `List<T>` at its other six collection sites; praguec writes the majority form. Inferring `a view emits T[]` from one sample is a language ruling.",
 		}},
 	{Path: "payloads/SlimOdd.cs", Decl: "SlimOdd"},
 
 	// --- shells -------------------------------------------------------------
-	// The 11 hand-written halves. #25 owns whether protopc emits a shell at
-	// all; until it rules, none of these is protopc's output to check.
+	// The 11 hand-written halves. #25 owns whether praguec emits a shell at
+	// all; until it rules, none of these is praguec's output to check.
 	//
 	// SOURCE.md records that only three of the eleven are empty --
 	// LiveObjectCache, SlimBetTypeCache and SlimSportGameCache. The other eight
@@ -166,7 +166,7 @@ var coverage = []corpusRow{
 	{Path: "shells/SlimSportGameCache.cs", Blocked: shellBlocked},
 }
 
-const shellBlocked = "#25, the hand-written half. Not a [MessagePackObject] type and not protopc's output."
+const shellBlocked = "#25, the hand-written half. Not a [MessagePackObject] type and not praguec's output."
 
 // blockedPaths is the corpus this milestone does not reproduce, written out
 // rather than counted.
@@ -411,7 +411,7 @@ func TestBlockedCorpusFilesNameATicket(t *testing.T) {
 // declaration line.
 //
 // Usings compare as a set. The corpus sorts `System.*` first (see
-// payloads/BPBetTypeCacheItem.cs, lines 1 to 5) and protopc sorts ordinally;
+// payloads/BPBetTypeCacheItem.cs, lines 1 to 5) and praguec sorts ordinally;
 // which order is right is a style question that no ticket owns and that nothing
 // on the wire depends on. What the set comparison still catches is a using that
 // should have been derived and was not, which is the part that matters.
@@ -445,7 +445,7 @@ func TestCorpusHeaders(t *testing.T) {
 			// recording type-level attributes, and then `[MessagePackObject]`
 			// and every `[cs: DataCache(...)]` passthrough agree by being
 			// absent from both sides. All 15 covered corpus files carry
-			// `[MessagePackObject]` and protopc writes it on every non-enum
+			// `[MessagePackObject]` and praguec writes it on every non-enum
 			// declaration, so both lists are non-empty and both name it.
 			for what, attrs := range map[string][]string{r.Path: want.Attrs, "the emission": got.Attrs} {
 				if !slicesContains(attrs, "MessagePackObject") {
@@ -726,7 +726,7 @@ var exampleSupport = map[string]string{
 // TestTheExamplesDeclareNothingUnreviewed makes the input side of the oracle
 // exhaustive, the way the coverage table makes the output side exhaustive.
 //
-// examples/prague is what protopc compiles to produce everything this file
+// examples/prague is what praguec compiles to produce everything this file
 // measures, and until this test existed an `table UnreviewedJunk { ... }`
 // appended to any of its six files emitted C# that no assertion in the package
 // so much as read. Every declaration is now either a corpus row's Decl or a
@@ -779,7 +779,7 @@ func TestNormalisationSitesAreEnumerated(t *testing.T) {
 		// flattening nothing overrides anything.
 		"virtual:Name",
 
-		// #20 forbids protopc emitting an immutable type: a computed member at
+		// #20 forbids praguec emitting an immutable type: a computed member at
 		// key 0 breaks deserializing-constructor matching on both MessagePack
 		// paths. So `init` becomes `set`, at all fifteen corpus sites.
 		"init:Id",
@@ -869,7 +869,7 @@ func TestMemberAttributesAreEnumerated(t *testing.T) {
 		"DataCacheKey on Id", "DataCacheKey on Id",
 		"DataCacheKey on Key", "DataCacheKey on Key", "DataCacheKey on Key", "DataCacheKey on Key",
 
-		// The index attributes, which protopc never derives and only ever
+		// The index attributes, which praguec never derives and only ever
 		// copies: dropping `index` from the language moved these into the
 		// annotation passthrough, and this list is what that passthrough is
 		// carrying today.
@@ -927,10 +927,10 @@ func TestMemberAttributesAreEnumerated(t *testing.T) {
 //
 // Every row carries its own scope, and the scope is load-bearing rather than
 // tidy. `corpus/prague/` is three different things in one tree: `payloads/` is
-// the generated half, which is what protopc is an oracle for; `deps/` is
-// hand-written supporting types, two of which protopc cannot emit at all; and
+// the generated half, which is what praguec is an oracle for; `deps/` is
+// hand-written supporting types, two of which praguec cannot emit at all; and
 // `shells/` is eleven cache classes that #25 blocks entirely. A claim about
-// what protopc emits is a claim about `payloads/`, and counting the other two
+// what praguec emits is a claim about `payloads/`, and counting the other two
 // into it inflates the number that justifies the row. Three rows genuinely are
 // corpus-wide -- the `Key = tag - 1` ruling was taken on all 339 sites, and an
 // absence is only an absence if nowhere has one -- and they say so.
@@ -964,9 +964,9 @@ func TestCorpusCensus(t *testing.T) {
 		{"[Key(", "corpus", 339,
 			"the 339 sites the `Key = tag - 1` rule was ruled on; 335 of them are in payloads/ and 4 in deps/"},
 
-		// --- claims about what protopc emits: payloads/ only ---
+		// --- claims about what praguec emits: payloads/ only ---
 		{"List<", "payloads", 6,
-			"the majority collection form in the generated half, which is why `list<T>` emits List<T> (deps/ adds two more, in types protopc does not emit)"},
+			"the majority collection form in the generated half, which is why `list<T>` emits List<T> (deps/ adds two more, in types praguec does not emit)"},
 		{"SlimOdd[]", "payloads", 1,
 			"the corpus's one array, and #24's whole question"},
 		{"DateTime", "payloads", 22,
@@ -998,7 +998,7 @@ func TestCorpusCensus(t *testing.T) {
 // Section 1 says it transcribes rather than aspires, and this is what makes
 // that sentence something other than a promise.
 //
-// Every `[cs: ...]` is passthrough -- section 3 has protopc copy an
+// Every `[cs: ...]` is passthrough -- section 3 has praguec copy an
 // annotation's contents out without inspecting them -- so no assertion about
 // the emission can tell an annotation the pin carries from one somebody wished
 // for. The goldens are worse than silent about it: `-update` writes the wish
@@ -1014,7 +1014,7 @@ func TestCorpusCensus(t *testing.T) {
 // What it does not check, said rather than implied: the arguments. Section 1's
 // `nameof(BPSportGameCache)` against the corpus's
 // `nameof(Prague.Models.BPSportGameCache)` is a real divergence this test
-// cannot see, because an argument list is exactly the part protopc is forbidden
+// cannot see, because an argument list is exactly the part praguec is forbidden
 // to understand. Names are the part a census can settle, and all three defects
 // #43 found were names or forms of names.
 // Section 1 transcribes the pin, and this is what holds it to that.
@@ -1038,12 +1038,12 @@ func TestCorpusCensus(t *testing.T) {
 // against the one declaration it names. Prose that can go false becomes the
 // thing the test reads.
 //
-// *Is it protopc's to write?* An annotation naming an attribute the emitter
+// *Is it praguec's to write?* An annotation naming an attribute the emitter
 // already emits is not a transcription question at all -- it is CS0579 in the
 // one block of the spec that claims to be emittable. `[cs: MessagePackObject]`
 // on a table emits the attribute twice and the worked example stops compiling.
 // That set is derived from the emitter rather than listed here, by emitting
-// section 1 with its annotations stripped and reading back what protopc wrote
+// section 1 with its annotations stripped and reading back what praguec wrote
 // unbidden, so a fifth attribute added to the backend joins it without anyone
 // remembering to.
 //
@@ -1052,7 +1052,7 @@ func TestCorpusCensus(t *testing.T) {
 // where the pin's class is `BPSportGameCacheItem` -- would match nothing and
 // fail here. None does today. Order within one member's stack is pinned by
 // `want` against section 1 and is not measured against the corpus; it is
-// meaningful to protopc, which emits in source order and never sorts, but
+// meaningful to praguec, which emits in source order and never sorts, but
 // inert to C#.
 func TestSection1AnnotatesOnlyWhatThePinCarries(t *testing.T) {
 	got := csAnnotations(readFixture(t, pragueFixture))
@@ -1082,19 +1082,19 @@ func TestSection1AnnotatesOnlyWhatThePinCarries(t *testing.T) {
 		t.Fatalf("section 1 writes no `[cs: ...]` at all; nothing was censused")
 	}
 
-	emits := protopcsOwnAttributes(t)
+	emits := praguecsOwnAttributes(t)
 	if len(emits) == 0 {
 		t.Fatal("read no attributes at all out of an emission of section 1; the collision check would pass for free")
 	}
 	seen := map[csAnnotation]bool{}
 	for _, a := range got {
 		if n := attributeName(a.text); slices.Contains(emits, n) {
-			t.Errorf("section 1 writes %s and protopc emits [%s] on its own; "+
+			t.Errorf("section 1 writes %s and praguec emits [%s] on its own; "+
 				"the two land in the same attribute list and C# rejects the duplicate (CS0579), "+
 				"so this is not a form the block can carry however the pin writes it", a, n)
 		}
 		if seen[a] {
-			t.Errorf("section 1 writes %s twice; protopc emits annotations in source order and "+
+			t.Errorf("section 1 writes %s twice; praguec emits annotations in source order and "+
 				"never deduplicates, so the emission carries both and C# rejects it (CS0579)", a)
 		}
 		seen[a] = true
@@ -1154,14 +1154,14 @@ var section1Follows = map[string]string{
 	"BetType.timestamp": corpusRoot + "/payloads/SlimBetType.cs",
 }
 
-// protopcsOwnAttributes is every attribute name protopc writes without being
+// praguecsOwnAttributes is every attribute name praguec writes without being
 // asked, read off an emission of section 1 with its annotations stripped.
 //
 // Derived rather than listed: the emitter writes four today -- csharp.go:197,
 // :242, :322 and :349 -- and section 1 reaches all four, having a simple key, a
 // composite key and an alias in it. A fifth added to the backend appears here
 // the moment it is emitted, which a hand-written list would not do.
-func protopcsOwnAttributes(t *testing.T) []string {
+func praguecsOwnAttributes(t *testing.T) []string {
 	t.Helper()
 	var out []string
 	for _, u := range emitSource(t, map[string]string{"stripped.prague": stripCSAnnotations(readFixture(t, pragueFixture))}) {
@@ -1733,12 +1733,12 @@ func slicesContains(hay []string, needle string) bool {
 // MessagePack needing a settable member -- passes every corpus assertion in
 // this file, and the goldens that do fail are rewritten by -update.
 //
-// Each of the seven sites names a construct protopc does not emit and must not.
+// Each of the seven sites names a construct praguec does not emit and must not.
 // `init`, `required` and `virtual` are #20, #12 and #11 ruling; `base` is #11's
 // flattening; `ctor` and `computed` are the hand-written half (#25); and
 // `initialiser` is a default-value syntax protop does not have. So the emitted
 // side's list is empty, and empty is the assertion -- a normalisation firing on
-// protopc's own output is either a construct it was ruled out of or a defect
+// praguec's own output is either a construct it was ruled out of or a defect
 // being normalised into agreement with the corpus, and neither may pass.
 func TestTheEmissionNeedsNoNormalisation(t *testing.T) {
 	units := exampleUnits(t)
@@ -1840,7 +1840,7 @@ type tallyEntry struct {
 // machine-checkable claims from the .cs files and fails if the document
 // disagrees.
 //
-// It follows cmd/protopc's TestTheExclusionRulesAreTheOnesTheResearchRecorded
+// It follows cmd/praguec's TestTheExclusionRulesAreTheOnesTheResearchRecorded
 // rather than a golden: the right-hand side is a document nothing regenerates,
 // there is no -update path, and neither side can move without the other. The
 // difference is direction. That test transcribes a rule *out of* a document

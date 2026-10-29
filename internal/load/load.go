@@ -7,7 +7,7 @@
 //
 // What it resolves against is a list of local include roots and nothing else.
 // Nothing here knows about git, tags, versions, caches, manifests or lock
-// files; that is nanov/protobuf-to-messagepack-sharp#31 and it is open, and a
+// files; that is praguedb/praguec#31 and it is open, and a
 // loader that reached for a network would be answering it by accident. An
 // include root is a directory on this machine, an import string is a path
 // relative to one, and that is the whole model.
@@ -34,10 +34,10 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/nanov/protobuf-to-messagepack-sharp/internal/check"
-	"github.com/nanov/protobuf-to-messagepack-sharp/internal/diag"
-	"github.com/nanov/protobuf-to-messagepack-sharp/internal/source"
-	"github.com/nanov/protobuf-to-messagepack-sharp/internal/syntax"
+	"github.com/praguedb/praguec/internal/check"
+	"github.com/praguedb/praguec/internal/diag"
+	"github.com/praguedb/praguec/internal/source"
+	"github.com/praguedb/praguec/internal/syntax"
 )
 
 // Result is a loaded program.
@@ -48,7 +48,7 @@ type Result struct {
 
 	// Targets are the keys of the files named on the command line, in the
 	// order they were named. A file that is only in the set because something
-	// imported it is not a target: protopc compiles what it was asked for and
+	// imported it is not a target: praguec compiles what it was asked for and
 	// reads the rest to make sense of it, which is protoc's split and the one
 	// that keeps `generate one file` from writing the whole repository.
 	Targets []string
@@ -277,7 +277,7 @@ func (l *loader) search(key string) []string {
 // key is the import string an input file is known by: its path relative to the
 // first include root that contains it.
 //
-// It matters that this is not simply the path as typed. `protopc generate -I
+// It matters that this is not simply the path as typed. `praguec generate -I
 // schemas schemas/a.prague` and an `import "a.prague"` elsewhere have to name
 // the same entry in the set, or the file is loaded twice under two names and
 // every declaration in it is emitted twice. An input under no root at all keeps
@@ -306,7 +306,7 @@ func (l *loader) key(path string) string {
 // gave nothing, the directory of each input.
 //
 // The default is the directory of each input rather than the working directory
-// because `protopc generate schemas/a.prague` should find the `import
+// because `praguec generate schemas/a.prague` should find the `import
 // "b.prague"` sitting next to it, which is what every user of protoc expects.
 // The two are not combined: once -I is given it is the whole list, so that
 // adding a root cannot silently shadow -- or be shadowed by -- a directory the

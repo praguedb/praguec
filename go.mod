@@ -1,3 +1,3 @@
-module github.com/nanov/protobuf-to-messagepack-sharp
+module github.com/praguedb/praguec
 
 go 1.27

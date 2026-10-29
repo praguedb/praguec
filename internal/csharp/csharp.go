@@ -2,14 +2,14 @@
 // text.
 //
 // The package is named for the annotation prefix rather than for what it does.
-// Section 3 says the legal prefix set is exactly the backends protopc has, so
+// Section 3 says the legal prefix set is exactly the backends praguec has, so
 // `[cs: X]` and this package are one fact spelled twice; naming the package
 // `emit` or `gen` would let the two drift, and adding a `go:` prefix means
 // adding a package next to this one rather than a word to a list.
 //
 // What this package does not decide is where the text goes. A file name, a
 // directory, a header comment and a `.g.cs` suffix are all
-// nanov/protobuf-to-messagepack-sharp#25, and #25 is human-in-the-loop because
+// praguedb/praguec#25, and #25 is human-in-the-loop because
 // the downstream generator silently skips any file that ends `.g.cs` or carries
 // `auto-generated` in its first 500 bytes. So Emit returns text keyed by the
 // declaration it came from, and nothing here writes a file or names one.
@@ -24,8 +24,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/nanov/protobuf-to-messagepack-sharp/internal/check"
-	"github.com/nanov/protobuf-to-messagepack-sharp/internal/syntax"
+	"github.com/praguedb/praguec/internal/check"
+	"github.com/praguedb/praguec/internal/syntax"
 )
 
 // Unit is one declaration's emission: the C# text, and enough about where it
@@ -87,7 +87,7 @@ func EmitDecl(d *check.Decl) string {
 	return b.String()
 }
 
-// messagePackNamespace is the one namespace protopc knows the name of. Every
+// messagePackNamespace is the one namespace praguec knows the name of. Every
 // non-enum declaration carries `[MessagePackObject]` and every wire member
 // carries `[Key(N)]`, so the using follows from the emission rather than from
 // anything the schema says.
@@ -100,7 +100,7 @@ const Prefix = "cs"
 // usings is `using MessagePack;` plus the namespace of every declaration this
 // one names, minus its own, sorted ordinally as the corpus sorts them.
 //
-// It is deliberately derived from types alone. protopc never inspects an
+// It is deliberately derived from types alone. praguec never inspects an
 // annotation's contents (section 3), so the namespace `[cs: DataCache(...)]`
 // needs is not a thing this function could know: an annotation that needs a
 // using is written fully qualified, or the using is in the hand-written half.
@@ -155,7 +155,7 @@ func typeNamespaces(t check.Type) []string {
 // modifiers is section 4's emission column, and the row that reads strangest is
 // the right one: a protop `record` emits a C# *class*. #20 measured that a
 // computed member at key 0 breaks deserializing-constructor matching on both
-// MessagePack paths, so protopc may never emit a C# `record` or any other
+// MessagePack paths, so praguec may never emit a C# `record` or any other
 // immutable type. The two keywords collide in spelling and mean opposite
 // things.
 //
@@ -236,7 +236,7 @@ func writeEnum(b *strings.Builder, d *check.Decl) {
 }
 
 // dataCacheKeyAttribute marks the member that carries the declaration's
-// identity. It is the one attribute protopc writes that belongs to
+// identity. It is the one attribute praguec writes that belongs to
 // `B2Tech.Feed.Cache.Core` rather than to MessagePack, and it is written
 // because the corpus writes it on every key it has and protop's `key` keyword
 // is the only thing that could produce it: 11 sites over the 14 payload types,
@@ -355,7 +355,7 @@ func writeAlias(b *strings.Builder, d *check.Decl, m *check.Member) {
 // that should be a diagnostic, an implicit selection or something else is a
 // design decision this lookup is not entitled to make, so the callers below
 // deliberately fall back to the source's name and the source's type -- what
-// protopc emitted before this lookup existed -- and leave it to #66 to rule.
+// praguec emitted before this lookup existed -- and leave it to #66 to rule.
 // The fallback is not an answer and is not pinned as one.
 func aliasTarget(d *check.Decl, m *check.Member) *check.Member {
 	if m.Aliased == nil {
@@ -407,7 +407,7 @@ func writeKey(b *strings.Builder, m *check.Member) {
 // source order, neither sorted nor deduplicated.
 //
 // The whole of section 3's passthrough rule is the absence of anything else in
-// this function. protopc does not parse the text, does not know what attribute
+// this function. praguec does not parse the text, does not know what attribute
 // it names, and has no opinion about whether it compiles -- the check that
 // matters happens when the generated code does. protop's own annotations carry
 // no prefix and are read by the checker, so they reach the backend as resolved

@@ -2,7 +2,7 @@ package diag
 
 import "fmt"
 
-// Code identifies a kind of diagnostic. Codes are part of protopc's interface:
+// Code identifies a kind of diagnostic. Codes are part of praguec's interface:
 // they are what a changelog cites, what an editor filters on, and what a build
 // script greps for. So a code that has shipped keeps its number forever, and a
 // retired one is never reused for a different fact.
@@ -39,7 +39,7 @@ func (c Code) String() string { return fmt.Sprintf("PROTOP%04d", int(c)) }
 //
 // It used to live at the call site, as the choice between Bag.Errorf and
 // Bag.Warnf. That made a demotion one word in one file, invisible to every
-// test -- and a demoted error means HasErrors reports false and protopc
+// test -- and a demoted error means HasErrors reports false and praguec
 // ACCEPTS a schema it exists to reject.
 func (c Code) Severity() Severity { return severities[c] }
 
@@ -50,7 +50,7 @@ func (c Code) Severity() Severity { return severities[c] }
 // the other way would cost a schema accepted that should have been rejected,
 // which nobody sees until the wire format is wrong.
 //
-// Every code protopc has today is an error -- nothing in protop is advisory
+// Every code praguec has today is an error -- nothing in protop is advisory
 // yet, `map` included: the parser reports NotYetImplemented as an error, which
 // is what makes the driver stop rather than hand a half-read file to a backend.
 // The table is empty and is the place the first warning gets written down.
@@ -94,7 +94,7 @@ const (
 	// ImportAmbiguous is an import string that more than one include root
 	// provides. The loader searches the roots in the order the user gave them,
 	// so it always has a file it *could* take -- but which root should win when
-	// two answer is nanov/protobuf-to-messagepack-sharp#48 and is unresolved,
+	// two answer is praguedb/praguec#48 and is unresolved,
 	// and a build whose meaning depends on an unresolved rule should say so
 	// rather than pick in silence. Reported, not ranked.
 	ImportAmbiguous Code = 108
@@ -216,7 +216,7 @@ const (
 	// slot for one. An annotation follows what it describes, and there is no
 	// before-slot.
 	AnnotationNotAllowed Code = 400
-	// UnknownAnnotationPrefix is a prefix naming a backend protopc does not
+	// UnknownAnnotationPrefix is a prefix naming a backend praguec does not
 	// have. An unknown prefix is an error rather than a silent drop, because a
 	// typo that vanishes from the output is worse than the rule it replaced.
 	UnknownAnnotationPrefix Code = 401
@@ -235,7 +235,7 @@ const (
 
 	// NotYetImplemented is a construct the spec defines and this milestone does
 	// not read. Reporting it as its own code, rather than as a syntax error, is
-	// the difference between "protopc cannot do this yet" and "you wrote this
+	// the difference between "praguec cannot do this yet" and "you wrote this
 	// wrong".
 	NotYetImplemented Code = 900
 )

@@ -72,7 +72,7 @@ extend google.protobuf.MessageOptions {
   string view_of = 50024;
 
   // Verbatim C# attribute text, emitted onto the generated type without
-  // protopc understanding it. This is the `passthrough` of CONTEXT.md, and it
+  // praguec understanding it. This is the `passthrough` of CONTEXT.md, and it
   // is where cache_topic and DataCacheIndex went.
   //
   // It has to be called `type_attribute` rather than `attribute` because

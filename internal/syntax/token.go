@@ -1,6 +1,6 @@
 package syntax
 
-import "github.com/nanov/protobuf-to-messagepack-sharp/internal/source"
+import "github.com/praguedb/praguec/internal/source"
 
 // Kind is a token's lexical class.
 //

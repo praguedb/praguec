@@ -1,6 +1,6 @@
 # Can `MessagePackFormatterAttribute` carry constructor arguments?
 
-Resolves [issue #3](https://github.com/nanov/protobuf-to-messagepack-sharp/issues/3).
+Resolves [issue #3](https://github.com/praguedb/praguec/issues/3).
 
 **Source of truth**: MessagePack-CSharp at tag `v3.1.4`, commit `44aa149acce1de32881e007f53fad0f3db7dfdab` (2025-06-12). All `file:line` citations below are against that tree. Everything marked **[measured]** was observed by building and running a real project against the `MessagePack` 3.1.4 NuGet package on .NET 8; the method is in §8.
 
@@ -338,15 +338,15 @@ A third built-in exists: `NativeDecimalFormatter` (`src/MessagePack/Formatters/U
    - `ScaledDecimalFormatter<TScale> : IMessagePackFormatter<decimal>`;
    - `NullableScaledDecimalFormatter<TScale> : IMessagePackFormatter<decimal?>`.
 
-   protopc emits, per compilation unit: one `readonly struct ScaleN : IScale` per distinct scale in the schema, and `[MessagePackFormatter(typeof(ScaledDecimalFormatter<ScaleN>))]` (or the nullable variant) per decimal member. The scale lives in the `.proto`; the C# is mechanical.
+   praguec emits, per compilation unit: one `readonly struct ScaleN : IScale` per distinct scale in the schema, and `[MessagePackFormatter(typeof(ScaledDecimalFormatter<ScaleN>))]` (or the nullable variant) per decimal member. The scale lives in the `.proto`; the C# is mechanical.
 
-3. **Presence decides which formatter.** `optional`/explicit-presence decimal → `NullableScaledDecimalFormatter<ScaleN>` on a `decimal?` member. Implicit-presence → `ScaledDecimalFormatter<ScaleN>` on a `decimal`. Getting this pairing wrong produces a `CS1503` in generated code, which is a bad error to hand a user — **protopc should validate the pairing itself** and refuse to emit, with a message naming the field.
+3. **Presence decides which formatter.** `optional`/explicit-presence decimal → `NullableScaledDecimalFormatter<ScaleN>` on a `decimal?` member. Implicit-presence → `ScaledDecimalFormatter<ScaleN>` on a `decimal`. Getting this pairing wrong produces a `CS1503` in generated code, which is a bad error to hand a user — **praguec should validate the pairing itself** and refuse to emit, with a message naming the field.
 
 4. **New lint rule candidate: scale must fit.** A `sint64` at scale *s* holds ±(2⁶³−1)/10ˢ. At scale 4 that is ≈ ±922,337,203,685,477. At scale 9 it is ≈ ±9.2 billion. protop declares the scale, so protop can check it against a declared magnitude bound and reject a schema that cannot represent its own domain. This is one of the six things §2.6 of the main research doc claims protop can do that protoc cannot — it is now concretely implementable. **Unverified**: whether the formatter should throw or saturate on overflow at runtime is an open design question, not settled here.
 
-5. **Never let two non-generic formatters claim the same `T` in one assembly.** `MsgPack009` is an error, and protopc emits whole assemblies. The generic design avoids it structurally; any future per-member formatter (money, timestamps, IDs) should follow the same one-open-definition rule rather than reach for `[ExcludeFormatterFromSourceGeneratedResolver]`.
+5. **Never let two non-generic formatters claim the same `T` in one assembly.** `MsgPack009` is an error, and praguec emits whole assemblies. The generic design avoids it structurally; any future per-member formatter (money, timestamps, IDs) should follow the same one-open-definition rule rather than reach for `[ExcludeFormatterFromSourceGeneratedResolver]`.
 
-6. **Differential testing must cover both resolvers.** The oracle strategy in §10 of the main research doc compares protopc against protoc. Add a second axis: serialize every fixture through `GeneratedMessagePackResolver` *and* through `DynamicObjectResolver` and assert byte equality. That test would have caught this issue on day one, and it guards every future formatter decision.
+6. **Differential testing must cover both resolvers.** The oracle strategy in §10 of the main research doc compares praguec against protoc. Add a second axis: serialize every fixture through `GeneratedMessagePackResolver` *and* through `DynamicObjectResolver` and assert byte equality. That test would have caught this issue on day one, and it guards every future formatter decision.
 
 7. **Deviating from bare `decimal` is a one-way door per field.** Bundle it with open question #1 (`Key = tag` vs `tag - 1`) and decide both before the first payload is persisted.
 

@@ -1,6 +1,6 @@
 # Is `LEGACY_REQUIRED` accepted on scalar fields?
 
-Resolves [issue #2](https://github.com/nanov/protobuf-to-messagepack-sharp/issues/2). Corrects and extends
+Resolves [issue #2](https://github.com/praguedb/praguec/issues/2). Corrects and extends
 `docs/research/proto-to-messagepack-csharp.md` §1.3, which only ever exercised message-typed fields.
 
 **Short answer: yes.** `features.field_presence = LEGACY_REQUIRED` is legal on every singular field type —
@@ -241,7 +241,7 @@ message M { int32 a = 1; int32 b = 2 [features.field_presence = EXPLICIT]; }
 the emitted descriptor carries `options { features { field_presence: IMPLICIT } }` on the *file* and
 `field_presence: EXPLICIT` on field `b` — and **field `a` carries no `options` at all.** Feature inheritance
 (defaults → file → message → field) is *not* materialised into `--descriptor_set_out`. Every consumer
-re-runs resolution itself. `protopc` will have to implement that resolution chain; it cannot read effective
+re-runs resolution itself. `praguec` will have to implement that resolution chain; it cannot read effective
 presence off a descriptor field-by-field.
 
 ---

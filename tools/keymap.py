@@ -4,7 +4,7 @@ alignment between related messages.
 
 This is the executable form of the key-alignment check specified in
 "The cross-message key-alignment check". It is deliberately regex-based and
-corpus-shaped: it is evidence, not the eventual protopc implementation.
+corpus-shaped: it is evidence, not the eventual praguec implementation.
 
     python3 tools/keymap.py            # table + audit
     python3 tools/keymap.py --json     # machine-readable key maps

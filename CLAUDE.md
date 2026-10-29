@@ -1,10 +1,10 @@
-# protobuf-to-messagepack-sharp
+# praguec
 
 ## Agent skills
 
 ### Issue tracker
 
-Issues live as GitHub issues on `nanov/protobuf-to-messagepack-sharp`, managed via the `gh` CLI. See `docs/agents/issue-tracker.md`.
+Issues live as GitHub issues on `praguedb/praguec`, managed via the `gh` CLI. See `docs/agents/issue-tracker.md`.
 
 ### Triage labels
 

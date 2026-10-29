@@ -51,7 +51,7 @@ view SlimSportGame of SportGame {
 ```
 
 That is shorter than the keyword form was, it says where the string *goes*, and
-it is `passthrough` — already a term in `CONTEXT.md`. protopc copies the text
+it is `passthrough` — already a term in `CONTEXT.md`. praguec copies the text
 and does not read it.
 
 The same move retires `[DataCacheFromTimestamp]`, which had earned a
@@ -107,7 +107,7 @@ Two classes remain, and they are the two that were never about indexing:
 | composite identity | 5 | **yes** — always `[Key(0)]` | `(long EventId, long BetTypeId) Key => (EventId, BetTypeId)` |
 | alias | 1 | no — `[IgnoreMember] [JsonIgnore]` | `long BetTypeId { get => Id; set => Id = value; }` |
 
-[Issue #6](https://github.com/nanov/protobuf-to-messagepack-sharp/issues/6) has
+[Issue #6](https://github.com/praguedb/praguec/issues/6) has
 the "computed-member escape hatch" down as the hardest requirement on the board,
 on the assumption that arbitrary C# expressions must survive the trip. It is now
 **two keywords**, neither of them an expression — `key … ( … )` and `alias`.
@@ -296,7 +296,7 @@ protop phase 1 emits that as written and says nothing. Known, accepted gap.
 Spelling A could barely have checked it anyway: a message field may not carry
 `IMPLICIT` presence (protoc errors) and `EXPLICIT` is its only legal value, so
 all five snapshot lines look identical whatever the truth is. The check was
-always going to be B's, or protopc's on top of A.
+always going to be B's, or praguec's on top of A.
 
 Extension `50041` is **held, not retired** — the fact it named did not stop being
 true.
@@ -348,7 +348,7 @@ and its message-level `ManyToMany` are both gone; `50022` is retired.
 ## 6. Position tells the two kinds of annotation apart, and a name cannot
 
 protop's brackets carry two unrelated things: **protop's own options**, which
-protopc reads and checks, and **verbatim C# attribute text**, which protopc
+praguec reads and checks, and **verbatim C# attribute text**, which praguec
 copies without reading. Something has to distinguish them.
 
 The first attempt was lexical — `[lowercase(...)]` checked, `[PascalCase(...)]`
@@ -402,7 +402,7 @@ C# stacks them one per line; so does B. A bracket list after the tag would crowd
 them onto the field line beside the wire contract — the one line that has to stay
 legible.
 
-So the field line carries everything protopc **understands** (type, name, tag,
+So the field line carries everything praguec **understands** (type, name, tag,
 presence, checked options) and the text it does not understand sits above,
 quoted by nothing and escaped by nothing. The cost is that a reader learns two
 positions — one sentence, and the same sentence in both of the languages the
@@ -529,8 +529,8 @@ int64 collides = 1;      // same tag the option claimed
 about a slot. "An option owns this slot" is not expressible.
 
 Note the tension with
-[the get-only-member decision](https://github.com/nanov/protobuf-to-messagepack-sharp/issues/22):
-protopc was to **refuse to emit** a computed member at key 0. Five corpus types
+[the get-only-member decision](https://github.com/praguedb/praguec/issues/22):
+praguec was to **refuse to emit** a computed member at key 0. Five corpus types
 have exactly that, and it is their identity.
 
 ## 11. Views rename, and view padding is structural
@@ -627,7 +627,7 @@ no_such_field    PRESENT
 no_such_member   PRESENT
 ```
 
-So protopc **can** read spelling A out of a descriptor set and never write its
+So praguec **can** read spelling A out of a descriptor set and never write its
 own parser. Spelling A's problem is not that it cannot carry the information:
 
 | construct | A carries it | A checks it | B checks it |
@@ -650,9 +650,9 @@ own parser. Spelling A's problem is not that it cannot carry the information:
 | checked vs verbatim | ⚠️ one shared bracket | ❌ | ✅ by position |
 | type-level annotation slot | ✅ `option` in the body | n/a | ✅ `table Foo [x]` — defined, empty |
 
-Every ❌ is a diagnostic protopc has to implement itself. The strict-profile bet
-— *"lean on protoc so protopc does less"* — pays off for the Protobuf core and
-**not at all** for anything protop adds. protopc writes those checks either way;
+Every ❌ is a diagnostic praguec has to implement itself. The strict-profile bet
+— *"lean on protoc so praguec does less"* — pays off for the Protobuf core and
+**not at all** for anything protop adds. praguec writes those checks either way;
 A only decides whether they run against a descriptor set or against its own AST.
 
 Cutting the topic and the index made spelling A's ledger *worse*, not better:
@@ -673,12 +673,12 @@ parser reads it.
 1. **The oracle dies.** The differential harness is descriptor equality against
    `protoc --descriptor_set_out`. `protoc` cannot read spelling B, so there is
    nothing to differentiate against.
-2. **[The versioning contract](https://github.com/nanov/protobuf-to-messagepack-sharp/issues/27)
+2. **[The versioning contract](https://github.com/praguedb/praguec/issues/27)
    is void in its carrier half.** The dialect stamp had to be a custom option
    precisely because a keyword makes the file unparseable by `protoc`. In B,
    `revision 1;` is just a statement, and the mandatory
    `import "protop/options.proto"` disappears along with
-   [ticket #28](https://github.com/nanov/protobuf-to-messagepack-sharp/issues/28).
+   [ticket #28](https://github.com/praguedb/praguec/issues/28).
 3. **`CONTEXT.md`'s definition of protop changes** — *"protop adds no syntax that
    `protoc` would refuse"* stops being true.
 4. **Every Protobuf tool stops working**: editors, formatters, linters, `buf`,
@@ -686,7 +686,7 @@ parser reads it.
 
 ## Option C, which neither specimen is
 
-**Write B, lower to A.** protopc parses the native spelling and emits the
+**Write B, lower to A.** praguec parses the native spelling and emits the
 strict-Protobuf form as a byproduct; the harness runs `protoc` on *that*. The
 oracle survives, the versioning carrier survives, the ergonomics are B's, and
 relations and views stay checkable because the lowering is where the check

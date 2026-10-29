@@ -36,8 +36,8 @@ be re-taken. Worth confirming this is the intended target and not an abandoned s
   `B2Tech.Feed.Cache` generates: `Query()`, `Execute()`, `Remove()`. So the
   shell is not a formality a generator could emit blind and be done with. It is
   a file the human writes real code into, calling into the generated half — a
-  stronger constraint on `protopc` than "emit an empty class", and the reason
-  #25 owns whether `protopc` should emit a shell at all.
+  stronger constraint on `praguec` than "emit an empty class", and the reason
+  #25 owns whether `praguec` should emit a shell at all.
 - `deps/` — types the payloads reference that are not themselves Prague types:
   `BaseProviderObject`, `StaticDataRef`, `IBaseLiveData`, and the
   `SportGameSlimExtensions` projection helper.
