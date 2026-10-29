@@ -136,8 +136,8 @@ func (l *loader) load(path, key string) (string, error) {
 	}
 	if had, ok := l.keyByPath[abs]; ok {
 		if had != key {
-			// One file, two import strings. `import "./b.protop"` and `import
-			// "b.protop"` are two keys -- the key is the import string as
+			// One file, two import strings. `import "./b.prague"` and `import
+			// "b.prague"` are two keys -- the key is the import string as
 			// written, which is check.FileSet's contract and not this
 			// package's to change -- and both of them resolved, here, to this
 			// file. So both of them have to be in the set: the set is the
@@ -233,12 +233,12 @@ func (l *loader) follow(u unit) error {
 // them and reports the rest.
 //
 // An include root is a starting point here and not a boundary: filepath.Join
-// cleans, so `import "../secret/b.protop"` under `-I inc` resolves to
-// inc/../secret/b.protop, loads, keys as written, and the compile is clean.
+// cleans, so `import "../secret/b.prague"` under `-I inc` resolves to
+// inc/../secret/b.prague, loads, keys as written, and the compile is clean.
 // Recorded rather than fixed. Whether a root fences the import graph is a
 // language question adjacent to #48 and #31 -- protoc rejects a `..` import
 // string outright at the syntax level, which is the same unruled question as
-// `./b.protop`, and a loader that started refusing paths would be answering it
+// `./b.prague`, and a loader that started refusing paths would be answering it
 // -- so the behaviour stands and is written down instead.
 func (l *loader) search(key string) []string {
 	var found []string
@@ -278,7 +278,7 @@ func (l *loader) search(key string) []string {
 // first include root that contains it.
 //
 // It matters that this is not simply the path as typed. `protopc generate -I
-// schemas schemas/a.protop` and an `import "a.protop"` elsewhere have to name
+// schemas schemas/a.prague` and an `import "a.prague"` elsewhere have to name
 // the same entry in the set, or the file is loaded twice under two names and
 // every declaration in it is emitted twice. An input under no root at all keeps
 // its own path as its key, which is a file nothing can import -- true, and not
@@ -306,8 +306,8 @@ func (l *loader) key(path string) string {
 // gave nothing, the directory of each input.
 //
 // The default is the directory of each input rather than the working directory
-// because `protopc generate schemas/a.protop` should find the `import
-// "b.protop"` sitting next to it, which is what every user of protoc expects.
+// because `protopc generate schemas/a.prague` should find the `import
+// "b.prague"` sitting next to it, which is what every user of protoc expects.
 // The two are not combined: once -I is given it is the whole list, so that
 // adding a root cannot silently shadow -- or be shadowed by -- a directory the
 // user never named.

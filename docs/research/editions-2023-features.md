@@ -230,7 +230,7 @@ So the effective precedence, per feature, is: **nearest enclosing scope that exp
 | service | its file | 1269-1271 |
 | method | its service | 1273-1275 |
 
-**A file's parent is the empty set, not anything from its imports.** `GetParentFeatures(const FileDescriptor*)` returns `FeatureSet::default_instance()` (`descriptor.cc:1221-1223`). Features never cross a file boundary. An imported message keeps the features of *its* file. For protop this means a `.protop` file is a self-contained feature universe, which is a good property and should be stated in the spec rather than left to be discovered.
+**A file's parent is the empty set, not anything from its imports.** `GetParentFeatures(const FileDescriptor*)` returns `FeatureSet::default_instance()` (`descriptor.cc:1221-1223`). Features never cross a file boundary. An imported message keeps the features of *its* file. For protop this means a `.prague` file is a self-contained feature universe, which is a good property and should be stated in the spec rather than left to be discovered.
 
 **An extension's parent is where it is declared, not what it extends** (`descriptor.cc:1247-1253`). protobuf.dev flags this as *"a bit surprising"* (<https://protobuf.dev/editions/implementation/>). If protop ever allows `extend`, this is the rule.
 

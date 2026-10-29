@@ -50,7 +50,7 @@ func main() { os.Exit(run(os.Args[1:], os.Stdout, os.Stderr)) }
 const usage = `protopc compiles protop schemas to C#.
 
 Usage:
-        protopc <command> [flags] <file.protop>...
+        protopc <command> [flags] <file.prague>...
 
 Commands:
         generate   parse, check, and write the C# for the named files
@@ -198,7 +198,7 @@ func report(w io.Writer, format diag.Format, res *load.Result, bag *diag.Bag) {
 //
 // Only the targets. A file that is in the set because something imported it was
 // read to make sense of the ones that were named, and writing it would mean
-// `protopc generate one.protop` rewriting files the user did not mention.
+// `protopc generate one.prague` rewriting files the user did not mention.
 //
 // The file name is <TypeName>.cs, flat under -o, and it is provisional. Whether
 // a declaration gets its own file, what a generated file's banner says, and who

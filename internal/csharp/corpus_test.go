@@ -214,7 +214,7 @@ func exampleUnits(t *testing.T) map[string]Unit {
 	set := make(check.FileSet, len(ents))
 	var any *source.File
 	for _, e := range ents {
-		if !strings.HasSuffix(e.Name(), ".protop") {
+		if !strings.HasSuffix(e.Name(), ".prague") {
 			continue
 		}
 		b, err := os.ReadFile(filepath.Join(examplesDir, e.Name()))
@@ -226,7 +226,7 @@ func exampleUnits(t *testing.T) map[string]Unit {
 		set[e.Name()] = check.Unit{Source: f, File: syntax.Parse(f, &bag)}
 	}
 	if len(set) == 0 {
-		t.Fatal("examples/prague has no .protop files")
+		t.Fatal("examples/prague has no .prague files")
 	}
 	schema := check.Check(set, &bag)
 	if bag.Len() != 0 {
@@ -266,7 +266,7 @@ func exampleDeclarations(t *testing.T) map[string]exampleDecl {
 	}
 	out := map[string]exampleDecl{}
 	for _, e := range ents {
-		if !strings.HasSuffix(e.Name(), ".protop") {
+		if !strings.HasSuffix(e.Name(), ".prague") {
 			continue
 		}
 		b, err := os.ReadFile(filepath.Join(examplesDir, e.Name()))
@@ -953,7 +953,7 @@ func TestCorpusCensus(t *testing.T) {
 				"that a `Dictionary<,>` does appear transitively and string-keyed via `Odd.Specifiers`; " +
 				"SOURCE.md's `Upstream paths` section lists `Odd` among the fourteen types deliberately not " +
 				"copied. So the zero is an artefact of where the copy stopped, and " +
-				"examples/prague/branded.protop's stand-in `record Odd` omits the member that would have needed " +
+				"examples/prague/branded.prague's stand-in `record Odd` omits the member that would have needed " +
 				"one. Evidence for #24, which is human-in-the-loop and unruled. " +
 				"(Cited by section rather than by line: both regions moved in #38, and a line number into a " +
 				"prose document is a citation that rots without telling anyone)"},
@@ -1164,7 +1164,7 @@ var section1Follows = map[string]string{
 func protopcsOwnAttributes(t *testing.T) []string {
 	t.Helper()
 	var out []string
-	for _, u := range emitSource(t, map[string]string{"stripped.protop": stripCSAnnotations(readFixture(t, pragueFixture))}) {
+	for _, u := range emitSource(t, map[string]string{"stripped.prague": stripCSAnnotations(readFixture(t, pragueFixture))}) {
 		for _, ln := range strings.Split(u.Source, "\n") {
 			trimmed := strings.TrimSpace(ln)
 			if !strings.HasPrefix(trimmed, "[") {
@@ -1215,13 +1215,13 @@ func corpusFileAttributes(t *testing.T, path string) (map[string]bool, map[[2]st
 }
 
 // Section 1's `record StaticDataRef` is the same declaration as
-// examples/prague/branded.protop's, and only one of the two has an oracle: the
+// examples/prague/branded.prague's, and only one of the two has an oracle: the
 // example's four members are corpus/prague/deps/BaseProviderObject.cs's four
 // properties, and TestCorpusMembers/BaseProviderObject fails the moment they
 // stop matching. The copy in section 1 was tied to nothing -- dropping the `?`
 // off `provider_source_key`, or swapping the two int64 members' types for the
 // string one's, was invisible to the whole suite while the identical edit to
-// branded.protop failed instantly. This is the tie.
+// branded.prague failed instantly. This is the tie.
 //
 // It compares the declarations whole rather than member by member, so the
 // annotation, the tags and the order are all in it. Alignment is not: the two
@@ -1230,9 +1230,9 @@ func corpusFileAttributes(t *testing.T, path string) (map[string]bool, map[[2]st
 func TestSection1sStaticDataRefIsTheOneTheCorpusChecks(t *testing.T) {
 	const decl = "record StaticDataRef"
 	spec := declText(t, readFixture(t, pragueFixture), decl)
-	branded := declText(t, readExample(t, "branded.protop"), decl)
+	branded := declText(t, readExample(t, "branded.prague"), decl)
 	if collapseSpace(spec) != collapseSpace(branded) {
-		t.Errorf("section 1 declares\n\n%s\n\nand %s/branded.protop -- the copy the corpus checks -- declares\n\n%s",
+		t.Errorf("section 1 declares\n\n%s\n\nand %s/branded.prague -- the copy the corpus checks -- declares\n\n%s",
 			spec, examplesDir, branded)
 	}
 }

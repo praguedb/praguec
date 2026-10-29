@@ -13,7 +13,7 @@ oracle. Two specimens were written to test that premise against the corpus:
 | specimen | measured |
 |---|---|
 | `prototypes/lang/a-strict-protobuf/prague.proto` | compiles under `protoc` 36.1 |
-| `prototypes/lang/b-native/prague.protop` | `protoc` 36.1 rejects it at `revision 1;` |
+| `prototypes/lang/b-native/prague.prague` | `protoc` 36.1 rejects it at `revision 1;` |
 
 The profile survived the shapes. It did not survive them cheaply. Under spelling
 A every concept the corpus actually needs arrives as a custom option: the dialect

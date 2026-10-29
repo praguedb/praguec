@@ -17,7 +17,7 @@ import (
 // There is no generic tree walk in the frontend yet, and a field is what a
 // parser writes with no ceremony.
 
-// File is one parsed .protop source file.
+// File is one parsed .prague source file.
 //
 // Revision and Namespace are separate fields rather than declarations in Decls
 // because they are file properties, exactly one of each, and every later stage
@@ -84,7 +84,7 @@ func (n *Namespace) String() string {
 	return strings.Join(parts, ".")
 }
 
-// Import is `import "prague.protop";`.
+// Import is `import "prague.prague";`.
 //
 // It names a file and nothing more. Where that file is found is the
 // distribution model -- git, by immutable tag, toolchain-fetched -- and every

@@ -22,7 +22,7 @@ type Unit struct {
 // FileSet is the whole of what the checker knows about where files come from:
 // a map from an import string to the file that import names.
 //
-// `import "prague.protop"` resolves against this map and against nothing else.
+// `import "prague.prague"` resolves against this map and against nothing else.
 // Nothing about git, tags, caches, manifests or lock files is decided here, and
 // nothing here should be read as deciding any of them: the checker is handed
 // files, and who found them -- a path on disk, a module fetched by immutable

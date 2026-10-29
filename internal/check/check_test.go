@@ -14,7 +14,7 @@ import (
 )
 
 // The two spec sections, under the names the program knows them by: the shared
-// repository's file is what section 2's `import "prague.protop";` names, so the
+// repository's file is what section 2's `import "prague.prague";` names, so the
 // import string is the fixture's key and not an incidental file name.
 //
 // They are copies of the fixtures the frontend's suite parses, and they are
@@ -23,8 +23,8 @@ import (
 // TestSpecFixturesAreVerbatim, which holds both of them against the spec
 // itself -- which is the only thing either copy should ever be equal to.
 const (
-	pragueFixture   = "prague.protop"
-	consumerFixture = "consumer.protop"
+	pragueFixture   = "prague.prague"
+	consumerFixture = "consumer.prague"
 )
 
 var (
@@ -276,9 +276,9 @@ func TestCheckSpecSections(t *testing.T) {
 		consumerFixture: readFixture(t, consumerFixture),
 	})
 
-	assertDump(t, schema, `file consumer.protop
+	assertDump(t, schema, `file consumer.prague
   namespace BrandDataReader.Services.Cache
-  import prague.protop
+  import prague.prague
   view SlimSportGame of SportGame
     key field id = 1 int64 from SportGame.event_id
     field sport_type_id = 2 int64 from SportGame.sport_type_id
@@ -301,7 +301,7 @@ func TestCheckSpecSections(t *testing.T) {
     field limit_manual_single = 22 decimal(4)? from BetType.limit_manual_single
     field timestamp = 25 int64 from BetType.timestamp
     field odds = 26 list<view:SlimOdd> from BetType.odds
-file prague.protop
+file prague.prague
   namespace Common.IntegratedEventApi.Cache.Prague.Models
   struct Venue
     field id = 2 int64
@@ -420,28 +420,28 @@ func TestSection5StatesTheNarrowAndRename(t *testing.T) {
 // been, and nothing about how a file is found is decided by this diagnostic.
 func TestAnImportThatNamesNoFileInTheSetIsDiagnosed(t *testing.T) {
 	set, _, bag := checkSet(t, map[string]string{
-		"a.protop": "revision 1;\nnamespace A;\nimport \"missing.protop\";\n",
+		"a.prague": "revision 1;\nnamespace A;\nimport \"missing.prague\";\n",
 	})
 	assertCodes(t, set, bag, diag.ImportNotFound)
-	assertAt(t, set, bag, 0, "a.protop:3:1", `import "missing.protop";`)
+	assertAt(t, set, bag, 0, "a.prague:3:1", `import "missing.prague";`)
 }
 
 // A file sees its own declarations and those of the files it imports, and
-// nothing else. Two files in one set are not one scope: `b.protop` is in the
+// nothing else. Two files in one set are not one scope: `b.prague` is in the
 // set, is parsed, and its table is still not visible to a file that did not ask
 // for it.
 func TestAFileSeesOnlyItsOwnDeclarationsAndItsImports(t *testing.T) {
 	const b = "revision 1;\nnamespace B;\ntable T {\n  key int64 id = 1;\n}\n"
 	set, _, bag := checkSet(t, map[string]string{
-		"a.protop": "revision 1;\nnamespace A;\nstruct S {\n  T t = 1;\n}\n",
-		"b.protop": b,
+		"a.prague": "revision 1;\nnamespace A;\nstruct S {\n  T t = 1;\n}\n",
+		"b.prague": b,
 	})
 	assertCodes(t, set, bag, diag.UnknownType)
 
 	// The same file, importing the one that declares T, resolves.
 	checkClean(t, map[string]string{
-		"a.protop": "revision 1;\nnamespace A;\nimport \"b.protop\";\nstruct S {\n  T t = 1;\n}\n",
-		"b.protop": b,
+		"a.prague": "revision 1;\nnamespace A;\nimport \"b.prague\";\nstruct S {\n  T t = 1;\n}\n",
+		"b.prague": b,
 	})
 }
 
@@ -450,9 +450,9 @@ func TestAFileSeesOnlyItsOwnDeclarationsAndItsImports(t *testing.T) {
 // the graph behind it.
 func TestScopeIsNotTransitive(t *testing.T) {
 	set, _, bag := checkSet(t, map[string]string{
-		"a.protop": "revision 1;\nnamespace A;\nimport \"b.protop\";\nstruct S {\n  T t = 1;\n}\n",
-		"b.protop": "revision 1;\nnamespace B;\nimport \"c.protop\";\n",
-		"c.protop": "revision 1;\nnamespace C;\ntable T {\n  key int64 id = 1;\n}\n",
+		"a.prague": "revision 1;\nnamespace A;\nimport \"b.prague\";\nstruct S {\n  T t = 1;\n}\n",
+		"b.prague": "revision 1;\nnamespace B;\nimport \"c.prague\";\n",
+		"c.prague": "revision 1;\nnamespace C;\ntable T {\n  key int64 id = 1;\n}\n",
 	})
 	assertCodes(t, set, bag, diag.UnknownType)
 }
@@ -472,10 +472,10 @@ func TestScopeIsNotTransitive(t *testing.T) {
 // this one moving is not a reason for that one to.
 func TestDuplicateDeclarationsAreDiagnosed(t *testing.T) {
 	set, _, bag := checkSet(t, map[string]string{
-		"a.protop": "revision 1;\nnamespace A;\nstruct S {\n  int64 x = 1;\n}\nrecord S {\n  int64 y = 1;\n}\n",
+		"a.prague": "revision 1;\nnamespace A;\nstruct S {\n  int64 x = 1;\n}\nrecord S {\n  int64 y = 1;\n}\n",
 	})
 	assertCodes(t, set, bag, diag.DuplicateDeclaration)
-	assertAt(t, set, bag, 0, "a.protop:6:8", "S")
+	assertAt(t, set, bag, 0, "a.prague:6:8", "S")
 }
 
 // A declaration cannot take a name protop's own type system already holds.
@@ -507,7 +507,7 @@ func TestDuplicateDeclarationsAreDiagnosed(t *testing.T) {
 // covered only the generics would leave `struct string` unnameable and unsaid.
 func TestADeclarationCannotTakeABuiltinTypeName(t *testing.T) {
 	set, _, bag := checkSet(t, map[string]string{
-		"a.protop": `revision 1;
+		"a.prague": `revision 1;
 namespace A;
 record list {
   int64 id = 1;
@@ -535,7 +535,7 @@ table T {
 
 	// One per declaration keyword, each at its own keyword. The position is the
 	// whole of the fix: it is what was wrong before, not the wording.
-	for i, want := range []string{"a.protop:3:1", "a.protop:6:1", "a.protop:9:1", "a.protop:12:1", "a.protop:15:1"} {
+	for i, want := range []string{"a.prague:3:1", "a.prague:6:1", "a.prague:9:1", "a.prague:12:1", "a.prague:15:1"} {
 		assertSpanStartsAt(t, bag, i, want)
 	}
 
@@ -561,7 +561,7 @@ table T {
 // a side effect of a rule about names. This test is what fails, loudly and with
 // the reason beside it, on the day someone does decide it.
 func TestADownstreamParseErrorKeepsTheBuiltinRuleFromRunning(t *testing.T) {
-	f := source.NewFile("a.protop", `revision 1;
+	f := source.NewFile("a.prague", `revision 1;
 namespace A;
 record list {
   int64 x = 1;
@@ -574,7 +574,7 @@ record Holder {
 }
 `)
 	var bag diag.Bag
-	set := FileSet{"a.protop": {Source: f, File: syntax.Parse(f, &bag)}}
+	set := FileSet{"a.prague": {Source: f, File: syntax.Parse(f, &bag)}}
 	if schema := Check(set, &bag); schema != nil {
 		t.Error("Check returned a model for a file that did not parse")
 	}
@@ -586,8 +586,8 @@ record Holder {
 	// Positioned off the source file rather than through assertSpanStartsAt: a
 	// parser diagnostic carries no File, because the parser is handed one and
 	// never has a second to disambiguate against.
-	if got := f.Position(bag.All()[0].Span.Start).String(); got != "a.protop:10:3" {
-		t.Errorf("the one diagnostic is at %s, want the use site at a.protop:10:3", got)
+	if got := f.Position(bag.All()[0].Span.Start).String(); got != "a.prague:10:3" {
+		t.Errorf("the one diagnostic is at %s, want the use site at a.prague:10:3", got)
 	}
 }
 
@@ -615,10 +615,10 @@ func TestEveryBuiltinTypeNameIsDiagnosedAtItsDeclaration(t *testing.T) {
 	for _, name := range names {
 		t.Run(name, func(t *testing.T) {
 			set, _, bag := checkSet(t, map[string]string{
-				"a.protop": fmt.Sprintf("revision 1;\nnamespace A;\nrecord %s {\n  int64 x = 1;\n}\n", name),
+				"a.prague": fmt.Sprintf("revision 1;\nnamespace A;\nrecord %s {\n  int64 x = 1;\n}\n", name),
 			})
 			assertCodes(t, set, bag, diag.BuiltinTypeDeclared)
-			assertSpanStartsAt(t, bag, 0, "a.protop:3:1")
+			assertSpanStartsAt(t, bag, 0, "a.prague:3:1")
 			assertMessageMentions(t, bag, 0, "`"+name+"` already names protop's built-in ")
 		})
 	}
@@ -771,7 +771,7 @@ func TestSection4StatesTheBuiltinNameRuleWithoutCopyingTheSet(t *testing.T) {
 // actually owns.
 func TestANameThatMerelyResemblesABuiltinIsFine(t *testing.T) {
 	schema := checkClean(t, map[string]string{
-		"a.protop": `revision 1;
+		"a.prague": `revision 1;
 namespace A;
 record List {
   int64 x = 1;
@@ -788,7 +788,7 @@ struct my_string {
 `,
 	})
 	for _, name := range []string{"List", "lists", "Int64", "my_string"} {
-		if schema.File("a.protop").Decl(name) == nil {
+		if schema.File("a.prague").Decl(name) == nil {
 			t.Errorf("`%s` is not in the model; it names nothing protop has", name)
 		}
 	}
@@ -805,7 +805,7 @@ struct my_string {
 // Held by a fixture because it was held by nothing else. Measured: moving the
 // raise out of declareOne and into addMember, guarded by
 // syntax.IsBuiltinTypeName on the member's name, leaves every OTHER test in the
-// repository green and examples/prague/*.protop clean -- no member in the
+// repository green and examples/prague/*.prague clean -- no member in the
 // corpus happens to be named like a built-in, so neither the suite nor the
 // corpus knew the boundary was there. This test is the only thing that fails.
 //
@@ -828,12 +828,12 @@ func TestAMemberMayTakeABuiltinTypeName(t *testing.T) {
 	}
 	b.WriteString("}\ntable U {\n  key int64 id = 1;\n  alias list = id;\n  alias string = id;\n}\nview V of T {\n  id as double;\n}\n")
 
-	schema := checkClean(t, map[string]string{"a.protop": b.String()})
+	schema := checkClean(t, map[string]string{"a.prague": b.String()})
 
 	// Each one arrived under the name it was written with. checkClean says
 	// nothing was reported; this says the members are in the model rather than
 	// silently dropped, which is the other way the rule could have eaten them.
-	f := schema.File("a.protop")
+	f := schema.File("a.prague")
 	for _, name := range names {
 		if f.Decl("T").Member(name) == nil {
 			t.Errorf("`T` has no member named `%s`; a member name is not a type name", name)
@@ -866,7 +866,7 @@ func TestAMemberMayTakeABuiltinTypeName(t *testing.T) {
 // this declaration puts it there.
 func TestADeclarationWithABuiltinNameIsStillRegistered(t *testing.T) {
 	set, schema, bag := checkSet(t, map[string]string{
-		"a.protop": `revision 1;
+		"a.prague": `revision 1;
 namespace A;
 record string {
   int64 id = 1;
@@ -880,11 +880,11 @@ view V of string {
 	// would add a PROTOP0205 about the view, which is a line the user got right.
 	assertCodes(t, set, bag, diag.BuiltinTypeDeclared)
 
-	d := schema.File("a.protop").Decl("string")
+	d := schema.File("a.prague").Decl("string")
 	if d == nil {
 		t.Fatal("the declaration is not in the model; the rule reports a name, it does not delete a declaration")
 	}
-	if got := schema.File("a.protop").Decl("V").Of; got != d {
+	if got := schema.File("a.prague").Decl("V").Of; got != d {
 		t.Error("the view did not resolve against the declaration it names")
 	}
 }
@@ -917,7 +917,7 @@ view V of string {
 // are only how it shows.
 func TestTwoDeclarationsOfOneBuiltinNameRaiseBoth(t *testing.T) {
 	set, _, bag := checkSet(t, map[string]string{
-		"a.protop": `revision 1;
+		"a.prague": `revision 1;
 namespace A;
 record list {
   int64 a = 1;
@@ -930,9 +930,9 @@ record list {
 	assertCodes(t, set, bag,
 		diag.BuiltinTypeDeclared, diag.BuiltinTypeDeclared, diag.DuplicateDeclaration)
 	const whole = "record list {\n  int64 a = 1;\n}"
-	assertAt(t, set, bag, 0, "a.protop:3:1", whole)
-	assertAt(t, set, bag, 1, "a.protop:6:1", strings.Replace(whole, "a = 1", "b = 1", 1))
-	assertAt(t, set, bag, 2, "a.protop:6:8", "list")
+	assertAt(t, set, bag, 0, "a.prague:3:1", whole)
+	assertAt(t, set, bag, 1, "a.prague:6:1", strings.Replace(whole, "a = 1", "b = 1", 1))
+	assertAt(t, set, bag, 2, "a.prague:6:8", "list")
 }
 
 // PROTOP0204's underline is the name for all five declaration keywords.
@@ -970,15 +970,15 @@ struct S {
 		second string
 		at     string
 	}{
-		{"struct", "struct S {\n  int64 y = 1;\n}\n", "a.protop:9:8"},
-		{"record", "record S {\n  int64 y = 1;\n}\n", "a.protop:9:8"},
-		{"table", "table S {\n  key int64 id = 1;\n}\n", "a.protop:9:7"},
-		{"view", "view S of Src {\n  id;\n}\n", "a.protop:9:6"},
-		{"enum", "enum S {\n  A = 0;\n}\n", "a.protop:9:6"},
+		{"struct", "struct S {\n  int64 y = 1;\n}\n", "a.prague:9:8"},
+		{"record", "record S {\n  int64 y = 1;\n}\n", "a.prague:9:8"},
+		{"table", "table S {\n  key int64 id = 1;\n}\n", "a.prague:9:7"},
+		{"view", "view S of Src {\n  id;\n}\n", "a.prague:9:6"},
+		{"enum", "enum S {\n  A = 0;\n}\n", "a.prague:9:6"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.kind, func(t *testing.T) {
-			set, _, bag := checkSet(t, map[string]string{"a.protop": preamble + tt.second})
+			set, _, bag := checkSet(t, map[string]string{"a.prague": preamble + tt.second})
 			assertCodes(t, set, bag, diag.DuplicateDeclaration)
 			assertAt(t, set, bag, 0, tt.at, "S")
 		})
@@ -990,12 +990,12 @@ struct S {
 // name a type the way the shared schema does is not thereby broken.
 func TestADeclarationMayShadowAnImportedName(t *testing.T) {
 	schema := checkClean(t, map[string]string{
-		"a.protop": "revision 1;\nnamespace A;\nimport \"b.protop\";\nstruct S {\n  int64 x = 1;\n}\nstruct Holder {\n  S s = 1;\n}\n",
-		"b.protop": "revision 1;\nnamespace B;\nstruct S {\n  int64 y = 1;\n}\n",
+		"a.prague": "revision 1;\nnamespace A;\nimport \"b.prague\";\nstruct S {\n  int64 x = 1;\n}\nstruct Holder {\n  S s = 1;\n}\n",
+		"b.prague": "revision 1;\nnamespace B;\nstruct S {\n  int64 y = 1;\n}\n",
 	})
-	own := schema.File("a.protop").Decl("S")
-	if got := schema.File("a.protop").Decl("Holder").Member("s").Type.Decl; got != own {
-		t.Errorf("`S` resolved to the declaration in %s, want the one in a.protop", got.File.Path)
+	own := schema.File("a.prague").Decl("S")
+	if got := schema.File("a.prague").Decl("Holder").Member("s").Type.Decl; got != own {
+		t.Errorf("`S` resolved to the declaration in %s, want the one in a.prague", got.File.Path)
 	}
 }
 
@@ -1006,39 +1006,39 @@ func TestADeclarationMayShadowAnImportedName(t *testing.T) {
 // difference from PROTOP0204 above, whose span is three lines.
 func TestDuplicateMembersAreDiagnosed(t *testing.T) {
 	set, _, bag := checkSet(t, map[string]string{
-		"a.protop": "revision 1;\nnamespace A;\ntable T {\n  key int64 id = 1;\n  int64 id = 2;\n}\n",
+		"a.prague": "revision 1;\nnamespace A;\ntable T {\n  key int64 id = 1;\n  int64 id = 2;\n}\n",
 	})
 	assertCodes(t, set, bag, diag.DuplicateMember)
-	assertAt(t, set, bag, 0, "a.protop:5:3", "int64 id = 2;")
+	assertAt(t, set, bag, 0, "a.prague:5:3", "int64 id = 2;")
 }
 
 // A member's name and a member's tag are two facts with two fixes, so an alias
 // -- which has no tag at all -- still collides by name.
 func TestAnAliasCollidesByNameWithAField(t *testing.T) {
 	set, _, bag := checkSet(t, map[string]string{
-		"a.protop": "revision 1;\nnamespace A;\ntable T {\n  key int64 id = 1;\n  alias id = id;\n}\n",
+		"a.prague": "revision 1;\nnamespace A;\ntable T {\n  key int64 id = 1;\n  alias id = id;\n}\n",
 	})
 	assertCodes(t, set, bag, diag.DuplicateMember)
 	// The alias, whole: an alias carries no tag, so the member is all there is
 	// to point at and the underline says which of the two `id`s is the second.
-	assertAt(t, set, bag, 0, "a.protop:5:3", "alias id = id;")
+	assertAt(t, set, bag, 0, "a.prague:5:3", "alias id = id;")
 }
 
 func TestAnUnknownTypeIsDiagnosed(t *testing.T) {
 	set, _, bag := checkSet(t, map[string]string{
-		"a.protop": "revision 1;\nnamespace A;\nstruct S {\n  Missing x = 1;\n}\n",
+		"a.prague": "revision 1;\nnamespace A;\nstruct S {\n  Missing x = 1;\n}\n",
 	})
 	assertCodes(t, set, bag, diag.UnknownType)
-	assertAt(t, set, bag, 0, "a.protop:4:3", "Missing")
+	assertAt(t, set, bag, 0, "a.prague:4:3", "Missing")
 }
 
 // A collection resolves its arguments, and nesting costs nothing: a list of a
 // list is the same resolution twice.
 func TestACollectionResolvesItsArguments(t *testing.T) {
 	schema := checkClean(t, map[string]string{
-		"a.protop": "revision 1;\nnamespace A;\nrecord R {\n  int64 x = 1;\n}\nstruct S {\n  list<list<R>>? xs = 1;\n}\n",
+		"a.prague": "revision 1;\nnamespace A;\nrecord R {\n  int64 x = 1;\n}\nstruct S {\n  list<list<R>>? xs = 1;\n}\n",
 	})
-	m := schema.File("a.protop").Decl("S").Member("xs")
+	m := schema.File("a.prague").Decl("S").Member("xs")
 	if got := typeString(m.Type); got != "list<list<record:R>>?" {
 		t.Errorf("type is %s, want list<list<record:R>>?", got)
 	}
@@ -1048,9 +1048,9 @@ func TestACollectionResolvesItsArguments(t *testing.T) {
 // else is PROTOP0301 at the parser and never gets here.
 func TestDecimalCarriesItsPrecision(t *testing.T) {
 	schema := checkClean(t, map[string]string{
-		"a.protop": "revision 1;\nnamespace A;\nstruct S {\n  decimal(4)? x = 1;\n}\n",
+		"a.prague": "revision 1;\nnamespace A;\nstruct S {\n  decimal(4)? x = 1;\n}\n",
 	})
-	if got := schema.File("a.protop").Decl("S").Member("x").Type.Precision; got != 4 {
+	if got := schema.File("a.prague").Decl("S").Member("x").Type.Precision; got != 4 {
 		t.Errorf("precision is %d, want 4", got)
 	}
 }
@@ -1062,10 +1062,10 @@ func TestDecimalCarriesItsPrecision(t *testing.T) {
 // are carried instead of positions.
 func TestAnUnknownTypeUnderlinesTheNameAndNotTheWholeTypeReference(t *testing.T) {
 	set, _, bag := checkSet(t, map[string]string{
-		"a.protop": "revision 1;\nnamespace A;\nstruct S {\n  Missing? x = 1;\n}\n",
+		"a.prague": "revision 1;\nnamespace A;\nstruct S {\n  Missing? x = 1;\n}\n",
 	})
 	assertCodes(t, set, bag, diag.UnknownType)
-	assertAt(t, set, bag, 0, "a.protop:4:3", "Missing")
+	assertAt(t, set, bag, 0, "a.prague:4:3", "Missing")
 }
 
 // What a file declares and what a file can see are two questions, and `Decl`
@@ -1075,18 +1075,18 @@ func TestAnUnknownTypeUnderlinesTheNameAndNotTheWholeTypeReference(t *testing.T)
 // exists for.
 func TestAFilesDeclarationsAreItsOwnAndNotItsImports(t *testing.T) {
 	schema := checkClean(t, map[string]string{
-		"a.protop": "revision 1;\nnamespace A;\nimport \"b.protop\";\nstruct S {\n  T t = 1;\n}\n",
-		"b.protop": "revision 1;\nnamespace B;\ntable T {\n  key int64 id = 1;\n}\n",
+		"a.prague": "revision 1;\nnamespace A;\nimport \"b.prague\";\nstruct S {\n  T t = 1;\n}\n",
+		"b.prague": "revision 1;\nnamespace B;\ntable T {\n  key int64 id = 1;\n}\n",
 	})
-	a, b := schema.File("a.protop"), schema.File("b.protop")
+	a, b := schema.File("a.prague"), schema.File("b.prague")
 	if a.Decl("T") != nil {
-		t.Error("a.protop declares `T`; it imports the file that declares it, and an import is not a declaration")
+		t.Error("a.prague declares `T`; it imports the file that declares it, and an import is not a declaration")
 	}
 	// The name is in scope all the same, and resolved to the declaration the
 	// imported file owns. Scope is the wider answer, asked where a name is
 	// resolved rather than here.
 	if got := a.Decl("S").Member("t").Type.Decl; got != b.Decl("T") {
-		t.Error("`T` did not resolve to the declaration b.protop owns")
+		t.Error("`T` did not resolve to the declaration b.prague owns")
 	}
 }
 
@@ -1095,12 +1095,12 @@ func TestAFilesDeclarationsAreItsOwnAndNotItsImports(t *testing.T) {
 // is a file every later reader of the model would walk into.
 func TestAnImportThatNamesNoFileAddsNoImport(t *testing.T) {
 	_, schema, bag := checkSet(t, map[string]string{
-		"a.protop": "revision 1;\nnamespace A;\nimport \"missing.protop\";\n",
+		"a.prague": "revision 1;\nnamespace A;\nimport \"missing.prague\";\n",
 	})
 	if !bag.HasErrors() {
 		t.Fatal("the import resolved; it is supposed to name no file in the set")
 	}
-	if got := schema.File("a.protop").Imports; len(got) != 0 {
+	if got := schema.File("a.prague").Imports; len(got) != 0 {
 		t.Errorf("the file lists %d imports, want none: the only one it writes was not found", len(got))
 	}
 }
@@ -1109,10 +1109,10 @@ func TestAnImportThatNamesNoFileAddsNoImport(t *testing.T) {
 
 func TestAViewSourceMustResolve(t *testing.T) {
 	set, _, bag := checkSet(t, map[string]string{
-		"a.protop": "revision 1;\nnamespace A;\nview V of Missing {\n  x;\n}\n",
+		"a.prague": "revision 1;\nnamespace A;\nview V of Missing {\n  x;\n}\n",
 	})
 	assertCodes(t, set, bag, diag.ViewSourceNotFound)
-	assertAt(t, set, bag, 0, "a.protop:3:11", "Missing")
+	assertAt(t, set, bag, 0, "a.prague:3:11", "Missing")
 }
 
 // A view's source is a table or a record. Section 5 in one sentence, and three
@@ -1134,14 +1134,14 @@ view OfR of R {
 	for _, src := range []string{"S", "E", "OfR"} {
 		t.Run(src, func(t *testing.T) {
 			set, _, bag := checkSet(t, map[string]string{
-				"a.protop": "revision 1;\nnamespace A;\n" + decls + "view V of " + src + " {\n  x;\n}\n",
+				"a.prague": "revision 1;\nnamespace A;\n" + decls + "view V of " + src + " {\n  x;\n}\n",
 			})
 			assertCodes(t, set, bag, diag.ViewSourceNotSelectable)
 			// The source name alone, in all three arms. The message says what
 			// that name is -- a struct, an enum, a view -- so an underline
 			// under the whole `view V of S {` would point at two names and
 			// mean one of them.
-			assertAt(t, set, bag, 0, "a.protop:15:11", src)
+			assertAt(t, set, bag, 0, "a.prague:15:11", src)
 		})
 	}
 }
@@ -1151,12 +1151,12 @@ view OfR of R {
 // drifted, instead of decoding to nil at runtime.
 func TestAViewMemberMustNameAMemberOfItsSource(t *testing.T) {
 	set, _, bag := checkSet(t, map[string]string{
-		"consumer.protop": "revision 1;\nnamespace A;\nimport \"prague.protop\";\nview V of SportGame {\n  odds;\n}\n",
+		"consumer.prague": "revision 1;\nnamespace A;\nimport \"prague.prague\";\nview V of SportGame {\n  odds;\n}\n",
 		pragueFixture:     readFixture(t, pragueFixture),
 	})
 	assertCodes(t, set, bag, diag.NoSuchMember)
-	assertAt(t, set, bag, 0, "consumer.protop:5:3", "odds")
-	if msg := bag.All()[0].Message; !strings.Contains(msg, "prague.protop:") {
+	assertAt(t, set, bag, 0, "consumer.prague:5:3", "odds")
+	if msg := bag.All()[0].Message; !strings.Contains(msg, "prague.prague:") {
 		t.Errorf("message does not say where `SportGame` is declared: %s", msg)
 	}
 }
@@ -1231,7 +1231,7 @@ record list {
 		},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
-			set, _, bag := checkSet(t, map[string]string{"a.protop": tt.src})
+			set, _, bag := checkSet(t, map[string]string{"a.prague": tt.src})
 			if bag.Len() != 1 || bag.All()[0].Code != tt.want {
 				t.Fatalf("want one %s:\n%s", tt.want, renderAll(set, bag))
 			}
@@ -1250,7 +1250,7 @@ record list {
 // something a view gets to change its mind about.
 func TestAViewMemberTakesTagTypeAndPresenceFromItsSource(t *testing.T) {
 	schema := checkClean(t, map[string]string{
-		"a.protop": `revision 1;
+		"a.prague": `revision 1;
 namespace A;
 table T {
   key int64 id = 1;
@@ -1261,11 +1261,11 @@ view V of T {
 }
 `,
 	})
-	m := schema.File("a.protop").Decl("V").Member("d")
+	m := schema.File("a.prague").Decl("V").Member("d")
 	if m.Tag != 9 || typeString(m.Type) != "decimal(4)?" {
-		t.Errorf("view member is %s, want tag 9 and decimal(4)?", memberString(schema.File("a.protop").Decl("V"), m))
+		t.Errorf("view member is %s, want tag 9 and decimal(4)?", memberString(schema.File("a.prague").Decl("V"), m))
 	}
-	if m.From != schema.File("a.protop").Decl("T").Member("d") {
+	if m.From != schema.File("a.prague").Decl("T").Member("d") {
 		t.Error("view member does not point at the source member it took its tag from")
 	}
 }
@@ -1310,16 +1310,16 @@ table T {
 `
 	t.Run("a declaration that is not a view", func(t *testing.T) {
 		set, _, bag := checkSet(t, map[string]string{
-			"a.protop": "revision 1;\nnamespace A;\n" + decls + "view V of T {\n  R r;\n}\n",
+			"a.prague": "revision 1;\nnamespace A;\n" + decls + "view V of T {\n  R r;\n}\n",
 		})
 		assertCodes(t, set, bag, diag.NarrowingNotAView)
 		// The narrowing name and not the member: `R r;` is wrong in its first
 		// word only, and the message says to delete that word.
-		assertAt(t, set, bag, 0, "a.protop:11:3", "R")
+		assertAt(t, set, bag, 0, "a.prague:11:3", "R")
 	})
 	t.Run("a name that is nothing at all", func(t *testing.T) {
 		set, _, bag := checkSet(t, map[string]string{
-			"a.protop": "revision 1;\nnamespace A;\n" + decls + "view V of T {\n  SlimR r;\n}\n",
+			"a.prague": "revision 1;\nnamespace A;\n" + decls + "view V of T {\n  SlimR r;\n}\n",
 		})
 		assertCodes(t, set, bag, diag.UnknownType)
 	})
@@ -1329,7 +1329,7 @@ table T {
 // hand the member the tags of a declaration it has nothing to do with.
 func TestANarrowingMustBeAViewOfTheMembersType(t *testing.T) {
 	set, _, bag := checkSet(t, map[string]string{
-		"a.protop": `revision 1;
+		"a.prague": `revision 1;
 namespace A;
 record R {
   int64 x = 1;
@@ -1350,7 +1350,7 @@ view V of T {
 `,
 	})
 	assertCodes(t, set, bag, diag.NarrowingSourceMismatch)
-	assertAt(t, set, bag, 0, "a.protop:17:3", "SlimOther")
+	assertAt(t, set, bag, 0, "a.prague:17:3", "SlimOther")
 }
 
 // A narrowing reaches through a collection to what it holds: section 5 gives
@@ -1392,7 +1392,7 @@ func TestANarrowingToAViewKeepsTheOriginalsTags(t *testing.T) {
 // select the same member twice under two names. It collides like any other.
 func TestTwoViewMembersCannotSelectOneMember(t *testing.T) {
 	set, _, bag := checkSet(t, map[string]string{
-		"a.protop": `revision 1;
+		"a.prague": `revision 1;
 namespace A;
 table T {
   key int64 id = 1;
@@ -1426,7 +1426,7 @@ func TestAViewInheritsItsSourcesIdentity(t *testing.T) {
 // view is not entitled to make that promise stronger than the source's.
 func TestANarrowingKeepsTheMembersPresence(t *testing.T) {
 	schema := checkClean(t, map[string]string{
-		"a.protop": `revision 1;
+		"a.prague": `revision 1;
 namespace A;
 record Odd {
   int64 id = 1;
@@ -1443,7 +1443,7 @@ view V of T {
 }
 `,
 	})
-	if got := typeString(schema.File("a.protop").Decl("V").Member("odd").Type); got != "view:SlimOdd?" {
+	if got := typeString(schema.File("a.prague").Decl("V").Member("odd").Type); got != "view:SlimOdd?" {
 		t.Errorf("narrowed type is %s, want view:SlimOdd?: the source member is optional and a narrowing does not make it required", got)
 	}
 }
@@ -1455,7 +1455,7 @@ view V of T {
 // and reject code the language allows.
 func TestANarrowingReachesThroughNestedCollections(t *testing.T) {
 	schema := checkClean(t, map[string]string{
-		"a.protop": `revision 1;
+		"a.prague": `revision 1;
 namespace A;
 record Odd {
   int64 id = 1;
@@ -1472,7 +1472,7 @@ view V of T {
 }
 `,
 	})
-	if got := typeString(schema.File("a.protop").Decl("V").Member("odds").Type); got != "list<list<view:SlimOdd>>" {
+	if got := typeString(schema.File("a.prague").Decl("V").Member("odds").Type); got != "list<list<view:SlimOdd>>" {
 		t.Errorf("narrowed type is %s, want list<list<view:SlimOdd>>", got)
 	}
 }
@@ -1488,7 +1488,7 @@ view V of T {
 // the model.
 func TestAViewMemberMayNarrowAndRenameAtOnce(t *testing.T) {
 	schema := checkClean(t, map[string]string{
-		"a.protop": `revision 1;
+		"a.prague": `revision 1;
 namespace A;
 record Inner {
   int64 id = 1;
@@ -1505,7 +1505,7 @@ view SlimOuter of Outer {
 }
 `,
 	})
-	file := schema.File("a.protop")
+	file := schema.File("a.prague")
 	view := file.Decl("SlimOuter")
 
 	// The name is the rename's, and it is the member's only name: a view that
@@ -1602,7 +1602,7 @@ view V of Outer {
 				t.Fatalf("the member %q carries no rename, so the case no longer asks what the test is named for", tc.member)
 			}
 			set, _, bag := checkSet(t, map[string]string{
-				"a.protop": decls + tc.member + "}\n",
+				"a.prague": decls + tc.member + "}\n",
 			})
 			assertCodes(t, set, bag, tc.want)
 		})
@@ -1618,7 +1618,7 @@ view V of Outer {
 // whole of what the diagnostic says must not happen.
 func TestARejectedNarrowingLeavesTheMembersTypeAlone(t *testing.T) {
 	set, schema, bag := checkSet(t, map[string]string{
-		"a.protop": `revision 1;
+		"a.prague": `revision 1;
 namespace A;
 record Inner {
   int64 id = 1;
@@ -1640,7 +1640,7 @@ view V of Outer {
 	})
 	assertCodes(t, set, bag, diag.NarrowingSourceMismatch)
 
-	m := schema.File("a.protop").Decl("V").Member("o")
+	m := schema.File("a.prague").Decl("V").Member("o")
 	if m == nil {
 		t.Fatalf("the view has no member `o`:\n%s", dump(schema))
 	}
@@ -1656,7 +1656,7 @@ view V of Outer {
 // out is a hop every reader of the model would have to know to take.
 func TestAViewMemberThatSelectsAnAliasKeepsWhatItPassesThroughTo(t *testing.T) {
 	schema := checkClean(t, map[string]string{
-		"a.protop": `revision 1;
+		"a.prague": `revision 1;
 namespace A;
 table T {
   key int64 id = 1;
@@ -1667,7 +1667,7 @@ view V of T {
 }
 `,
 	})
-	f := schema.File("a.protop")
+	f := schema.File("a.prague")
 	m := f.Decl("V").Member("other")
 	if m.Kind != MemberAlias {
 		t.Fatalf("the view member is a %s, want the alias kind it selects", m.Kind)
@@ -1683,7 +1683,7 @@ view V of T {
 // report a collision on the one thing a view is free to select twice.
 func TestTwoUntaggedViewMembersDoNotCollide(t *testing.T) {
 	checkClean(t, map[string]string{
-		"a.protop": `revision 1;
+		"a.prague": `revision 1;
 namespace A;
 table T {
   key int64 id = 1;
@@ -1713,9 +1713,9 @@ func TestAnAliasResolvesItsTypeWhereverItsTargetIsWritten(t *testing.T) {
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			schema := checkClean(t, map[string]string{
-				"a.protop": "revision 1;\nnamespace A;\ntable T {\n" + tt.body + "}\n",
+				"a.prague": "revision 1;\nnamespace A;\ntable T {\n" + tt.body + "}\n",
 			})
-			m := schema.File("a.protop").Decl("T").Member("other")
+			m := schema.File("a.prague").Decl("T").Member("other")
 			if got := typeString(m.Type); got != "int64" {
 				t.Errorf("the alias has type %q, want int64", got)
 			}
@@ -1735,9 +1735,9 @@ func TestACompositeKeyPartResolvesWhereverItsFieldIsWritten(t *testing.T) {
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			schema := checkClean(t, map[string]string{
-				"a.protop": "revision 1;\nnamespace A;\ntable T {\n" + tt.body + "}\n",
+				"a.prague": "revision 1;\nnamespace A;\ntable T {\n" + tt.body + "}\n",
 			})
-			m := schema.File("a.protop").Decl("T").Member("k")
+			m := schema.File("a.prague").Decl("T").Member("k")
 			if len(m.Parts) != 2 {
 				t.Fatalf("the key has %d parts, want 2", len(m.Parts))
 			}
@@ -1755,10 +1755,10 @@ func TestACompositeKeyPartResolvesWhereverItsFieldIsWritten(t *testing.T) {
 // An alias is a get and set passthrough and needs something to pass through to.
 func TestAnAliasNamesAMemberOfItsOwnDeclaration(t *testing.T) {
 	set, _, bag := checkSet(t, map[string]string{
-		"a.protop": "revision 1;\nnamespace A;\ntable T {\n  key int64 id = 1;\n  alias other = missing;\n}\n",
+		"a.prague": "revision 1;\nnamespace A;\ntable T {\n  key int64 id = 1;\n  alias other = missing;\n}\n",
 	})
 	assertCodes(t, set, bag, diag.AliasTargetNotFound)
-	assertAt(t, set, bag, 0, "a.protop:5:17", "missing")
+	assertAt(t, set, bag, 0, "a.prague:5:17", "missing")
 }
 
 // A composite key's parts name members of the same declaration. One of them may
@@ -1767,10 +1767,10 @@ func TestAnAliasNamesAMemberOfItsOwnDeclaration(t *testing.T) {
 // would reject the spec.
 func TestACompositeKeysPartsNameMembersOfItsDeclaration(t *testing.T) {
 	set, _, bag := checkSet(t, map[string]string{
-		"a.protop": "revision 1;\nnamespace A;\ntable T {\n  key key = 1 (a, missing);\n  int64 a = 2;\n}\n",
+		"a.prague": "revision 1;\nnamespace A;\ntable T {\n  key key = 1 (a, missing);\n  int64 a = 2;\n}\n",
 	})
 	assertCodes(t, set, bag, diag.CompositeKeyPartNotFound)
-	assertAt(t, set, bag, 0, "a.protop:4:19", "missing")
+	assertAt(t, set, bag, 0, "a.prague:4:19", "missing")
 
 	schema := checkClean(t, map[string]string{
 		pragueFixture: readFixture(t, pragueFixture),
@@ -1786,10 +1786,10 @@ func TestACompositeKeysPartsNameMembersOfItsDeclaration(t *testing.T) {
 // alias to the field behind it follows this one forever.
 func TestAnAliasCannotNameItself(t *testing.T) {
 	set, _, bag := checkSet(t, map[string]string{
-		"a.protop": "revision 1;\nnamespace A;\ntable T {\n  key int64 id = 1;\n  alias x = x;\n}\n",
+		"a.prague": "revision 1;\nnamespace A;\ntable T {\n  key int64 id = 1;\n  alias x = x;\n}\n",
 	})
 	assertCodes(t, set, bag, diag.AliasTargetNotFound)
-	assertAt(t, set, bag, 0, "a.protop:5:13", "x")
+	assertAt(t, set, bag, 0, "a.prague:5:13", "x")
 }
 
 // An alias takes its target's type only when the target is a field, because a
@@ -1799,7 +1799,7 @@ func TestAnAliasCannotNameItself(t *testing.T) {
 // anyway would copy whatever the target's zero value happened to be.
 func TestAnAliasOfAnAliasTakesNoType(t *testing.T) {
 	schema := checkClean(t, map[string]string{
-		"a.protop": `revision 1;
+		"a.prague": `revision 1;
 namespace A;
 table T {
   key int64 id = 1;
@@ -1808,7 +1808,7 @@ table T {
 }
 `,
 	})
-	d := schema.File("a.protop").Decl("T")
+	d := schema.File("a.prague").Decl("T")
 	if got := typeString(d.Member("first").Type); got != "int64" {
 		t.Errorf("the alias of a field is %s, want the int64 the field lends it", got)
 	}
@@ -1826,10 +1826,10 @@ table T {
 // compares a foreign key against the parts, would be reading off that cycle.
 func TestACompositeKeyCannotNameItselfAsAPart(t *testing.T) {
 	set, _, bag := checkSet(t, map[string]string{
-		"a.protop": "revision 1;\nnamespace A;\ntable T {\n  key key = 1 (key, b);\n  int64 b = 2;\n}\n",
+		"a.prague": "revision 1;\nnamespace A;\ntable T {\n  key key = 1 (key, b);\n  int64 b = 2;\n}\n",
 	})
 	assertCodes(t, set, bag, diag.CompositeKeyPartNotFound)
-	assertAt(t, set, bag, 0, "a.protop:4:16", "key")
+	assertAt(t, set, bag, 0, "a.prague:4:16", "key")
 }
 
 // A message that says where a declaration is says where the declaration begins,
@@ -1839,17 +1839,17 @@ func TestACompositeKeyCannotNameItselfAsAPart(t *testing.T) {
 func TestAMessageQuotesADeclarationAtItsKeyword(t *testing.T) {
 	t.Run("a duplicate declaration", func(t *testing.T) {
 		set, _, bag := checkSet(t, map[string]string{
-			"a.protop": "revision 1;\nnamespace A;\nstruct S {\n  int64 x = 1;\n}\nrecord S {\n  int64 y = 1;\n}\n",
+			"a.prague": "revision 1;\nnamespace A;\nstruct S {\n  int64 x = 1;\n}\nrecord S {\n  int64 y = 1;\n}\n",
 		})
 		assertCodes(t, set, bag, diag.DuplicateDeclaration)
-		assertMessageMentions(t, bag, 0, "a.protop:3:1")
+		assertMessageMentions(t, bag, 0, "a.prague:3:1")
 	})
 	t.Run("a view member naming nothing its source declares", func(t *testing.T) {
 		set, _, bag := checkSet(t, map[string]string{
-			"a.protop": "revision 1;\nnamespace A;\ntable T {\n  key int64 id = 1;\n}\nview V of T {\n  gone;\n}\n",
+			"a.prague": "revision 1;\nnamespace A;\ntable T {\n  key int64 id = 1;\n}\nview V of T {\n  gone;\n}\n",
 		})
 		assertCodes(t, set, bag, diag.NoSuchMember)
-		assertMessageMentions(t, bag, 0, "a.protop:3:1")
+		assertMessageMentions(t, bag, 0, "a.prague:3:1")
 	})
 }
 
@@ -1882,29 +1882,29 @@ func TestTheCheckersMessagesSayWhatTheCodeCannot(t *testing.T) {
 		{
 			name: "an import naming no file in the set",
 			files: map[string]string{
-				"a.protop": "revision 1;\nnamespace A;\nimport \"gone.protop\";\nstruct S {\n  int64 x = 1;\n}\n",
+				"a.prague": "revision 1;\nnamespace A;\nimport \"gone.prague\";\nstruct S {\n  int64 x = 1;\n}\n",
 			},
 			wantCode: diag.ImportNotFound,
 			wantMessageHas: []string{
-				"no file named \"gone.protop\" was given to the compiler",
+				"no file named \"gone.prague\" was given to the compiler",
 				"where that file comes from is the build's question, not the schema's",
 			},
 		},
 		{
 			name: "two declarations of one name",
 			files: map[string]string{
-				"a.protop": "revision 1;\nnamespace A;\nstruct S {\n  int64 x = 1;\n}\nrecord S {\n  int64 y = 1;\n}\n",
+				"a.prague": "revision 1;\nnamespace A;\nstruct S {\n  int64 x = 1;\n}\nrecord S {\n  int64 y = 1;\n}\n",
 			},
 			wantCode: diag.DuplicateDeclaration,
 			wantMessageHas: []string{
-				"a.protop:3:1",
+				"a.prague:3:1",
 				"which of the two a reference means is not a question protop answers",
 			},
 		},
 		{
 			name: "a declaration under a built-in type name",
 			files: map[string]string{
-				"a.protop": "revision 1;\nnamespace A;\nrecord list {\n  int64 x = 1;\n}\n",
+				"a.prague": "revision 1;\nnamespace A;\nrecord list {\n  int64 x = 1;\n}\n",
 			},
 			wantCode:    diag.BuiltinTypeDeclared,
 			wantMessage: "`list` already names protop's built-in generic type; a type written `list` is read as the built-in, so nothing can ever spell its way to this declaration",
@@ -1912,7 +1912,7 @@ func TestTheCheckersMessagesSayWhatTheCodeCannot(t *testing.T) {
 		{
 			name: "a view of something that is not there",
 			files: map[string]string{
-				"a.protop": "revision 1;\nnamespace A;\nview V of Gone {\n  x;\n}\n",
+				"a.prague": "revision 1;\nnamespace A;\nview V of Gone {\n  x;\n}\n",
 			},
 			wantCode:    diag.ViewSourceNotFound,
 			wantMessage: "unknown view source `Gone`; a file sees its own declarations and those of the files it imports, and nothing else",
@@ -1920,7 +1920,7 @@ func TestTheCheckersMessagesSayWhatTheCodeCannot(t *testing.T) {
 		{
 			name: "a view of something with no tags to select",
 			files: map[string]string{
-				"a.protop": "revision 1;\nnamespace A;\nstruct S {\n  int64 x = 1;\n}\nview V of S {\n  x;\n}\n",
+				"a.prague": "revision 1;\nnamespace A;\nstruct S {\n  int64 x = 1;\n}\nview V of S {\n  x;\n}\n",
 			},
 			wantCode:    diag.ViewSourceNotSelectable,
 			wantMessage: "`S` is a struct, and a view is a subset of a table or a record; there are no tags here for a view to be pinned to",
@@ -1928,11 +1928,11 @@ func TestTheCheckersMessagesSayWhatTheCodeCannot(t *testing.T) {
 		{
 			name: "one source member selected twice",
 			files: map[string]string{
-				"a.protop": "revision 1;\nnamespace A;\ntable T {\n  key int64 id = 1;\n  int64 x = 2;\n}\nview V of T {\n  x as a;\n  x as b;\n}\n",
+				"a.prague": "revision 1;\nnamespace A;\ntable T {\n  key int64 id = 1;\n  int64 x = 2;\n}\nview V of T {\n  x as a;\n  x as b;\n}\n",
 			},
 			wantCode: diag.DuplicateTag,
 			wantMessageHas: []string{
-				"tag 2 is already used at a.protop:8:3",
+				"tag 2 is already used at a.prague:8:3",
 				"`a` and `b` select the same member of `T`",
 				"a tag is a position in the MessagePack array that two members cannot hold",
 			},
@@ -1940,7 +1940,7 @@ func TestTheCheckersMessagesSayWhatTheCodeCannot(t *testing.T) {
 		{
 			name: "a type naming nothing in scope",
 			files: map[string]string{
-				"a.protop": "revision 1;\nnamespace A;\nstruct S {\n  Gone x = 1;\n}\n",
+				"a.prague": "revision 1;\nnamespace A;\nstruct S {\n  Gone x = 1;\n}\n",
 			},
 			wantCode:    diag.UnknownType,
 			wantMessage: "unknown type `Gone`; a file sees its own declarations and those of the files it imports, and nothing else",
@@ -1948,18 +1948,18 @@ func TestTheCheckersMessagesSayWhatTheCodeCannot(t *testing.T) {
 		{
 			name: "a view member naming nothing its source declares",
 			files: map[string]string{
-				"a.protop": "revision 1;\nnamespace A;\ntable T {\n  key int64 id = 1;\n}\nview V of T {\n  gone;\n}\n",
+				"a.prague": "revision 1;\nnamespace A;\ntable T {\n  key int64 id = 1;\n}\nview V of T {\n  gone;\n}\n",
 			},
 			wantCode: diag.NoSuchMember,
 			wantMessageHas: []string{
-				"declared at a.protop:3:1",
+				"declared at a.prague:3:1",
 				"a rename or a removal there is a compile error here rather than a field that decodes to nil",
 			},
 		},
 		{
 			name: "a narrowing to something that is not a view",
 			files: map[string]string{
-				"a.protop": "revision 1;\nnamespace A;\nrecord R {\n  int64 x = 1;\n}\ntable T {\n  key int64 id = 1;\n  R r = 2;\n}\nview V of T {\n  R r;\n}\n",
+				"a.prague": "revision 1;\nnamespace A;\nrecord R {\n  int64 x = 1;\n}\ntable T {\n  key int64 id = 1;\n  R r = 2;\n}\nview V of T {\n  R r;\n}\n",
 			},
 			wantCode:    diag.NarrowingNotAView,
 			wantMessage: "`R` is a record, and a view member narrows to another view; a member that keeps the type its source gives it is written as its name alone",
@@ -1967,7 +1967,7 @@ func TestTheCheckersMessagesSayWhatTheCodeCannot(t *testing.T) {
 		{
 			name: "a narrowing to a view of something else",
 			files: map[string]string{
-				"a.protop": "revision 1;\nnamespace A;\nrecord R {\n  int64 x = 1;\n}\nrecord Q {\n  int64 y = 1;\n}\ntable T {\n  key int64 id = 1;\n  R r = 2;\n}\nview VQ of Q {\n  y;\n}\nview V of T {\n  VQ r;\n}\n",
+				"a.prague": "revision 1;\nnamespace A;\nrecord R {\n  int64 x = 1;\n}\nrecord Q {\n  int64 y = 1;\n}\ntable T {\n  key int64 id = 1;\n  R r = 2;\n}\nview VQ of Q {\n  y;\n}\nview V of T {\n  VQ r;\n}\n",
 			},
 			wantCode:    diag.NarrowingSourceMismatch,
 			wantMessage: "`VQ` is a view of `Q` and `r` holds `R`; a narrowing pins the member to a subset of what it already holds, and a view of anything else carries a different declaration's tags",
@@ -1975,7 +1975,7 @@ func TestTheCheckersMessagesSayWhatTheCodeCannot(t *testing.T) {
 		{
 			name: "an alias with nothing to pass through to",
 			files: map[string]string{
-				"a.protop": "revision 1;\nnamespace A;\ntable T {\n  key int64 id = 1;\n  alias other = gone;\n}\n",
+				"a.prague": "revision 1;\nnamespace A;\ntable T {\n  key int64 id = 1;\n  alias other = gone;\n}\n",
 			},
 			wantCode:    diag.AliasTargetNotFound,
 			wantMessage: "`gone` names no other member of `T`; an alias is a get and set passthrough and needs something to pass through to",
@@ -1983,7 +1983,7 @@ func TestTheCheckersMessagesSayWhatTheCodeCannot(t *testing.T) {
 		{
 			name: "a composite key over a member that is not there",
 			files: map[string]string{
-				"a.protop": "revision 1;\nnamespace A;\ntable T {\n  key key = 1 (gone);\n  int64 x = 2;\n}\n",
+				"a.prague": "revision 1;\nnamespace A;\ntable T {\n  key key = 1 (gone);\n  int64 x = 2;\n}\n",
 			},
 			wantCode:    diag.CompositeKeyPartNotFound,
 			wantMessage: "`gone` names no member of `T`; a composite key is a name over members of the declaration it belongs to",
@@ -1991,7 +1991,7 @@ func TestTheCheckersMessagesSayWhatTheCodeCannot(t *testing.T) {
 		{
 			name: "a relation pointing at nothing in scope",
 			files: map[string]string{
-				"a.protop": "revision 1;\nnamespace A;\ntable T {\n  key int64 id = 1;\n  int64 other_id = 2 [references(Gone)];\n}\n",
+				"a.prague": "revision 1;\nnamespace A;\ntable T {\n  key int64 id = 1;\n  int64 other_id = 2 [references(Gone)];\n}\n",
 			},
 			wantCode:    diag.RelationTargetNotFound,
 			wantMessage: "unknown relation target `Gone`; a file sees its own declarations and those of the files it imports, and nothing else",
@@ -1999,7 +1999,7 @@ func TestTheCheckersMessagesSayWhatTheCodeCannot(t *testing.T) {
 		{
 			name: "a relation pointing at something with no identity",
 			files: map[string]string{
-				"a.protop": "revision 1;\nnamespace A;\nstruct S {\n  int64 x = 1;\n}\ntable T {\n  key int64 id = 1;\n  int64 s_id = 2 [references(S)];\n}\n",
+				"a.prague": "revision 1;\nnamespace A;\nstruct S {\n  int64 x = 1;\n}\ntable T {\n  key int64 id = 1;\n  int64 s_id = 2 [references(S)];\n}\n",
 			},
 			wantCode:    diag.RelationTargetNotATable,
 			wantMessage: "`S` is a struct and cannot be the target of a relation; a relation resolves against a key, and only a `table` has one",
@@ -2007,7 +2007,7 @@ func TestTheCheckersMessagesSayWhatTheCodeCannot(t *testing.T) {
 		{
 			name: "a relation written in some other shape",
 			files: map[string]string{
-				"a.protop": "revision 1;\nnamespace A;\ntable T {\n  key int64 id = 1;\n  int64 x = 2 [references];\n}\n",
+				"a.prague": "revision 1;\nnamespace A;\ntable T {\n  key int64 id = 1;\n  int64 x = 2 [references];\n}\n",
 			},
 			wantCode: diag.MalformedRelation,
 			wantMessageHas: []string{
@@ -2097,7 +2097,7 @@ var loadBearingMessages = []diag.Code{
 // reads it ships.
 func TestAnnotationsAreCarriedOnEveryShapeThatHoldsThem(t *testing.T) {
 	schema := checkClean(t, map[string]string{
-		"a.protop": `revision 1;
+		"a.prague": `revision 1;
 namespace A;
 struct S [cs: OnStruct] {
   int64 x = 1;
@@ -2115,7 +2115,7 @@ view V of T [cs: OnView] {
 }
 `,
 	})
-	f := schema.File("a.protop")
+	f := schema.File("a.prague")
 
 	decls := []struct{ decl, want string }{
 		{"S", "OnStruct"},
@@ -2167,17 +2167,17 @@ table T {
 	// correct and is pinned here so it stays that way.
 	t.Run("a record is not a relation target", func(t *testing.T) {
 		set, _, bag := checkSet(t, map[string]string{
-			"a.protop": "revision 1;\nnamespace A;\n" + decls + "table U {\n  key int64 id = 1;\n  int64 r = 2 [references(R)];\n}\n",
+			"a.prague": "revision 1;\nnamespace A;\n" + decls + "table U {\n  key int64 id = 1;\n  int64 r = 2 [references(R)];\n}\n",
 		})
 		assertCodes(t, set, bag, diag.RelationTargetNotATable)
-		assertAt(t, set, bag, 0, "a.protop:11:27", "R")
+		assertAt(t, set, bag, 0, "a.prague:11:27", "R")
 	})
 	t.Run("a name that is nothing at all", func(t *testing.T) {
 		set, _, bag := checkSet(t, map[string]string{
-			"a.protop": "revision 1;\nnamespace A;\n" + decls + "table U {\n  key int64 id = 1;\n  int64 r = 2 [references(Missing)];\n}\n",
+			"a.prague": "revision 1;\nnamespace A;\n" + decls + "table U {\n  key int64 id = 1;\n  int64 r = 2 [references(Missing)];\n}\n",
 		})
 		assertCodes(t, set, bag, diag.RelationTargetNotFound)
-		assertAt(t, set, bag, 0, "a.protop:11:27", "Missing")
+		assertAt(t, set, bag, 0, "a.prague:11:27", "Missing")
 	})
 	t.Run("a name written with room around it", func(t *testing.T) {
 		// The span is computed by walking the annotation's text, so the caret
@@ -2185,17 +2185,17 @@ table T {
 		// an offset measured from the `(` rather than from the name would pass
 		// every other arm here.
 		set, _, bag := checkSet(t, map[string]string{
-			"a.protop": "revision 1;\nnamespace A;\n" + decls + "table U {\n  key int64 id = 1;\n  int64 r = 2 [ references ( Missing ) ];\n}\n",
+			"a.prague": "revision 1;\nnamespace A;\n" + decls + "table U {\n  key int64 id = 1;\n  int64 r = 2 [ references ( Missing ) ];\n}\n",
 		})
 		assertCodes(t, set, bag, diag.RelationTargetNotFound)
-		assertAt(t, set, bag, 0, "a.protop:11:30", "Missing")
+		assertAt(t, set, bag, 0, "a.prague:11:30", "Missing")
 	})
 	t.Run("a relation with no target at all", func(t *testing.T) {
 		set, _, bag := checkSet(t, map[string]string{
-			"a.protop": "revision 1;\nnamespace A;\n" + decls + "table U {\n  key int64 id = 1;\n  int64 r = 2 [references];\n}\n",
+			"a.prague": "revision 1;\nnamespace A;\n" + decls + "table U {\n  key int64 id = 1;\n  int64 r = 2 [references];\n}\n",
 		})
 		assertCodes(t, set, bag, diag.MalformedRelation)
-		assertAt(t, set, bag, 0, "a.protop:11:15", "[references]")
+		assertAt(t, set, bag, 0, "a.prague:11:15", "[references]")
 	})
 }
 
@@ -2224,8 +2224,8 @@ record Embedded {
   int64 event_id = 1 [references(SportGame)];
 }
 `
-	schema := checkClean(t, map[string]string{"a.protop": src})
-	f := schema.File("a.protop")
+	schema := checkClean(t, map[string]string{"a.prague": src})
+	f := schema.File("a.prague")
 
 	tests := []struct {
 		decl, member string
@@ -2253,7 +2253,7 @@ record Embedded {
 // key enforces the one as much as a simple key would.
 func TestACompositeKeyOfOnePartIsAWholeKey(t *testing.T) {
 	schema := checkClean(t, map[string]string{
-		"a.protop": `revision 1;
+		"a.prague": `revision 1;
 namespace A;
 table T {
   key int64 id = 1;
@@ -2264,7 +2264,7 @@ table U {
 }
 `,
 	})
-	rels := schema.File("a.protop").Decl("U").Member("event_id").Relations
+	rels := schema.File("a.prague").Decl("U").Member("event_id").Relations
 	if len(rels) != 1 || rels[0].Cardinality != OneToOne {
 		t.Errorf("cardinality is %v, want one-to-one", rels)
 	}
@@ -2276,7 +2276,7 @@ table U {
 // something else, so the rule follows it.
 func TestAKeyPartThatIsAnAliasIsTheMemberItPassesThroughTo(t *testing.T) {
 	schema := checkClean(t, map[string]string{
-		"a.protop": `revision 1;
+		"a.prague": `revision 1;
 namespace A;
 table T {
   key int64 id = 1;
@@ -2288,7 +2288,7 @@ table U {
 }
 `,
 	})
-	rels := schema.File("a.protop").Decl("U").Member("event_id").Relations
+	rels := schema.File("a.prague").Decl("U").Member("event_id").Relations
 	if len(rels) != 1 || rels[0].Cardinality != OneToOne {
 		t.Errorf("cardinality is %v, want one-to-one: the one part of the key is an alias of this member", rels)
 	}
@@ -2318,7 +2318,7 @@ func TestAViewInheritsItsSourcesRelations(t *testing.T) {
 // with sorted order proves nothing.
 func TestFilesComeOutInAStableOrder(t *testing.T) {
 	files := map[string]string{}
-	for _, name := range []string{"e.protop", "c.protop", "a.protop", "d.protop", "b.protop"} {
+	for _, name := range []string{"e.prague", "c.prague", "a.prague", "d.prague", "b.prague"} {
 		files[name] = "revision 1;\nnamespace N;\n"
 	}
 	set, _ := parseSet(t, files)
@@ -2341,7 +2341,7 @@ func TestFilesComeOutInAStableOrder(t *testing.T) {
 // report a protop diagnostic about a sentence written in another language.
 func TestAPrefixedAnnotationIsNotProtopsRelation(t *testing.T) {
 	schema := checkClean(t, map[string]string{
-		"a.protop": `revision 1;
+		"a.prague": `revision 1;
 namespace A;
 table T {
   key int64 id = 1;
@@ -2349,7 +2349,7 @@ table T {
 }
 `,
 	})
-	if got := schema.File("a.protop").Decl("T").Member("other").Relations; len(got) != 0 {
+	if got := schema.File("a.prague").Decl("T").Member("other").Relations; len(got) != 0 {
 		t.Errorf("the member carries %d relations, want none: a prefixed annotation is not protop's to interpret", len(got))
 	}
 }
@@ -2374,7 +2374,7 @@ func TestARelationsTargetIsOneNameInsideMatchedParentheses(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			set, _, bag := checkSet(t, map[string]string{
-				"a.protop": "revision 1;\nnamespace A;\n" + decls +
+				"a.prague": "revision 1;\nnamespace A;\n" + decls +
 					"table U {\n  key int64 id = 1;\n  int64 game_id = 2 " + tt.annotation + ";\n}\n",
 			})
 			assertCodes(t, set, bag, diag.MalformedRelation)
@@ -2382,7 +2382,7 @@ func TestARelationsTargetIsOneNameInsideMatchedParentheses(t *testing.T) {
 			// right: nothing inside a malformed relation is a name protopc
 			// read, so there is nothing narrower to point at that the user
 			// would recognise.
-			assertAt(t, set, bag, 0, "a.protop:8:21", tt.annotation)
+			assertAt(t, set, bag, 0, "a.prague:8:21", tt.annotation)
 		})
 	}
 }
@@ -2394,9 +2394,9 @@ func TestARelationsTargetIsOneNameInsideMatchedParentheses(t *testing.T) {
 // that fell out of the declarations they were written in, so every name in it
 // would look undeclared and the one mistake would be buried under the noise.
 func TestCheckDoesNotRunOnATreeThatDidNotParse(t *testing.T) {
-	f := source.NewFile("a.protop", "revision 1;\nnamespace A;\nstruct S {\n  Missing x = 1;\n")
+	f := source.NewFile("a.prague", "revision 1;\nnamespace A;\nstruct S {\n  Missing x = 1;\n")
 	var bag diag.Bag
-	set := FileSet{"a.protop": {Source: f, File: syntax.Parse(f, &bag)}}
+	set := FileSet{"a.prague": {Source: f, File: syntax.Parse(f, &bag)}}
 	before := bag.Len()
 	if before == 0 {
 		t.Fatal("the fixture parses; it is supposed not to")
@@ -2413,9 +2413,9 @@ func TestCheckDoesNotRunOnATreeThatDidNotParse(t *testing.T) {
 // lift, and the contract above is what keeps a file holding one from ever
 // reaching a stage that would have to decide what a map's key may be.
 func TestAMapIsStillNotYetImplemented(t *testing.T) {
-	f := source.NewFile("a.protop", "revision 1;\nnamespace A;\nstruct S {\n  map<string, int64> m = 1;\n}\n")
+	f := source.NewFile("a.prague", "revision 1;\nnamespace A;\nstruct S {\n  map<string, int64> m = 1;\n}\n")
 	var bag diag.Bag
-	set := FileSet{"a.protop": {Source: f, File: syntax.Parse(f, &bag)}}
+	set := FileSet{"a.prague": {Source: f, File: syntax.Parse(f, &bag)}}
 	if got := bag.All(); len(got) != 1 || got[0].Code != diag.NotYetImplemented {
 		t.Fatalf("the parser said %v, want one PROTOP0900", got)
 	}
@@ -2429,18 +2429,18 @@ func TestAMapIsStillNotYetImplemented(t *testing.T) {
 // every file but one would be rendered against the wrong text.
 func TestADiagnosticNamesTheFileItIsAbout(t *testing.T) {
 	set, _, bag := checkSet(t, map[string]string{
-		"a.protop": "revision 1;\nnamespace A;\nstruct S {\n  int64 x = 1;\n}\n",
-		"b.protop": "revision 1;\nnamespace B;\nstruct S {\n  Missing x = 1;\n}\n",
+		"a.prague": "revision 1;\nnamespace A;\nstruct S {\n  int64 x = 1;\n}\n",
+		"b.prague": "revision 1;\nnamespace B;\nstruct S {\n  Missing x = 1;\n}\n",
 	})
 	assertCodes(t, set, bag, diag.UnknownType)
 	d := bag.All()[0]
-	if d.File == nil || d.File.Name != "b.protop" {
-		t.Fatalf("diagnostic names %v, want b.protop", d.File)
+	if d.File == nil || d.File.Name != "b.prague" {
+		t.Fatalf("diagnostic names %v, want b.prague", d.File)
 	}
-	// Rendered against the wrong file, the caret would land in a.protop's text
+	// Rendered against the wrong file, the caret would land in a.prague's text
 	// at the same offset. The file the diagnostic names is what Render uses.
-	if got := diag.Render(set["a.protop"].Source, d); !strings.Contains(got, "b.protop:4:3") {
-		t.Errorf("rendered as:\n%s\nwant a position in b.protop", got)
+	if got := diag.Render(set["a.prague"].Source, d); !strings.Contains(got, "b.prague:4:3") {
+		t.Errorf("rendered as:\n%s\nwant a position in b.prague", got)
 	}
 }
 
@@ -2452,12 +2452,12 @@ func TestADiagnosticNamesTheFileItIsAbout(t *testing.T) {
 // naming no file at all.
 func TestEveryDiagnosticInASetNamesItsOwnFile(t *testing.T) {
 	set, _, bag := checkSet(t, map[string]string{
-		"a.protop": "revision 1;\nnamespace A;\nstruct S {\n  Missing x = 1;\n}\n",
-		"b.protop": "revision 1;\nnamespace B;\nstruct S {\n  Absent y = 2;\n}\n",
+		"a.prague": "revision 1;\nnamespace A;\nstruct S {\n  Missing x = 1;\n}\n",
+		"b.prague": "revision 1;\nnamespace B;\nstruct S {\n  Absent y = 2;\n}\n",
 	})
 	assertCodes(t, set, bag, diag.UnknownType, diag.UnknownType)
-	assertAt(t, set, bag, 0, "a.protop:4:3", "Missing")
-	assertAt(t, set, bag, 1, "b.protop:4:3", "Absent")
+	assertAt(t, set, bag, 0, "a.prague:4:3", "Missing")
+	assertAt(t, set, bag, 1, "b.prague:4:3", "Absent")
 }
 
 // Diagnostics come out in pass order, then file order, then source order. The
@@ -2468,7 +2468,7 @@ func TestEveryDiagnosticInASetNamesItsOwnFile(t *testing.T) {
 // was reordered has no order to diff against.
 func TestDiagnosticsComeOutInPassOrderBeforeSourceOrder(t *testing.T) {
 	set, _, bag := checkSet(t, map[string]string{
-		"a.protop": `revision 1;
+		"a.prague": `revision 1;
 namespace A;
 table T {
   key int64 id = 1;
@@ -2622,20 +2622,20 @@ func protopBlocks(t *testing.T, specPath string) []string {
 // the map under a name nothing can find it by.
 //
 // What is *not* here is deliberate. Nothing case-folds, so `import
-// "B.protop"` opens `b.protop` on a case-insensitive filesystem and fails on
-// Linux; nothing cleans, so `./b.protop` and `b.protop` are two keys. Both are
+// "B.prague"` opens `b.prague` on a case-insensitive filesystem and fails on
+// Linux; nothing cleans, so `./b.prague` and `b.prague` are two keys. Both are
 // language questions -- protoc rejects a non-canonical import string outright,
 // buf cleans it silently -- and neither is answered here. This test pins what
 // the function does so that answering them is a deliberate edit with a failing
 // test under it.
 func TestImportPathStripsTheQuotesAndNothingElse(t *testing.T) {
 	for _, tc := range []struct{ lit, want string }{
-		{`"b.protop"`, "b.protop"},
-		{`"./b.protop"`, "./b.protop"},
-		{`"sub/../b.protop"`, "sub/../b.protop"},
+		{`"b.prague"`, "b.prague"},
+		{`"./b.prague"`, "./b.prague"},
+		{`"sub/../b.prague"`, "sub/../b.prague"},
 		{`"B.Protop"`, "B.Protop"},
-		{`"Sub/B.protop"`, "Sub/B.protop"},
-		{`"sub\b.protop"`, `sub\b.protop`},
+		{`"Sub/B.prague"`, "Sub/B.prague"},
+		{`"sub\b.prague"`, `sub\b.prague`},
 		{`""`, ""},
 	} {
 		if got := ImportPath(syntax.StringLit{Text: tc.lit}); got != tc.want {

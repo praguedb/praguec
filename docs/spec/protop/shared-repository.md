@@ -1,4 +1,4 @@
-# 1. Shared repository — `prague.protop`
+# 1. Shared repository — `prague.prague`
 
 Tables, records, structs and enums live here, in one repo, owned by one team. Nothing in this file knows which services consume it.
 

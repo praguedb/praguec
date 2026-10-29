@@ -1,44 +1,39 @@
 revision 1;
 
-// The Prague caches' branded-producer payload types, transcribed from
-// corpus/prague/payloads/. Section 1 of the spec declares `SportGame` once; the
-// corpus has a BP, a BO and a Slim variant of it, and this file is the BP and
-// Slim halves. bo-models.protop is the other half.
+// The BO half of corpus/prague/payloads/: the back-office copies of the four
+// Prague cache types, in their own namespace.
 //
-// Every tag here is a corpus `[Key(N)]` plus one, because a MessagePack key is
-// the tag minus one. Nothing was renumbered and nothing was invented: a member
-// this language cannot spell is `reserved` with the ticket that blocks it named
-// beside it, never dropped.
-//
-// What is deliberately absent: the hand-written partial half of each cache type
-// (computed members, constructors, indexes -- #25), and the `using` lines the
-// corpus needs for its attributes. protop never inspects an annotation's
-// contents (section 3), so `using B2Tech.Feed.Cache.Core;` is not derivable
-// from anything written here.
-namespace Common.IntegratedEventApi.Cache.Prague.Models;
+// They are near-duplicates of the BP types in prague-models.prague -- same
+// tags, same members, different cache-class names -- and protop has nothing to
+// say about that. There is no inheritance (#11 ruled it out and ruled
+// flattening in) and no way for one declaration to be "the same shape as"
+// another, so the duplication is written out. Whether the language should have
+// something to say about it is a question the corpus raises and this milestone
+// does not answer.
+namespace BO.Services.Prague.Models;
 
-import "api-enums.protop";
-import "branded.protop";
-import "common-feed-enums.protop";
-import "virtual-game-entity.protop";
+import "api-enums.prague";
+import "branded.prague";
+import "common-feed-enums.prague";
+import "virtual-game-entity.prague";
 
-// Venue is corpus/prague/payloads/Venue.cs. It starts at tag 2 because the
-// corpus starts at `[Key(1)]`; key 0 is unused there and is unused here.
-//
-// The corpus writes both members `required`. #12 closed on omitting it and #19
-// measured that MessagePack does not enforce it anyway, so the emission drops
-// the word. That is the one difference between this declaration and its file.
-struct Venue
+// BOVenue is Venue under another name and in another namespace, tag for tag.
+struct BOVenue
 {
   int64  id   = 2;
   string name = 3;
 }
 
-// BPSportGameCacheItem is the widest type in the corpus: 59 tags, of which
-// seven cannot be written.
-table BPSportGameCacheItem
-  [cs: DataCache(CacheClassName = nameof(Prague.Models.BPSportGameCache))]
+// BOSportGameCacheItem carries one annotation its BP twin does not:
+// `[DataCacheIndex(nameof(FixtureIdIndex), ...)]` names a computed member that
+// lives in the hand-written partial half (#25). protopc copies the text and
+// does not look inside it, so the name resolving is the C# compiler's problem
+// and not protopc's -- which is section 3's passthrough rule doing exactly what
+// it promises, and also its sharpest edge.
+table BOSportGameCacheItem
+  [cs: DataCache(CacheClassName = nameof(BOSportGameCache))]
   [cs: DataCacheTopic("Cache.[v:brandId].SportGame")]
+  [cs: DataCacheIndex(nameof(FixtureIdIndex), nameof(FixtureId), DataCacheIndexType.Many)]
 {
   // Tags this declaration owns and cannot write. `reserved` is how protop
   // keeps a tag it does not transcribe (section 7): the C# member keeps its
@@ -58,7 +53,7 @@ table BPSportGameCacheItem
   int64              league_id                          = 4;
   int64?             home_team_id                       = 5;
   int64?             away_team_id                       = 6;
-  Venue?             venue                              = 7;
+  BOVenue?           venue                              = 7;
   int64?             statistics_center_id               = 8;
   string             name                               = 9;
   string?            provider_source_key                = 10;
@@ -102,11 +97,9 @@ table BPSportGameCacheItem
   StaticDataRef?     away_team                          = 59;
 }
 
-// BPBetTypeCacheItem carries the corpus's one composite key and its one alias,
-// and the alias is a *part* of the key -- which is why the model resolves a
-// key's parts to members rather than to names.
-table BPBetTypeCacheItem
-  [cs: DataCache(CacheClassName = nameof(Prague.Models.BPBetTypeCache))]
+// BOBetTypeCacheItem, composite key and alias included.
+table BOBetTypeCacheItem
+  [cs: DataCache(CacheClassName = nameof(BOBetTypeCache))]
   [cs: DataCacheTopic("Cache.[v:brandId].BetType")]
 {
   // Tags this declaration owns and cannot write. `reserved` is how protop
@@ -145,13 +138,9 @@ table BPBetTypeCacheItem
   Odd?           t                        = 28;
 }
 
-// BPSearchCacheItem's key is composite over a scalar and an enum, which is the
-// corpus's only non-int64 key part.
-//
-// Its `/// <summary>TBD: Handling of changes from BO UI</summary>` does not
-// survive: protop's lexer discards comments and the model does not carry them.
-table BPSearchCacheItem
-  [cs: DataCache(CacheClassName = nameof(Prague.Models.BPSearchCache))]
+// BOSearchCacheItem.
+table BOSearchCacheItem
+  [cs: DataCache(CacheClassName = nameof(BOSearchCache))]
   [cs: DataCacheTopic("Cache.[v:brandId].Search")]
 {
   // Tags this declaration owns and cannot write. `reserved` is how protop
@@ -206,11 +195,9 @@ table BPSearchCacheItem
   bool           has_bet_types                      = 48;
 }
 
-// BPLiveObjectCacheItem is two members, one of which protop cannot express.
-// `IBaseLiveData? LiveObject` is #9's 19-arm union; the tag is reserved and the
-// emitted type is a one-member table until #9 rules.
-table BPLiveObjectCacheItem
-  [cs: DataCache(CacheClassName = nameof(Prague.Models.BPLiveObjectCache))]
+// BOLiveObjectCacheItem, whose second member is #9's union and is reserved.
+table BOLiveObjectCacheItem
+  [cs: DataCache(CacheClassName = nameof(BOLiveObjectCache))]
   [cs: DataCacheTopic("Cache.[v:brandId].LiveObject")]
 {
   // Tags this declaration owns and cannot write. `reserved` is how protop
@@ -220,133 +207,4 @@ table BPLiveObjectCacheItem
   reserved 2;
 
   key int64 event_id    = 1;
-}
-
-// LiveObjectCacheItem is the unbranded twin of BPLiveObjectCacheItem, identical
-// but for the cache class name in its annotation.
-table LiveObjectCacheItem
-  [cs: DataCache(CacheClassName = nameof(LiveObjectCache))]
-  [cs: DataCacheTopic("Cache.[v:brandId].LiveObject")]
-{
-  // Tags this declaration owns and cannot write. `reserved` is how protop
-  // keeps a tag it does not transcribe (section 7): the C# member keeps its
-  // slot and nothing may reuse it.
-  //   2   IBaseLiveData? LiveObject             #9, unions
-  reserved 2;
-
-  key int64 event_id    = 1;
-}
-
-// SlimOdd is a view of `record Odd`, and the one view in the corpus whose
-// source is a record rather than a table. It emits `public class SlimOdd`,
-// which is what corpus/prague/payloads/SlimOdd.cs:7 says -- see the note on
-// `modifiers` in internal/csharp/csharp.go, and the report on #45.
-//
-// Its members are `init`-only in the corpus and `get; set;` here. #20 forbids
-// emitting an immutable type, so that difference is a ruling rather than a gap.
-view SlimOdd of Odd
-{
-  name;
-  is_dynamic;
-  timestamp;
-  line;
-  odds_actual;
-  odds_fair;
-  odds_manual;
-  status;
-  status_manual;
-  win_status_id;
-  win_status_id_manual;
-  is_boosted;
-  is_balanced_line;
-  player_id;
-}
-
-// SlimSportGame is the consumer's narrow read of the SportGame topic.
-//
-// Three of its corpus members diverge from the table they are a view of, and a
-// view cannot change what it selects (section 5), so the emission follows the
-// source and the harness lists them:
-//   corpus key 53  `EventSource?` over the table's `int?`   -- a type change
-//   corpus key 57  `StaticDataRef` over `StaticDataRef?`    -- a presence change
-//   corpus key 58  `StaticDataRef` over `StaticDataRef?`    -- a presence change
-// Whether those are deliberate narrowings the language should support, or
-// drift between two hand-written files, is not a question this milestone can
-// answer from the corpus alone.
-view SlimSportGame of BPSportGameCacheItem
-  [cs: DataCache(CacheClassName = nameof(SlimSportGameCache))]
-  [cs: DataCacheTopic("Cache.[v:brandId].SportGame")]
-{
-  // Members of the source this view cannot select:
-  //   tag 12  ProviderId               #32, the closed scalar set
-  //   tag 28  EventDate                #15, a temporal type
-  //   tag 30  EventDateManual          #15, a temporal type
-
-  event_id as id;
-  sport_type_id [cs: DataCacheIndex];
-  country_id [cs: DataCacheIndex];
-  league_id [cs: DataCacheIndex];
-  home_team_id;
-  away_team_id;
-  statistics_center_id;
-  name;
-  provider_source_key;
-  provider_key;
-  event_type_id [cs: DataCacheIndex];
-  fixture_id;
-  is_live [cs: DataCacheIndex];
-  is_manual_changed;
-  is_pinned;
-  is_contains_pending_odds_with_bets;
-  watch_dog_action [cs: DataCacheIndex];
-  event_status [cs: DataCacheIndex];
-  event_status_manual;
-  event_status_watch_dog;
-  booking_status [cs: DataCacheIndex];
-  version;
-  internal_timestamp [cs: DataCacheIndex(DataCacheIndexType.Range)];
-  provider_timestamp;
-  live_limit_manual_single;
-  prematch_limit_manual_single;
-  live_limit_manual_combo;
-  prematch_limit_manual_combo;
-  live_bet_builder_manual_limit;
-  prematch_bet_builder_manual_limit;
-  has_bet_types;
-  coverage_source;
-  event_source;
-  sport_type;
-  country;
-  league;
-  home_team;
-  away_team;
-}
-
-// SlimBetType selects the source's composite key under a new name, selects the
-// field the source's alias points at under the alias's own name, and narrows
-// `list<Odd>` to `list<SlimOdd>` -- all three of section 5's view mechanisms in
-// eleven lines.
-//
-// Its last member is the corpus's one array: `SlimOdd[] Odds`. protopc emits
-// `List<SlimOdd>`, which is what the other six collection sites write. Picking
-// the array here would be inferring "a view emits T[]" from a single sample,
-// and #24 is where that gets ruled.
-view SlimBetType of BPBetTypeCacheItem
-  [cs: DataCache(CacheClassName = nameof(SlimBetTypeCache))]
-  [cs: DataCacheTopic("Cache.[v:brandId].BetType")]
-{
-  key as id;
-  event_id [cs: DataCacheIndex];
-  id as bet_type_id [cs: DataCacheIndex];
-  name;
-  status [cs: DataCacheIndex];
-  status_manual;
-  status_watch_dog;
-  is_live [cs: DataCacheIndex];
-  is_lineable;
-  limit_manual_single;
-  limit_manual_combo;
-  limit_manual_bet_builder;
-  timestamp [cs: DataCacheIndex(DataCacheIndexType.Range)] [cs: DataCacheFromTimestamp];
-  SlimOdd odds;
 }

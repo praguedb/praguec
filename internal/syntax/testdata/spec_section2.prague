@@ -2,7 +2,7 @@ revision 1;
 
 namespace BrandDataReader.Services.Cache;
 
-import "prague.protop";
+import "prague.prague";
 
 view SlimSportGame of SportGame {
   event_id as id;

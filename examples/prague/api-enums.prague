@@ -10,7 +10,7 @@ revision 1;
 // its own -- and not the assignment, which is under-determined and said so
 // here rather than left to look like a measurement.
 //
-// Arms are absent for the reason given in common-feed-enums.protop.
+// Arms are absent for the reason given in common-feed-enums.prague.
 namespace Common.IntegratedEventApi.Models.Enums;
 
 enum EventStatus {

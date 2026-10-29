@@ -149,7 +149,7 @@ func (b *Bag) HasErrors() bool {
 
 // Render formats one diagnostic against the file its span indexes into:
 //
-//	prague.protop:3:14: error PROTOP0300: field tag must be greater than 0
+//	prague.prague:3:14: error PROTOP0300: field tag must be greater than 0
 //	  |
 //	3 |   int64 id = 0;
 //	  |              ^
@@ -283,7 +283,7 @@ func RenderAllAs(format Format, f *source.File, b *Bag) string {
 
 // renderMSVS writes the one shape MSBuild's canonical error parser reads:
 //
-//	prague.protop(3,14): error PROTOP0300: field tag must be greater than 0
+//	prague.prague(3,14): error PROTOP0300: field tag must be greater than 0
 //
 // The authority is dotnet/msbuild, src/Shared/CanonicalError.cs, and its
 // OriginCategoryCodeTextExpressionPattern. The grammar is

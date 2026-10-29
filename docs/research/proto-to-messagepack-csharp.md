@@ -1486,7 +1486,7 @@ The test from the struct/record section — *annotation → option, generation �
 - `option (protop.csharp_kind) = STRUCT;` **annotates a message that already exists.** protobuf's option mechanism is exactly the right vehicle; stock protoc parses the file and ignores the meaning.
 - `view BetSummary of Bet {...}` **brings a new type into existence.** There is no message for an option to hang on. Encoding it in Tier 1 would mean writing `BetSummary` out longhand with a `(protop.view_of)` option — at which point the option is a comment on hand-maintained duplication, and the construct has bought nothing.
 
-So views are the first construct where new syntax pays for itself. That is also the moment `.protop` files appear, and the moment protop needs a Tier-2→Tier-1 lowering with a source map — the machinery the rest of the design deliberately avoids.
+So views are the first construct where new syntax pays for itself. That is also the moment `.prague` files appear, and the moment protop needs a Tier-2→Tier-1 lowering with a source map — the machinery the rest of the design deliberately avoids.
 
 ### 12.5 Design notes for when the phase arrives
 
@@ -1580,7 +1580,7 @@ Either is defensible. Neither is changeable after the first payload is persisted
 
 ### 14.4 Things the phasing gets right, and should not be second-guessed
 
-- **`.proto` input in phase 1, no new syntax.** §12 (views) establishes that Tier-2 syntax only pays for itself when a construct *generates a type*, and nothing in phases 1–2 does. Shipping `.protop` early would buy nothing and commit you to a lowering pass and a source map.
+- **`.proto` input in phase 1, no new syntax.** §12 (views) establishes that Tier-2 syntax only pays for itself when a construct *generates a type*, and nothing in phases 1–2 does. Shipping `.prague` early would buy nothing and commit you to a lowering pass and a source map.
 - **Struct-vs-record in phase 2, not phase 1.** §8 concludes the struct tier pays off substantially in C# shape and only marginally in MessagePack, and that `csharp_kind` is immutable once published — a struct is a frozen contract with a `default(T)` hazard that has no fix. That is the right thing to ship second, once the record path is proven.
 - **Views last.** They need the most machinery and they are the only feature with a settled design already (tag-preserving, §12), so they lose nothing by waiting.
 

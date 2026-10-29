@@ -415,10 +415,10 @@ func TestTheExitCodesAreTheNumbersTheyAreDocumentedAs(t *testing.T) {
 }
 
 func TestExitCodes(t *testing.T) {
-	good := filepath.Join(examplesDir, "branded.protop")
-	broken := writeTemp(t, "broken.protop", "revision 1;\nnamespace A;\nstruct S {\n  int64 id = 0;\n}\n")
-	unparsable := writeTemp(t, "unparsable.protop", "revision 1;\nnamespace A;\nstruct {\n")
-	missingImport := writeTemp(t, "orphan.protop", "revision 1;\nnamespace A;\nimport \"gone.protop\";\nstruct S {\n  int64 id = 1;\n}\n")
+	good := filepath.Join(examplesDir, "branded.prague")
+	broken := writeTemp(t, "broken.prague", "revision 1;\nnamespace A;\nstruct S {\n  int64 id = 0;\n}\n")
+	unparsable := writeTemp(t, "unparsable.prague", "revision 1;\nnamespace A;\nstruct {\n")
+	missingImport := writeTemp(t, "orphan.prague", "revision 1;\nnamespace A;\nimport \"gone.prague\";\nstruct S {\n  int64 id = 1;\n}\n")
 
 	for _, tc := range []struct {
 		name string
@@ -432,7 +432,7 @@ func TestExitCodes(t *testing.T) {
 		{"no arguments at all", nil, exitUsage},
 		{"a command protopc does not have", []string{"lint", good}, exitUsage},
 		{"no input files", []string{"check"}, exitUsage},
-		{"an input that is not there", []string{"check", "nosuch.protop"}, exitUsage},
+		{"an input that is not there", []string{"check", "nosuch.prague"}, exitUsage},
 		{"a -I that is not there", []string{"check", "-I", "nosuch", good}, exitUsage},
 		{"a format protopc does not have", []string{"check", "--error-format=json", good}, exitUsage},
 		{"a flag protopc does not have", []string{"check", "--strict", good}, exitUsage},
@@ -445,12 +445,12 @@ func TestExitCodes(t *testing.T) {
 	}
 }
 
-// The import in bo-models.protop resolves only when -I names the directory its
+// The import in bo-models.prague resolves only when -I names the directory its
 // siblings are in, which is the pairing the case above leans on: the same file
 // is exit 1 without the root and exit 0 with it. Without this, that case would
 // pass for a reason that has nothing to do with imports.
 func TestTheSameFileIsCleanOnceItsRootIsGiven(t *testing.T) {
-	f := filepath.Join(examplesDir, "bo-models.protop")
+	f := filepath.Join(examplesDir, "bo-models.prague")
 	if got := runCLI(t, "check", "-I", examplesDir, f); got != exitOK {
 		t.Errorf("exit %d with the root, want 0", got)
 	}
@@ -482,7 +482,7 @@ func TestACheckerDiagnosticIsWhatDecidesTheExitCode(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			f := writeTemp(t, "checker.protop", tc.text)
+			f := writeTemp(t, "checker.prague", tc.text)
 			var stderr bytes.Buffer
 			if got := run([]string{"check", f}, io.Discard, &stderr); got != exitDiags {
 				t.Errorf("exit %d, want %d\n%s", got, exitDiags, stderr.String())
@@ -505,7 +505,7 @@ func TestCheckWritesNothing(t *testing.T) {
 	dir := t.TempDir()
 	t.Chdir(dir)
 
-	if got := runCLI(t, "check", "-I", examples, filepath.Join(examples, "prague-models.protop")); got != exitOK {
+	if got := runCLI(t, "check", "-I", examples, filepath.Join(examples, "prague-models.prague")); got != exitOK {
 		t.Fatalf("check exited %d", got)
 	}
 	entries, err := os.ReadDir(dir)
@@ -521,7 +521,7 @@ func TestCheckWritesNothing(t *testing.T) {
 // is worse than rejecting it: the user who writes `protopc check -o out`
 // believes something was written there.
 func TestCheckRejectsTheWritingFlags(t *testing.T) {
-	good := filepath.Join(examplesDir, "branded.protop")
+	good := filepath.Join(examplesDir, "branded.prague")
 	for _, args := range [][]string{
 		{"check", "-o", "out", good},
 		{"check", "--manifest", "m.json", good},
@@ -533,18 +533,18 @@ func TestCheckRejectsTheWritingFlags(t *testing.T) {
 }
 
 // generate writes the files it was asked for and not the ones they import.
-// branded.protop imports common-feed-enums.protop, whose declarations are read
+// branded.prague imports common-feed-enums.prague, whose declarations are read
 // to make sense of the target and are not the target.
 func TestGenerateWritesTheTargetsAndNotTheirImports(t *testing.T) {
 	out := t.TempDir()
 	if got := runCLI(t, "generate", "-I", examplesDir, "-o", out,
-		filepath.Join(examplesDir, "branded.protop")); got != exitOK {
+		filepath.Join(examplesDir, "branded.prague")); got != exitOK {
 		t.Fatalf("generate exited %d", got)
 	}
 
 	got := names(t, out)
-	// branded.protop's three declarations, and nothing from the file it
-	// imports: common-feed-enums.protop's four enums are read to resolve the
+	// branded.prague's three declarations, and nothing from the file it
+	// imports: common-feed-enums.prague's four enums are read to resolve the
 	// target's types and are not written.
 	want := []string{"BaseProviderObject.cs", "Odd.cs", "StaticDataRef.cs"}
 	if !slices.Equal(got, want) {
@@ -559,7 +559,7 @@ func TestGenerateWritesTheTargetsAndNotTheirImports(t *testing.T) {
 func TestGenerateWritesTheBackendsTextUnchanged(t *testing.T) {
 	out := t.TempDir()
 	if got := runCLI(t, "generate", "-I", examplesDir, "-o", out,
-		filepath.Join(examplesDir, "branded.protop")); got != exitOK {
+		filepath.Join(examplesDir, "branded.prague")); got != exitOK {
 		t.Fatalf("generate exited %d", got)
 	}
 	b, err := os.ReadFile(filepath.Join(out, "Odd.cs"))
@@ -580,7 +580,7 @@ func TestGenerateWritesTheBackendsTextUnchanged(t *testing.T) {
 func TestGenerateCreatesTheOutputDirectory(t *testing.T) {
 	out := filepath.Join(t.TempDir(), "a", "b")
 	if got := runCLI(t, "generate", "-I", examplesDir, "-o", out,
-		filepath.Join(examplesDir, "branded.protop")); got != exitOK {
+		filepath.Join(examplesDir, "branded.prague")); got != exitOK {
 		t.Fatalf("generate exited %d", got)
 	}
 	if len(names(t, out)) == 0 {
@@ -594,13 +594,13 @@ func TestGenerateCreatesTheOutputDirectory(t *testing.T) {
 // collision is an error and not a coin toss.
 func TestTwoDeclarationsThatWouldShareAFileAreAnError(t *testing.T) {
 	dir := t.TempDir()
-	write(t, filepath.Join(dir, "a.protop"), "revision 1;\nnamespace A;\nstruct Meta {\n  int64 id = 1;\n}\n")
-	write(t, filepath.Join(dir, "b.protop"), "revision 1;\nnamespace B;\nstruct Meta {\n  int64 id = 1;\n}\n")
+	write(t, filepath.Join(dir, "a.prague"), "revision 1;\nnamespace A;\nstruct Meta {\n  int64 id = 1;\n}\n")
+	write(t, filepath.Join(dir, "b.prague"), "revision 1;\nnamespace B;\nstruct Meta {\n  int64 id = 1;\n}\n")
 
 	out := t.TempDir()
 	var stderr bytes.Buffer
 	code := run([]string{"generate", "-I", dir, "-o", out,
-		filepath.Join(dir, "a.protop"), filepath.Join(dir, "b.protop")}, io.Discard, &stderr)
+		filepath.Join(dir, "a.prague"), filepath.Join(dir, "b.prague")}, io.Discard, &stderr)
 	if code != exitUsage {
 		t.Fatalf("exit %d, want %d", code, exitUsage)
 	}
@@ -615,10 +615,10 @@ func TestTwoDeclarationsThatWouldShareAFileAreAnError(t *testing.T) {
 // The default is the caret form, and --error-format=msvs is the shape MSBuild
 // parses. The two literals are what each consumer reads; neither is generated.
 func TestTheErrorFormatFlagPicksTheRenderer(t *testing.T) {
-	broken := writeTemp(t, "broken.protop", "revision 1;\nnamespace A;\nstruct S {\n  int64 id = 0;\n}\n")
+	broken := writeTemp(t, "broken.prague", "revision 1;\nnamespace A;\nstruct S {\n  int64 id = 0;\n}\n")
 
 	def := stderrOf(t, "check", broken)
-	if !strings.Contains(def, "broken.protop:4:14: error PROTOP0300: ") {
+	if !strings.Contains(def, "broken.prague:4:14: error PROTOP0300: ") {
 		t.Errorf("the default format is not the caret form:\n%s", def)
 	}
 	if !strings.Contains(def, "^") {
@@ -626,7 +626,7 @@ func TestTheErrorFormatFlagPicksTheRenderer(t *testing.T) {
 	}
 
 	msvs := stderrOf(t, "check", "--error-format=msvs", broken)
-	if !strings.Contains(msvs, "broken.protop(4,14): error PROTOP0300: ") {
+	if !strings.Contains(msvs, "broken.prague(4,14): error PROTOP0300: ") {
 		t.Errorf("--error-format=msvs is not MSBuild's form:\n%s", msvs)
 	}
 	if strings.Contains(msvs, "^") {
@@ -644,14 +644,14 @@ func TestTheErrorFormatFlagPicksTheRenderer(t *testing.T) {
 // visible from here: a single-file compile cannot tell the two apart.
 func TestADiagnosticInAnImportedFileNamesThatFile(t *testing.T) {
 	dir := t.TempDir()
-	write(t, filepath.Join(dir, "a.protop"), "revision 1;\nnamespace A;\nimport \"b.protop\";\nstruct S {\n  int64 id = 1;\n}\n")
-	write(t, filepath.Join(dir, "b.protop"), "revision 1;\nnamespace B;\nstruct T {\n  int64 id = 0;\n}\n")
+	write(t, filepath.Join(dir, "a.prague"), "revision 1;\nnamespace A;\nimport \"b.prague\";\nstruct S {\n  int64 id = 1;\n}\n")
+	write(t, filepath.Join(dir, "b.prague"), "revision 1;\nnamespace B;\nstruct T {\n  int64 id = 0;\n}\n")
 
-	got := stderrOf(t, "check", "-I", dir, filepath.Join(dir, "a.protop"))
-	if !strings.Contains(got, "b.protop:4:14:") {
-		t.Errorf("the diagnostic does not name b.protop:\n%s", got)
+	got := stderrOf(t, "check", "-I", dir, filepath.Join(dir, "a.prague"))
+	if !strings.Contains(got, "b.prague:4:14:") {
+		t.Errorf("the diagnostic does not name b.prague:\n%s", got)
 	}
-	if strings.Contains(got, "a.protop:4:14:") {
+	if strings.Contains(got, "a.prague:4:14:") {
 		t.Errorf("the diagnostic was rendered against the wrong file:\n%s", got)
 	}
 }
@@ -789,7 +789,7 @@ func TestGenerateWithNoOutputFlagWritesIntoTheWorkingDirectory(t *testing.T) {
 // caller finds out at the C# compile. Exit 2 and not 1: the schema is not
 // wrong, the command is -- it named a file there is nothing to generate from.
 func TestAProgramThatDeclaresNothingIsAnError(t *testing.T) {
-	f := writeTemp(t, "empty.protop", "revision 1;\nnamespace A;\n")
+	f := writeTemp(t, "empty.prague", "revision 1;\nnamespace A;\n")
 	out := t.TempDir()
 	var stderr bytes.Buffer
 	if got := run([]string{"generate", "-o", out, f}, io.Discard, &stderr); got != exitUsage {
@@ -875,11 +875,11 @@ func names(t *testing.T, dir string) []string {
 	return out
 }
 
-// exampleFiles is every .protop in examples/prague, sorted, which is what a
+// exampleFiles is every .prague in examples/prague, sorted, which is what a
 // whole-program generate is asked for.
 func exampleFiles(t *testing.T) []string {
 	t.Helper()
-	paths, err := filepath.Glob(filepath.Join(examplesDir, "*.protop"))
+	paths, err := filepath.Glob(filepath.Join(examplesDir, "*.prague"))
 	if err != nil || len(paths) == 0 {
 		t.Fatalf("no examples: %v", err)
 	}

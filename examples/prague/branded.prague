@@ -4,7 +4,7 @@ revision 1;
 // caches embed.
 namespace Common.IntegratedEventApi.Models.Branded;
 
-import "common-feed-enums.protop";
+import "common-feed-enums.prague";
 
 // BaseProviderObject is corpus/prague/deps/BaseProviderObject.cs, whole.
 //

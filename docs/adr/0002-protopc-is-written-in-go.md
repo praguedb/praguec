@@ -59,7 +59,7 @@ already reassigned by ADR-0001 to golden files against `corpus/prague/`, which
 checks the generated C# against types actually on the wire — a stronger test
 than "it parses".
 
-**No Roslyn source generator, so no live IDE diagnostics on `.protop` files in
+**No Roslyn source generator, so no live IDE diagnostics on `.prague` files in
 Visual Studio or Rider.** The replacement is an LSP server, and that inverts the
 loss: it serves every editor rather than only .NET ones, which is the right
 shape for a language with several backends.

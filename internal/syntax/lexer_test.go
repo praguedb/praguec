@@ -10,7 +10,7 @@ import (
 // lex tokenises src and fails the test if any lexical diagnostic was raised.
 func lex(t *testing.T, src string) (*source.File, []Token) {
 	t.Helper()
-	f := source.NewFile("x.protop", src)
+	f := source.NewFile("x.prague", src)
 	var bag diag.Bag
 	toks := Lex(f, &bag)
 	if bag.HasErrors() {
@@ -129,10 +129,10 @@ func TestLexSkipsComments(t *testing.T) {
 }
 
 func TestLexStringLiteralSpansItsQuotes(t *testing.T) {
-	f, toks := lex(t, `import "prague.protop";`)
+	f, toks := lex(t, `import "prague.prague";`)
 	assertKinds(t, kinds(toks), KindIdent, KindString, KindSemi, KindEOF)
-	if got := f.Slice(toks[1].Span); got != `"prague.protop"` {
-		t.Errorf("string spans %q, want %q", got, `"prague.protop"`)
+	if got := f.Slice(toks[1].Span); got != `"prague.prague"` {
+		t.Errorf("string spans %q, want %q", got, `"prague.prague"`)
 	}
 }
 
@@ -161,14 +161,14 @@ func TestLexDiagnostics(t *testing.T) {
 		wantSpan string
 	}{
 		{"unterminated block comment", "revision 1;\n/* and then nothing\n", diag.UnterminatedBlockComment, 2, 1, "/*"},
-		{"unterminated string at a newline", "import \"prague.protop\n;", diag.UnterminatedString, 1, 8, "\"prague.protop"},
+		{"unterminated string at a newline", "import \"prague.prague\n;", diag.UnterminatedString, 1, 8, "\"prague.prague"},
 		{"unterminated string at end of file", "import \"prague", diag.UnterminatedString, 1, 8, "\"prague"},
 		{"unexpected character", "revision @ 1;", diag.UnexpectedCharacter, 1, 10, "@"},
 		{"integer out of range", "tag = 99999999999999999999;", diag.IntegerOutOfRange, 1, 7, "99999999999999999999"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			f := source.NewFile("x.protop", tt.src)
+			f := source.NewFile("x.prague", tt.src)
 			var bag diag.Bag
 			Lex(f, &bag)
 
@@ -193,7 +193,7 @@ func TestLexDiagnostics(t *testing.T) {
 // One stray byte must not hide every mistake after it: the lexer reports and
 // keeps scanning.
 func TestLexRecoversFromAnUnexpectedCharacter(t *testing.T) {
-	f := source.NewFile("x.protop", "revision # 1;")
+	f := source.NewFile("x.prague", "revision # 1;")
 	var bag diag.Bag
 	toks := Lex(f, &bag)
 	if bag.Len() != 1 {

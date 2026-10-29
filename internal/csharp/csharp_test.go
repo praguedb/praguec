@@ -36,7 +36,7 @@ import (
 //     TestCorpusMembers. Neither is reachable by regenerating anything.
 //
 //   - That backstop reaches exactly as far as the coverage table does. A
-//     declaration no corpus row reproduces -- presence.protop, the MessagePack
+//     declaration no corpus row reproduces -- presence.prague, the MessagePack
 //     namespace fixture, the spec sections beyond the reproduced set -- has no
 //     oracle at all, and for those a regenerated golden is a record of what the
 //     emitter did, not evidence that it was right. They are small and reviewed,
@@ -51,8 +51,8 @@ var update = flag.Bool("update", false, "rewrite the goldens in testdata/golden"
 // reach into another package's testdata because testdata belongs to the package
 // that uses it; TestSpecFixturesAreVerbatim is what holds them to the spec.
 const (
-	pragueFixture   = "prague.protop"
-	consumerFixture = "consumer.protop"
+	pragueFixture   = "prague.prague"
+	consumerFixture = "consumer.prague"
 )
 
 var (
@@ -277,7 +277,7 @@ func collapseSpace(s string) string {
 // them writes a `bool` either, so this fixture exists to carry the rows the
 // spec's own text happens not to reach.
 func TestPresenceComposes(t *testing.T) {
-	assertGoldens(t, "presence", emitFixtures(t, "presence.protop"))
+	assertGoldens(t, "presence", emitFixtures(t, "presence.prague"))
 }
 
 // A declaration never writes a using for the namespace it is already in.
@@ -295,7 +295,7 @@ func TestPresenceComposes(t *testing.T) {
 // reference it makes is genuinely cross-namespace.
 func TestOwnNamespaceIsNeverAUsing(t *testing.T) {
 	units := emitSource(t, map[string]string{
-		"a.protop": `revision 1;
+		"a.prague": `revision 1;
 namespace A;
 record Inner { int64 id = 1; }
 table Outer {
@@ -317,8 +317,8 @@ table Outer {
 // using at all, so the list is empty rather than one short. No corpus file does
 // this; the branch is defensive and pinned rather than left unexercised.
 func TestTheMessagePackNamespaceNeedsNoUsingOfItself(t *testing.T) {
-	assertGoldens(t, "messagepack", emitFixtures(t, "messagepack.protop"))
-	for _, u := range emitFixtures(t, "messagepack.protop") {
+	assertGoldens(t, "messagepack", emitFixtures(t, "messagepack.prague"))
+	for _, u := range emitFixtures(t, "messagepack.prague") {
 		if got := usingsOf(u.Source); len(got) != 0 {
 			t.Errorf("%s emits usings %v from inside namespace MessagePack, want none", u.TypeName, got)
 		}
@@ -346,7 +346,7 @@ func usingsOf(src string) []string {
 // -- so it is pinned here.
 func TestEmitKeepsTheSchemasOrder(t *testing.T) {
 	schema := schemaOf(t, map[string]string{
-		"a.protop": `revision 1;
+		"a.prague": `revision 1;
 namespace A;
 struct First { int64 a = 1; }
 struct Second { int64 a = 1; }
@@ -374,7 +374,7 @@ struct Third { int64 a = 1; }
 // on all three at once for that reason.
 func TestEveryMemberKindCarriesItsAnnotations(t *testing.T) {
 	units := emitSource(t, map[string]string{
-		"a.protop": `revision 1;
+		"a.prague": `revision 1;
 namespace A;
 table T {
   int64 event_id = 2 [cs: OnAField];
@@ -398,7 +398,7 @@ table T {
 // would pass every text comparison in this package.
 func TestEveryUnitCarriesItsDeclaration(t *testing.T) {
 	schema := schemaOf(t, map[string]string{
-		"a.protop": `revision 1;
+		"a.prague": `revision 1;
 namespace A;
 struct S { int64 a = 1; }
 enum E { UNKNOWN = 0; }
@@ -562,7 +562,7 @@ func keyAttributes(src string) []string {
 // different number and not this one.
 func TestANarrowedAndRenamedMemberEmitsAtItsSourcesKey(t *testing.T) {
 	units := emitSource(t, map[string]string{
-		"a.protop": `revision 1;
+		"a.prague": `revision 1;
 namespace A;
 record Inner {
   int64 id = 1;
@@ -728,23 +728,23 @@ view MixedView of Mixed {
 // view's `SlimInner` -- do not live in the same one. With both in one namespace
 // the import list cannot tell which of them the emission named.
 var aliasAcrossNamespaces = map[string]string{
-	"a.protop": `revision 1;
+	"a.prague": `revision 1;
 namespace A;
 record Inner {
   int64 x = 1;
 }
 `,
-	"c.protop": `revision 1;
+	"c.prague": `revision 1;
 namespace C;
-import "a.protop";
+import "a.prague";
 view SlimInner of Inner {
   x;
 }
 `,
-	"b.protop": `revision 1;
+	"b.prague": `revision 1;
 namespace B;
-import "a.protop";
-import "c.protop";
+import "a.prague";
+import "c.prague";
 table Outer {
   key int64 id = 1;
   Inner odds = 7;
@@ -793,10 +793,10 @@ view Narrowing of Outer {
 // fixture renames a key part, the body fails here instead of compiling nowhere.
 func TestAnExpressionBodyNamesOnlyMembersItsOwnFileDeclares(t *testing.T) {
 	units := emitFixtures(t, pragueFixture, consumerFixture)
-	units = append(units, emitSource(t, map[string]string{"a.protop": aliasShapes})...)
+	units = append(units, emitSource(t, map[string]string{"a.prague": aliasShapes})...)
 	units = append(units, emitSource(t, aliasAcrossNamespaces)...)
-	units = append(units, emitSource(t, map[string]string{"a.protop": aliasChain})...)
-	units = append(units, emitSource(t, map[string]string{"a.protop": compositeKeyShapes})...)
+	units = append(units, emitSource(t, map[string]string{"a.prague": aliasChain})...)
+	units = append(units, emitSource(t, map[string]string{"a.prague": compositeKeyShapes})...)
 
 	checked := assertBodiesNameDeclaredMembers(t, units)
 
@@ -1051,7 +1051,7 @@ func TestAnAliasCarriedThroughAViewImportsTheTypeItEmits(t *testing.T) {
 // golden the fixing ticket has to argue with, and the emission here is the
 // pre-#55 fallback rather than an answer.
 func TestAViewThatSelectsAnAliasAndNotItsTargetStillEmits(t *testing.T) {
-	units := emitSource(t, map[string]string{"a.protop": `revision 1;
+	units := emitSource(t, map[string]string{"a.prague": `revision 1;
 namespace A;
 record Inner {
   int64 x = 1;

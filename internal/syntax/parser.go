@@ -284,7 +284,7 @@ func (p *parser) parseNamespace(file *File) {
 	file.Namespace = ns
 }
 
-// parseImport reads `import "prague.protop";`.
+// parseImport reads `import "prague.prague";`.
 //
 // Imports are grouped under the file header, and an import written below a
 // declaration is diagnosed. The reason: what a file depends on is a property of

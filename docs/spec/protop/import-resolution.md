@@ -2,7 +2,7 @@
 
 Part of §2 of the [protop specification](../protop.md).
 
-`import "prague.protop";` names a file, not a location — and the two files in
+`import "prague.prague";` names a file, not a location — and the two files in
 this document live in two different repositories. Resolution *is* the
 distribution model, so it has to be stated rather than assumed.
 
@@ -20,7 +20,7 @@ was about. Owning the language means owning resolution, and owning resolution
 means it can be the one thing Protobuf never shipped.
 
 **Decided:** git, immutable tag, toolchain-fetched, lock file. **Open:** whether
-the module path lives in the import line (`import "github.com/org/schemas@v1/prague.protop"`)
+the module path lives in the import line (`import "github.com/org/schemas@v1/prague.prague"`)
 or in a manifest beside it; what the manifest is called; how the cache is keyed;
 whether the tag is verified by content hash the way `go.sum` does it.
 

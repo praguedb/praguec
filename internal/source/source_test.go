@@ -3,7 +3,7 @@ package source
 import "testing"
 
 func TestPositionAndLine(t *testing.T) {
-	f := NewFile("prague.protop", "revision 1;\n\nstruct Venue {\n  int64 id = 2;\n}\n")
+	f := NewFile("prague.prague", "revision 1;\n\nstruct Venue {\n  int64 id = 2;\n}\n")
 
 	tests := []struct {
 		name     string
@@ -36,7 +36,7 @@ func TestPositionAndLine(t *testing.T) {
 // Columns count runes, not bytes: a caret has to land under the glyph the
 // message is about, and protop source is UTF-8 -- comments above all.
 func TestPositionCountsRunesNotBytes(t *testing.T) {
-	f := NewFile("x.protop", "// naïve — dashes\nstruct S {}\n")
+	f := NewFile("x.prague", "// naïve — dashes\nstruct S {}\n")
 	at := Pos(len("// naïve — dashes"))
 	if got := f.Position(at); got.Line != 1 || got.Column != 18 {
 		t.Errorf("Position(%d) = %d:%d, want 1:18", at, got.Line, got.Column)
@@ -44,7 +44,7 @@ func TestPositionCountsRunesNotBytes(t *testing.T) {
 }
 
 func TestFileWithoutTrailingNewlineHasOneLine(t *testing.T) {
-	f := NewFile("x.protop", "revision 1;")
+	f := NewFile("x.prague", "revision 1;")
 	if got := f.Lines(); got != 1 {
 		t.Errorf("Lines() = %d, want 1", got)
 	}
@@ -54,7 +54,7 @@ func TestFileWithoutTrailingNewlineHasOneLine(t *testing.T) {
 }
 
 func TestSliceAndSpan(t *testing.T) {
-	f := NewFile("x.protop", "struct Venue {}")
+	f := NewFile("x.prague", "struct Venue {}")
 	name := Span{Start: 7, End: 12}
 	if got := f.Slice(name); got != "Venue" {
 		t.Errorf("Slice = %q, want %q", got, "Venue")

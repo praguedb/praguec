@@ -381,7 +381,7 @@ func TestRaiseTakesTheSeverityFromTheCode(t *testing.T) {
 	severities[NotYetImplemented] = Warning
 	t.Cleanup(func() { delete(severities, NotYetImplemented) })
 
-	f := source.NewFile("x.protop", "revision 1;\n")
+	f := source.NewFile("x.prague", "revision 1;\n")
 	var b Bag
 	b.Raise(NotYetImplemented, source.SpanAt(0), "on the bag")
 	b.In(f).Raise(NotYetImplemented, source.SpanAt(0), "on the sink")
@@ -406,11 +406,11 @@ func TestCodeString(t *testing.T) {
 }
 
 func TestRenderUnderlinesTheSpan(t *testing.T) {
-	f := source.NewFile("prague.protop", "revision 1;\nstruct Venue {\n  int64 id = 0;\n}\n")
+	f := source.NewFile("prague.prague", "revision 1;\nstruct Venue {\n  int64 id = 0;\n}\n")
 	var b Bag
 	b.Raise(TagOutOfRange, source.Span{Start: 40, End: 41}, "field tag must be greater than 0")
 
-	want := "prague.protop:3:14: error PROTOP0300: field tag must be greater than 0\n" +
+	want := "prague.prague:3:14: error PROTOP0300: field tag must be greater than 0\n" +
 		"  |\n" +
 		"3 |   int64 id = 0;\n" +
 		"  |              ^"
@@ -420,11 +420,11 @@ func TestRenderUnderlinesTheSpan(t *testing.T) {
 }
 
 func TestRenderClampsAMultiLineSpanToItsFirstLine(t *testing.T) {
-	f := source.NewFile("x.protop", "/* forever\nand ever\n")
+	f := source.NewFile("x.prague", "/* forever\nand ever\n")
 	var b Bag
 	b.Raise(UnterminatedBlockComment, source.Span{Start: 0, End: source.Pos(len(f.Text))}, "unterminated block comment")
 
-	want := "x.protop:1:1: error PROTOP0001: unterminated block comment\n" +
+	want := "x.prague:1:1: error PROTOP0001: unterminated block comment\n" +
 		"  |\n" +
 		"1 | /* forever\n" +
 		"  | ^^^^^^^^^^"
@@ -434,11 +434,11 @@ func TestRenderClampsAMultiLineSpanToItsFirstLine(t *testing.T) {
 }
 
 func TestRenderOfAnEmptyLineIsTheHeadlineAlone(t *testing.T) {
-	f := source.NewFile("x.protop", "")
+	f := source.NewFile("x.prague", "")
 	var b Bag
 	b.Raise(MissingRevision, source.SpanAt(0), "a protop file must open with `revision 1;`")
 
-	want := "x.protop:1:1: error PROTOP0100: a protop file must open with `revision 1;`"
+	want := "x.prague:1:1: error PROTOP0100: a protop file must open with `revision 1;`"
 	if got := Render(f, b.All()[0]); got != want {
 		t.Errorf("Render = %q, want %q", got, want)
 	}
@@ -455,11 +455,11 @@ func TestRenderOfAnEmptyLineIsTheHeadlineAlone(t *testing.T) {
 // warning that prints as an error is a build someone goes looking for a reason
 // to have failed.
 func TestRenderSaysWhichSeverityItIs(t *testing.T) {
-	f := source.NewFile("x.protop", "map<string, int64> m = 1;\n")
+	f := source.NewFile("x.prague", "map<string, int64> m = 1;\n")
 	var b Bag
 	b.add(Warning, NotYetImplemented, source.Span{Start: 0, End: 3}, "`map` is not read yet")
 
-	want := "x.protop:1:1: warning PROTOP0900: `map` is not read yet\n" +
+	want := "x.prague:1:1: warning PROTOP0900: `map` is not read yet\n" +
 		"  |\n" +
 		"1 | map<string, int64> m = 1;\n" +
 		"  | ^^^"
@@ -541,16 +541,16 @@ func TestHasErrorsFindsAnErrorAnywhereInTheBag(t *testing.T) {
 // the diagnostic's own file over whatever the caller had to hand, which is what
 // makes one bag over a whole program renderable at all.
 func TestADiagnosticCanNameTheFileItsSpanIsIn(t *testing.T) {
-	prague := source.NewFile("prague.protop", "revision 1;\n")
-	consumer := source.NewFile("consumer.protop", "import \"nope.protop\";\n")
+	prague := source.NewFile("prague.prague", "revision 1;\n")
+	consumer := source.NewFile("consumer.prague", "import \"nope.prague\";\n")
 
 	var b Bag
-	b.In(consumer).Raise(ImportNotFound, source.Span{Start: 7, End: 20}, "no file %q in the set", "nope.protop")
+	b.In(consumer).Raise(ImportNotFound, source.Span{Start: 7, End: 20}, "no file %q in the set", "nope.prague")
 
 	got := Render(prague, b.All()[0])
-	want := "consumer.protop:1:8: error PROTOP0107: no file \"nope.protop\" in the set\n" +
+	want := "consumer.prague:1:8: error PROTOP0107: no file \"nope.prague\" in the set\n" +
 		"  |\n" +
-		"1 | import \"nope.protop\";\n" +
+		"1 | import \"nope.prague\";\n" +
 		"  |        ^^^^^^^^^^^^^"
 	if got != want {
 		t.Errorf("Render =\n%s\n\nwant\n%s", got, want)
@@ -585,20 +585,20 @@ func TestADiagnosticRaisedOnTheBagNamesNoFile(t *testing.T) {
 // because the format is a contract with a program protopc does not own, and the
 // only way to hold a contract like that is to write down the other side of it.
 func TestRenderMSVSIsTheShapeMSBuildParses(t *testing.T) {
-	f := source.NewFile("prague.protop", "revision 1;\nstruct S {\n  int64 id = 0;\n}\n")
+	f := source.NewFile("prague.prague", "revision 1;\nstruct S {\n  int64 id = 0;\n}\n")
 
 	var b Bag
 	b.Raise(TagOutOfRange, source.Span{Start: 36, End: 37}, "field tag must be greater than 0")
 
 	got := RenderAs(MSVS, f, b.All()[0])
-	want := "prague.protop(3,14): error PROTOP0300: field tag must be greater than 0"
+	want := "prague.prague(3,14): error PROTOP0300: field tag must be greater than 0"
 	if got != want {
 		t.Errorf("RenderAs(MSVS) = %q\nwant %q", got, want)
 	}
 
 	// The same diagnostic in the same place, in the default form, so that the
 	// two are held apart by something other than which function was called.
-	if gcc := RenderAs(GCC, f, b.All()[0]); !strings.HasPrefix(gcc, "prague.protop:3:14: error PROTOP0300: ") {
+	if gcc := RenderAs(GCC, f, b.All()[0]); !strings.HasPrefix(gcc, "prague.prague:3:14: error PROTOP0300: ") {
 		t.Errorf("RenderAs(GCC) = %q, want the colon form", gcc)
 	}
 }
@@ -610,10 +610,10 @@ func TestRenderMSVSIsTheShapeMSBuildParses(t *testing.T) {
 // first one exists rather than after a build has silently swallowed it.
 func TestRenderMSVSOfADiagnosticWithNoFile(t *testing.T) {
 	var b Bag
-	b.Raise(ImportNotFound, source.SpanAt(0), "no file named %q was found", "gone.protop")
+	b.Raise(ImportNotFound, source.SpanAt(0), "no file named %q was found", "gone.prague")
 
 	got := RenderAs(MSVS, nil, b.All()[0])
-	want := `protopc : error PROTOP0107: no file named "gone.protop" was found`
+	want := `protopc : error PROTOP0107: no file named "gone.prague" was found`
 	if got != want {
 		t.Errorf("RenderAs(MSVS) = %q\nwant %q", got, want)
 	}
@@ -624,10 +624,10 @@ func TestRenderMSVSOfADiagnosticWithNoFile(t *testing.T) {
 // origin. Asserted because the alternative, until now, was a nil dereference.
 func TestRenderGCCOfADiagnosticWithNoFile(t *testing.T) {
 	var b Bag
-	b.Raise(ImportNotFound, source.SpanAt(0), "no file named %q was found", "gone.protop")
+	b.Raise(ImportNotFound, source.SpanAt(0), "no file named %q was found", "gone.prague")
 
 	got := Render(nil, b.All()[0])
-	want := `protopc: error PROTOP0107: no file named "gone.protop" was found`
+	want := `protopc: error PROTOP0107: no file named "gone.prague" was found`
 	if got != want {
 		t.Errorf("Render = %q\nwant %q", got, want)
 	}
@@ -637,13 +637,13 @@ func TestRenderGCCOfADiagnosticWithNoFile(t *testing.T) {
 // its tail read as an unrelated line of build output. protopc's messages are
 // long enough for this not to be hypothetical.
 func TestRenderMSVSFlattensAMultiLineMessage(t *testing.T) {
-	f := source.NewFile("a.protop", "revision 1;\n")
+	f := source.NewFile("a.prague", "revision 1;\n")
 
 	var b Bag
 	b.Raise(UnknownType, source.SpanAt(0), "one\ntwo\r\nthree\rfour")
 
 	got := RenderAs(MSVS, f, b.All()[0])
-	want := "a.protop(1,1): error PROTOP0311: one two three four"
+	want := "a.prague(1,1): error PROTOP0311: one two three four"
 	if got != want {
 		t.Errorf("RenderAs(MSVS) = %q\nwant %q", got, want)
 	}
@@ -652,13 +652,13 @@ func TestRenderMSVSFlattensAMultiLineMessage(t *testing.T) {
 // A warning renders as a warning in both forms. MSBuild branches on the word:
 // the same line with `error` fails a build that the `warning` spelling does not.
 func TestRenderMSVSSaysWhichSeverityItIs(t *testing.T) {
-	f := source.NewFile("a.protop", "revision 1;\n")
+	f := source.NewFile("a.prague", "revision 1;\n")
 
 	var b Bag
 	b.add(Warning, NotYetImplemented, source.SpanAt(0), "not yet")
 
 	got := RenderAs(MSVS, f, b.All()[0])
-	want := "a.protop(1,1): warning PROTOP0900: not yet"
+	want := "a.prague(1,1): warning PROTOP0900: not yet"
 	if got != want {
 		t.Errorf("RenderAs(MSVS) = %q\nwant %q", got, want)
 	}
@@ -668,14 +668,14 @@ func TestRenderMSVSSaysWhichSeverityItIs(t *testing.T) {
 // does. Rendering a cross-file diagnostic against the wrong file is the bug
 // Diagnostic.File exists to prevent, and it has to be prevented in both forms.
 func TestRenderMSVSHonoursTheFileTheDiagnosticNames(t *testing.T) {
-	prague := source.NewFile("prague.protop", "revision 1;\n")
-	consumer := source.NewFile("consumer.protop", "import \"nope.protop\";\n")
+	prague := source.NewFile("prague.prague", "revision 1;\n")
+	consumer := source.NewFile("consumer.prague", "import \"nope.prague\";\n")
 
 	var b Bag
-	b.In(consumer).Raise(ImportNotFound, source.Span{Start: 7, End: 20}, "no file %q in the set", "nope.protop")
+	b.In(consumer).Raise(ImportNotFound, source.Span{Start: 7, End: 20}, "no file %q in the set", "nope.prague")
 
 	got := RenderAs(MSVS, prague, b.All()[0])
-	want := "consumer.protop(1,8): error PROTOP0107: no file \"nope.protop\" in the set"
+	want := "consumer.prague(1,8): error PROTOP0107: no file \"nope.prague\" in the set"
 	if got != want {
 		t.Errorf("RenderAs(MSVS) = %q\nwant %q", got, want)
 	}
@@ -732,7 +732,7 @@ func TestTheDefaultFormatIsTerminalFirst(t *testing.T) {
 	if zero != GCC {
 		t.Fatalf("the zero Format is %v, want gcc", zero)
 	}
-	f := source.NewFile("a.protop", "revision 1;\n")
+	f := source.NewFile("a.prague", "revision 1;\n")
 	var b Bag
 	b.Raise(UnknownType, source.SpanAt(0), "x")
 	if RenderAs(zero, f, b.All()[0]) != Render(f, b.All()[0]) {
@@ -745,8 +745,8 @@ func TestTheDefaultFormatIsTerminalFirst(t *testing.T) {
 // compile renders its snippet against the first -- which is not a wrong
 // position, it is a position in the wrong file, and it points at real source.
 func TestWithinStampsTheFileOnWhatItAdds(t *testing.T) {
-	first := source.NewFile("first.protop", "revision 1;\n")
-	fourth := source.NewFile("fourth.protop", "revision 1;\n")
+	first := source.NewFile("first.prague", "revision 1;\n")
+	fourth := source.NewFile("fourth.prague", "revision 1;\n")
 
 	var b Bag
 	b.Raise(MissingNamespace, source.SpanAt(0), "before")
@@ -776,8 +776,8 @@ func TestWithinStampsTheFileOnWhatItAdds(t *testing.T) {
 // which is real source at a real position in the wrong file, the hardest kind
 // of wrong output to disbelieve.
 func TestWithinStampsEveryDiagnosticTheStageAdded(t *testing.T) {
-	first := source.NewFile("first.protop", "revision 1;\n")
-	fourth := source.NewFile("fourth.protop", "revision 1;\n")
+	first := source.NewFile("first.prague", "revision 1;\n")
+	fourth := source.NewFile("fourth.prague", "revision 1;\n")
 
 	var b Bag
 	b.Within(first, func(bag *Bag) {
@@ -794,7 +794,7 @@ func TestWithinStampsEveryDiagnosticTheStageAdded(t *testing.T) {
 	}
 	for i, d := range b.All()[1:] {
 		if d.File != fourth {
-			t.Errorf("diagnostic %d of the second file names %v, want fourth.protop", i, d.File)
+			t.Errorf("diagnostic %d of the second file names %v, want fourth.prague", i, d.File)
 		}
 	}
 }
@@ -803,8 +803,8 @@ func TestWithinStampsEveryDiagnosticTheStageAdded(t *testing.T) {
 // knows which file it is talking about -- the checker, reporting a view in one
 // file against its source in another -- is more right than the driver is.
 func TestWithinLeavesAnAlreadyNamedFileAlone(t *testing.T) {
-	outer := source.NewFile("outer.protop", "revision 1;\n")
-	inner := source.NewFile("inner.protop", "revision 1;\n")
+	outer := source.NewFile("outer.prague", "revision 1;\n")
+	inner := source.NewFile("inner.prague", "revision 1;\n")
 
 	var b Bag
 	b.Within(outer, func(bag *Bag) {

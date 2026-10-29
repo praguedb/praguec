@@ -202,35 +202,35 @@ func loadIn(t *testing.T, dir string, roots, inputs []string) (*Result, *diag.Ba
 // -- not under the path it was opened from.
 func TestAnImportResolvesAgainstTheIncludeRoots(t *testing.T) {
 	dir := plant(t,
-		file{"schemas/a.protop", src("A", "b.protop")},
-		file{"schemas/b.protop", src("B")},
+		file{"schemas/a.prague", src("A", "b.prague")},
+		file{"schemas/b.prague", src("B")},
 	)
-	res, bag, err := loadIn(t, dir, []string{"schemas"}, []string{"schemas/a.protop"})
+	res, bag, err := loadIn(t, dir, []string{"schemas"}, []string{"schemas/a.prague"})
 	if err != nil {
 		t.Fatal(err)
 	}
 	assertCodes(t, bag)
-	if got, want := keys(res.Set), []string{"a.protop", "b.protop"}; !slices.Equal(got, want) {
+	if got, want := keys(res.Set), []string{"a.prague", "b.prague"}; !slices.Equal(got, want) {
 		t.Errorf("set keys = %v, want %v", got, want)
 	}
-	if got, want := res.Targets, []string{"a.protop"}; !slices.Equal(got, want) {
+	if got, want := res.Targets, []string{"a.prague"}; !slices.Equal(got, want) {
 		t.Errorf("targets = %v, want %v", got, want)
 	}
 }
 
 // An input under a root is keyed by its path *relative to that root*, which is
 // the import string another file would name it by. Keying it by the path as
-// typed would put the same file in the set twice -- once as `schemas/a.protop`
-// and once as `a.protop` -- and every declaration in it would be emitted twice.
+// typed would put the same file in the set twice -- once as `schemas/a.prague`
+// and once as `a.prague` -- and every declaration in it would be emitted twice.
 func TestAnInputIsKeyedByItsPathRelativeToItsRoot(t *testing.T) {
 	dir := plant(t,
-		file{"schemas/nested/a.protop", src("A")},
+		file{"schemas/nested/a.prague", src("A")},
 	)
-	res, _, err := loadIn(t, dir, []string{"schemas"}, []string{"schemas/nested/a.protop"})
+	res, _, err := loadIn(t, dir, []string{"schemas"}, []string{"schemas/nested/a.prague"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got, want := keys(res.Set), []string{"nested/a.protop"}; !slices.Equal(got, want) {
+	if got, want := keys(res.Set), []string{"nested/a.prague"}; !slices.Equal(got, want) {
 		t.Errorf("set keys = %v, want %v", got, want)
 	}
 }
@@ -239,36 +239,36 @@ func TestAnInputIsKeyedByItsPathRelativeToItsRoot(t *testing.T) {
 // the key the import names. Two entries would be two files to the checker.
 func TestAFileNamedAndImportedIsLoadedOnce(t *testing.T) {
 	dir := plant(t,
-		file{"schemas/a.protop", src("A", "b.protop")},
-		file{"schemas/b.protop", src("B")},
+		file{"schemas/a.prague", src("A", "b.prague")},
+		file{"schemas/b.prague", src("B")},
 	)
-	res, _, err := loadIn(t, dir, []string{"schemas"}, []string{"schemas/a.protop", "schemas/b.protop"})
+	res, _, err := loadIn(t, dir, []string{"schemas"}, []string{"schemas/a.prague", "schemas/b.prague"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got, want := keys(res.Set), []string{"a.protop", "b.protop"}; !slices.Equal(got, want) {
+	if got, want := keys(res.Set), []string{"a.prague", "b.prague"}; !slices.Equal(got, want) {
 		t.Errorf("set keys = %v, want %v", got, want)
 	}
-	if got, want := res.Targets, []string{"a.protop", "b.protop"}; !slices.Equal(got, want) {
+	if got, want := res.Targets, []string{"a.prague", "b.prague"}; !slices.Equal(got, want) {
 		t.Errorf("targets = %v, want %v", got, want)
 	}
 }
 
 // With no -I, the root is the directory of each input, so that `protopc
-// generate schemas/a.protop` finds the `import "b.protop"` sitting next to it.
+// generate schemas/a.prague` finds the `import "b.prague"` sitting next to it.
 func TestTheDefaultRootIsTheDirectoryOfEachInput(t *testing.T) {
 	dir := plant(t,
-		file{"one/a.protop", src("A", "b.protop")},
-		file{"one/b.protop", src("B")},
-		file{"two/c.protop", src("C", "d.protop")},
-		file{"two/d.protop", src("D")},
+		file{"one/a.prague", src("A", "b.prague")},
+		file{"one/b.prague", src("B")},
+		file{"two/c.prague", src("C", "d.prague")},
+		file{"two/d.prague", src("D")},
 	)
-	res, bag, err := loadIn(t, dir, nil, []string{"one/a.protop", "two/c.protop"})
+	res, bag, err := loadIn(t, dir, nil, []string{"one/a.prague", "two/c.prague"})
 	if err != nil {
 		t.Fatal(err)
 	}
 	assertCodes(t, bag)
-	want := []string{"a.protop", "b.protop", "c.protop", "d.protop"}
+	want := []string{"a.prague", "b.prague", "c.prague", "d.prague"}
 	if got := keys(res.Set); !slices.Equal(got, want) {
 		t.Errorf("set keys = %v, want %v", got, want)
 	}
@@ -280,11 +280,11 @@ func TestTheDefaultRootIsTheDirectoryOfEachInput(t *testing.T) {
 // open on, decided by accident.
 func TestAnExplicitRootReplacesTheDefaultRatherThanExtendingIt(t *testing.T) {
 	dir := plant(t,
-		file{"one/a.protop", src("A", "b.protop")},
-		file{"one/b.protop", src("B")},
+		file{"one/a.prague", src("A", "b.prague")},
+		file{"one/b.prague", src("B")},
 		file{"empty/.keep", ""},
 	)
-	_, bag, err := loadIn(t, dir, []string{"empty"}, []string{"one/a.protop"})
+	_, bag, err := loadIn(t, dir, []string{"empty"}, []string{"one/a.prague"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -297,17 +297,17 @@ func TestAnExplicitRootReplacesTheDefaultRatherThanExtendingIt(t *testing.T) {
 // the case a second root that *also* has it turns into a diagnostic below.
 func TestTheRootsAreSearchedInTheOrderGiven(t *testing.T) {
 	dir := plant(t,
-		file{"a.protop", src("A", "b.protop")},
-		file{"first/b.protop", src("First")},
+		file{"a.prague", src("A", "b.prague")},
+		file{"first/b.prague", src("First")},
 		file{"second/.keep", ""},
 	)
-	res, bag, err := loadIn(t, dir, []string{"first", "second", "."}, []string{"a.protop"})
+	res, bag, err := loadIn(t, dir, []string{"first", "second", "."}, []string{"a.prague"})
 	if err != nil {
 		t.Fatal(err)
 	}
 	assertCodes(t, bag)
-	if got := res.Set["b.protop"].Source.Name; !strings.Contains(got, filepath.Join("first", "b.protop")) {
-		t.Errorf("b.protop was opened from %q, want the first root", got)
+	if got := res.Set["b.prague"].Source.Name; !strings.Contains(got, filepath.Join("first", "b.prague")) {
+		t.Errorf("b.prague was opened from %q, want the first root", got)
 	}
 }
 
@@ -317,11 +317,11 @@ func TestTheRootsAreSearchedInTheOrderGiven(t *testing.T) {
 // file it found so that the user can see what they would be choosing between.
 func TestTwoRootsProvidingOneImportIsDiagnosed(t *testing.T) {
 	dir := plant(t,
-		file{"a.protop", src("A", "b.protop")},
-		file{"one/b.protop", src("One")},
-		file{"two/b.protop", src("Two")},
+		file{"a.prague", src("A", "b.prague")},
+		file{"one/b.prague", src("One")},
+		file{"two/b.prague", src("Two")},
 	)
-	_, bag, err := loadIn(t, dir, []string{"one", "two"}, []string{"a.protop"})
+	_, bag, err := loadIn(t, dir, []string{"one", "two"}, []string{"a.prague"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -336,7 +336,7 @@ func TestTwoRootsProvidingOneImportIsDiagnosed(t *testing.T) {
 	// meaning rests on an open question should say so, and if that clause
 	// went missing the diagnostic would read as a plain conflict with a
 	// winner somebody forgot to print.
-	want := []string{filepath.Join("one", "b.protop"), filepath.Join("two", "b.protop")}
+	want := []string{filepath.Join("one", "b.prague"), filepath.Join("two", "b.prague")}
 	want = append(want, "which one wins is not settled", "remove a root, or rename one of the files")
 	for _, want := range want {
 		if !strings.Contains(msg, want) {
@@ -366,23 +366,23 @@ func TestALoaderDiagnosticFailsTheCompile(t *testing.T) {
 		{
 			name:  "an import nothing provides",
 			roots: []string{"."},
-			files: []file{{"a.protop", src("A", "gone.protop")}},
+			files: []file{{"a.prague", src("A", "gone.prague")}},
 			want:  diag.ImportNotFound,
 		},
 		{
 			name:  "an import two roots provide",
 			roots: []string{"one", "two"},
 			files: []file{
-				{"a.protop", src("A", "b.protop")},
-				{"one/b.protop", src("One")},
-				{"two/b.protop", src("Two")},
+				{"a.prague", src("A", "b.prague")},
+				{"one/b.prague", src("One")},
+				{"two/b.prague", src("Two")},
 			},
 			want: diag.ImportAmbiguous,
 		},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			dir := plant(t, tt.files...)
-			_, bag, err := loadIn(t, dir, tt.roots, []string{"a.protop"})
+			_, bag, err := loadIn(t, dir, tt.roots, []string{"a.prague"})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -409,12 +409,12 @@ func TestALoaderDiagnosticFailsTheCompile(t *testing.T) {
 // two disagreements.
 func TestAnAmbiguousImportIsReportedOnce(t *testing.T) {
 	dir := plant(t,
-		file{"a.protop", src("A", "b.protop")},
-		file{"c.protop", src("C", "b.protop")},
-		file{"one/b.protop", src("One")},
-		file{"two/b.protop", src("Two")},
+		file{"a.prague", src("A", "b.prague")},
+		file{"c.prague", src("C", "b.prague")},
+		file{"one/b.prague", src("One")},
+		file{"two/b.prague", src("Two")},
 	)
-	_, bag, err := loadIn(t, dir, []string{"one", "two", "."}, []string{"a.protop", "c.protop"})
+	_, bag, err := loadIn(t, dir, []string{"one", "two", "."}, []string{"a.prague", "c.prague"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -424,8 +424,8 @@ func TestAnAmbiguousImportIsReportedOnce(t *testing.T) {
 
 // One file reached under two import strings is one unit, under both of them.
 //
-// The two strings are real: with roots `lib` and `.`, the file `lib/b.protop`
-// is `b.protop` to anything searching the first root and `lib/b.protop` to
+// The two strings are real: with roots `lib` and `.`, the file `lib/b.prague`
+// is `b.prague` to anything searching the first root and `lib/b.prague` to
 // anything searching the second, and a schema may well contain both spellings.
 // The key is the import string as written -- check.FileSet's contract, which
 // this package does not get to change -- so the two are different keys by
@@ -435,22 +435,22 @@ func TestAnAmbiguousImportIsReportedOnce(t *testing.T) {
 // declaration in it would be emitted twice under two names.
 func TestOneFileReachedUnderTwoImportStringsIsOneUnitUnderBoth(t *testing.T) {
 	dir := plant(t,
-		file{"a.protop", src("A", "b.protop")},
-		file{"c.protop", src("C", "lib/b.protop")},
-		file{"lib/b.protop", src("B")},
+		file{"a.prague", src("A", "b.prague")},
+		file{"c.prague", src("C", "lib/b.prague")},
+		file{"lib/b.prague", src("B")},
 	)
-	res, bag, err := loadIn(t, dir, []string{"lib", "."}, []string{"a.protop", "c.protop"})
+	res, bag, err := loadIn(t, dir, []string{"lib", "."}, []string{"a.prague", "c.prague"})
 	if err != nil {
 		t.Fatal(err)
 	}
 	assertCodes(t, bag)
-	want := []string{"a.protop", "b.protop", "c.protop", "lib/b.protop"}
+	want := []string{"a.prague", "b.prague", "c.prague", "lib/b.prague"}
 	if got := keys(res.Set); !slices.Equal(got, want) {
 		t.Fatalf("set keys = %v, want %v; both spellings resolved, so both must be findable", got, want)
 	}
 	// Both keys, one unit: the same parsed file, not a second copy of it.
-	if a, b := res.Set["b.protop"], res.Set["lib/b.protop"]; a.Source != b.Source || a.File != b.File {
-		t.Errorf("the two spellings name two units; lib/b.protop was loaded twice")
+	if a, b := res.Set["b.prague"], res.Set["lib/b.prague"]; a.Source != b.Source || a.File != b.File {
+		t.Errorf("the two spellings name two units; lib/b.prague was loaded twice")
 	}
 	var bs int
 	for _, u := range res.Set {
@@ -490,8 +490,8 @@ func TestOneFileReachedUnderTwoImportStringsIsOneUnitUnderBoth(t *testing.T) {
 //     that named one directory.
 func TestOneRootGivenTwiceIsNotAnAmbiguity(t *testing.T) {
 	dir := plant(t,
-		file{"a.protop", src("A", "b.protop", "gone.protop")},
-		file{"one/b.protop", src("One")},
+		file{"a.prague", src("A", "b.prague", "gone.prague")},
+		file{"one/b.prague", src("One")},
 	)
 	// Resolved, so that the relative spelling below and the absolute one are
 	// the same directory to filepath.Abs -- on macOS the temp directory is
@@ -504,7 +504,7 @@ func TestOneRootGivenTwiceIsNotAnAmbiguity(t *testing.T) {
 
 	var bag diag.Bag
 	roots := []string{"one", "one/", filepath.Join(dir, "one")}
-	if _, err := Load([]string{"a.protop"}, roots, &bag); err != nil {
+	if _, err := Load([]string{"a.prague"}, roots, &bag); err != nil {
 		t.Fatal(err)
 	}
 
@@ -541,18 +541,18 @@ func TestTheFirstRootThatProvidesAnImportIsTheOneOpened(t *testing.T) {
 				second = "one"
 			}
 			dir := plant(t,
-				file{"a.protop", src("A", "b.protop")},
-				file{"one/b.protop", src("One")},
-				file{"two/b.protop", src("Two")},
+				file{"a.prague", src("A", "b.prague")},
+				file{"one/b.prague", src("One")},
+				file{"two/b.prague", src("Two")},
 			)
-			res, bag, err := loadIn(t, dir, []string{first, second, "."}, []string{"a.protop"})
+			res, bag, err := loadIn(t, dir, []string{first, second, "."}, []string{"a.prague"})
 			if err != nil {
 				t.Fatal(err)
 			}
 			assertCodes(t, bag, diag.ImportAmbiguous)
-			want := filepath.Join(first, "b.protop")
-			if got := res.Set["b.protop"].Source.Name; !strings.HasSuffix(got, want) {
-				t.Errorf("b.protop was opened from %q, want the first root's %q", got, want)
+			want := filepath.Join(first, "b.prague")
+			if got := res.Set["b.prague"].Source.Name; !strings.HasSuffix(got, want) {
+				t.Errorf("b.prague was opened from %q, want the first root's %q", got, want)
 			}
 		})
 	}
@@ -560,8 +560,8 @@ func TestTheFirstRootThatProvidesAnImportIsTheOneOpened(t *testing.T) {
 
 // A root that is a prefix of another root: the input is keyed against the first
 // root that contains it, not the most specific one, so the same file on the
-// same disk is `nested/a.protop` under `-I schemas -I schemas/nested` and
-// `a.protop` under the two flags reversed.
+// same disk is `nested/a.prague` under `-I schemas -I schemas/nested` and
+// `a.prague` under the two flags reversed.
 //
 // Neither of those is ruled right here. What is ruled is that the order the
 // user gave decides it: a loader that preferred the longest matching root would
@@ -572,14 +572,14 @@ func TestANestedRootKeysAgainstTheFirstRootGiven(t *testing.T) {
 		roots []string
 		want  string
 	}{
-		{[]string{"schemas", "schemas/nested"}, "nested/a.protop"},
-		{[]string{"schemas/nested", "schemas"}, "a.protop"},
+		{[]string{"schemas", "schemas/nested"}, "nested/a.prague"},
+		{[]string{"schemas/nested", "schemas"}, "a.prague"},
 	} {
 		t.Run(strings.Join(tc.roots, ","), func(t *testing.T) {
 			dir := plant(t,
-				file{"schemas/nested/a.protop", src("A")},
+				file{"schemas/nested/a.prague", src("A")},
 			)
-			res, _, err := loadIn(t, dir, tc.roots, []string{"schemas/nested/a.protop"})
+			res, _, err := loadIn(t, dir, tc.roots, []string{"schemas/nested/a.prague"})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -597,17 +597,17 @@ func TestANestedRootKeysAgainstTheFirstRootGiven(t *testing.T) {
 // root held the file all along.
 func TestADirectoryNamedLikeAnImportDoesNotProvideIt(t *testing.T) {
 	dir := plant(t,
-		file{"a.protop", src("A", "b.protop")},
-		file{"one/b.protop/.keep", ""},
-		file{"two/b.protop", src("Two")},
+		file{"a.prague", src("A", "b.prague")},
+		file{"one/b.prague/.keep", ""},
+		file{"two/b.prague", src("Two")},
 	)
-	res, bag, err := loadIn(t, dir, []string{"one", "two"}, []string{"a.protop"})
+	res, bag, err := loadIn(t, dir, []string{"one", "two"}, []string{"a.prague"})
 	if err != nil {
 		t.Fatalf("a directory in the way of an import must not be an error: %v", err)
 	}
 	assertCodes(t, bag)
-	if got, want := res.Set["b.protop"].Source.Name, filepath.Join("two", "b.protop"); !strings.HasSuffix(got, want) {
-		t.Errorf("b.protop was opened from %q, want %q", got, want)
+	if got, want := res.Set["b.prague"].Source.Name, filepath.Join("two", "b.prague"); !strings.HasSuffix(got, want) {
+		t.Errorf("b.prague was opened from %q, want %q", got, want)
 	}
 }
 
@@ -618,15 +618,15 @@ func TestADirectoryNamedLikeAnImportDoesNotProvideIt(t *testing.T) {
 // a file can see.
 func TestAnImportCycleTerminates(t *testing.T) {
 	dir := plant(t,
-		file{"a.protop", src("A", "b.protop")},
-		file{"b.protop", src("B", "a.protop")},
+		file{"a.prague", src("A", "b.prague")},
+		file{"b.prague", src("B", "a.prague")},
 	)
-	res, bag, err := loadIn(t, dir, []string{"."}, []string{"a.protop"})
+	res, bag, err := loadIn(t, dir, []string{"."}, []string{"a.prague"})
 	if err != nil {
 		t.Fatal(err)
 	}
 	assertCodes(t, bag)
-	if got, want := keys(res.Set), []string{"a.protop", "b.protop"}; !slices.Equal(got, want) {
+	if got, want := keys(res.Set), []string{"a.prague", "b.prague"}; !slices.Equal(got, want) {
 		t.Errorf("set keys = %v, want %v", got, want)
 	}
 }
@@ -635,13 +635,13 @@ func TestAnImportCycleTerminates(t *testing.T) {
 // walks forever: a file that imports itself.
 func TestAFileThatImportsItselfTerminates(t *testing.T) {
 	dir := plant(t,
-		file{"a.protop", src("A", "a.protop")},
+		file{"a.prague", src("A", "a.prague")},
 	)
-	res, _, err := loadIn(t, dir, []string{"."}, []string{"a.protop"})
+	res, _, err := loadIn(t, dir, []string{"."}, []string{"a.prague"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got, want := keys(res.Set), []string{"a.protop"}; !slices.Equal(got, want) {
+	if got, want := keys(res.Set), []string{"a.prague"}; !slices.Equal(got, want) {
 		t.Errorf("set keys = %v, want %v", got, want)
 	}
 }
@@ -650,15 +650,15 @@ func TestAFileThatImportsItselfTerminates(t *testing.T) {
 // only remembers the file it came from survives.
 func TestALongerCycleTerminates(t *testing.T) {
 	dir := plant(t,
-		file{"a.protop", src("A", "b.protop")},
-		file{"b.protop", src("B", "c.protop")},
-		file{"c.protop", src("C", "a.protop")},
+		file{"a.prague", src("A", "b.prague")},
+		file{"b.prague", src("B", "c.prague")},
+		file{"c.prague", src("C", "a.prague")},
 	)
-	res, _, err := loadIn(t, dir, []string{"."}, []string{"a.protop"})
+	res, _, err := loadIn(t, dir, []string{"."}, []string{"a.prague"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := []string{"a.protop", "b.protop", "c.protop"}
+	want := []string{"a.prague", "b.prague", "c.prague"}
 	if got := keys(res.Set); !slices.Equal(got, want) {
 		t.Errorf("set keys = %v, want %v", got, want)
 	}
@@ -670,16 +670,16 @@ func TestALongerCycleTerminates(t *testing.T) {
 // only thing that distinguishes "you spelled it wrong" from "you forgot a -I".
 func TestAnImportUnderNoRootIsADiagnosticThatSaysWhereItLooked(t *testing.T) {
 	dir := plant(t,
-		file{"one/a.protop", src("A", "gone.protop")},
+		file{"one/a.prague", src("A", "gone.prague")},
 		file{"two/.keep", ""},
 	)
-	_, bag, err := loadIn(t, dir, []string{"one", "two"}, []string{"one/a.protop"})
+	_, bag, err := loadIn(t, dir, []string{"one", "two"}, []string{"one/a.prague"})
 	if err != nil {
 		t.Fatalf("a missing import must not be an error: %v", err)
 	}
 	assertCodes(t, bag, diag.ImportNotFound)
 	msg := bag.All()[0].Message
-	for _, want := range []string{"gone.protop", filepath.Join(dir, "one"), filepath.Join(dir, "two")} {
+	for _, want := range []string{"gone.prague", filepath.Join(dir, "one"), filepath.Join(dir, "two")} {
 		if !strings.Contains(msg, want) {
 			t.Errorf("message does not name %q:\n%s", want, msg)
 		}
@@ -691,10 +691,10 @@ func TestAnImportUnderNoRootIsADiagnosticThatSaysWhereItLooked(t *testing.T) {
 // its snippet against whichever file the printer happened to be handed.
 func TestADiagnosticNamesTheFileThatWroteTheImport(t *testing.T) {
 	dir := plant(t,
-		file{"a.protop", src("A", "b.protop")},
-		file{"b.protop", src("B", "gone.protop")},
+		file{"a.prague", src("A", "b.prague")},
+		file{"b.prague", src("B", "gone.prague")},
 	)
-	_, bag, err := loadIn(t, dir, []string{"."}, []string{"a.protop"})
+	_, bag, err := loadIn(t, dir, []string{"."}, []string{"a.prague"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -702,8 +702,8 @@ func TestADiagnosticNamesTheFileThatWroteTheImport(t *testing.T) {
 		t.Fatalf("codes = %v, want one", codes(bag))
 	}
 	f := bag.All()[0].File
-	if f == nil || !strings.HasSuffix(f.Name, "b.protop") {
-		t.Errorf("the diagnostic names %v, want b.protop", f)
+	if f == nil || !strings.HasSuffix(f.Name, "b.prague") {
+		t.Errorf("the diagnostic names %v, want b.prague", f)
 	}
 }
 
@@ -712,7 +712,7 @@ func TestADiagnosticNamesTheFileThatWroteTheImport(t *testing.T) {
 //
 // Both fixtures write a good import above the bad one. That is the whole point
 // of them: a span that named the file, or that named whichever import the
-// loader looked at first, would slice to `import "there.protop";` and this row
+// loader looked at first, would slice to `import "there.prague";` and this row
 // would say so. Without the good import above, a span pointing anywhere in the
 // header would be indistinguishable from the right one.
 //
@@ -735,28 +735,28 @@ func TestALoaderDiagnosticUnderlinesTheImportThatCausedIt(t *testing.T) {
 			name:  "an import nothing provides",
 			roots: []string{"."},
 			files: []file{
-				{"a.protop", src("A", "there.protop", "gone.protop")},
-				{"there.protop", src("There")},
+				{"a.prague", src("A", "there.prague", "gone.prague")},
+				{"there.prague", src("There")},
 			},
 			want: diag.ImportNotFound,
-			text: `import "gone.protop";`,
+			text: `import "gone.prague";`,
 		},
 		{
 			name:  "an import two roots provide",
 			roots: []string{".", "one", "two"},
 			files: []file{
-				{"a.protop", src("A", "there.protop", "both.protop")},
-				{"there.protop", src("There")},
-				{"one/both.protop", src("One")},
-				{"two/both.protop", src("Two")},
+				{"a.prague", src("A", "there.prague", "both.prague")},
+				{"there.prague", src("There")},
+				{"one/both.prague", src("One")},
+				{"two/both.prague", src("Two")},
 			},
 			want: diag.ImportAmbiguous,
-			text: `import "both.protop";`,
+			text: `import "both.prague";`,
 		},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			dir := plant(t, tt.files...)
-			_, bag, err := loadIn(t, dir, tt.roots, []string{"a.protop"})
+			_, bag, err := loadIn(t, dir, tt.roots, []string{"a.prague"})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -773,10 +773,10 @@ func TestALoaderDiagnosticUnderlinesTheImportThatCausedIt(t *testing.T) {
 // only thing that knows which parse produced which diagnostic.
 func TestAParseErrorNamesTheFileItWasFoundIn(t *testing.T) {
 	dir := plant(t,
-		file{"a.protop", src("A", "b.protop")},
-		file{"b.protop", "revision 1;\nnamespace B;\nstruct {\n"},
+		file{"a.prague", src("A", "b.prague")},
+		file{"b.prague", "revision 1;\nnamespace B;\nstruct {\n"},
 	)
-	_, bag, err := loadIn(t, dir, []string{"."}, []string{"a.protop"})
+	_, bag, err := loadIn(t, dir, []string{"."}, []string{"a.prague"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -784,8 +784,8 @@ func TestAParseErrorNamesTheFileItWasFoundIn(t *testing.T) {
 		t.Fatal("a file that does not parse produced no diagnostic")
 	}
 	for i, d := range bag.All() {
-		if d.File == nil || !strings.HasSuffix(d.File.Name, "b.protop") {
-			t.Errorf("diagnostic %d (%s) names %v, want b.protop", i, d.Code, d.File)
+		if d.File == nil || !strings.HasSuffix(d.File.Name, "b.prague") {
+			t.Errorf("diagnostic %d (%s) names %v, want b.prague", i, d.Code, d.File)
 		}
 	}
 }
@@ -794,8 +794,8 @@ func TestAParseErrorNamesTheFileItWasFoundIn(t *testing.T) {
 // that into exit 2. It is held apart from a missing import on purpose: the user
 // typed this path.
 func TestAMissingInputIsAnError(t *testing.T) {
-	dir := plant(t, file{"a.protop", src("A")})
-	_, bag, err := loadIn(t, dir, []string{"."}, []string{"gone.protop"})
+	dir := plant(t, file{"a.prague", src("A")})
+	_, bag, err := loadIn(t, dir, []string{"."}, []string{"gone.prague"})
 	if err == nil {
 		t.Fatal("a missing input must be an error")
 	}
@@ -812,29 +812,29 @@ func TestAMissingInputIsAnError(t *testing.T) {
 // going missing at once -- which reads as a broken schema rather than as a
 // mistyped flag.
 func TestARootThatIsNotADirectoryIsAnError(t *testing.T) {
-	dir := plant(t, file{"a.protop", src("A")})
-	if _, _, err := loadIn(t, dir, []string{"nosuch"}, []string{"a.protop"}); err == nil {
+	dir := plant(t, file{"a.prague", src("A")})
+	if _, _, err := loadIn(t, dir, []string{"nosuch"}, []string{"a.prague"}); err == nil {
 		t.Error("a -I naming nothing must be an error")
 	}
-	if _, _, err := loadIn(t, dir, []string{"a.protop"}, []string{"a.protop"}); err == nil {
+	if _, _, err := loadIn(t, dir, []string{"a.prague"}, []string{"a.prague"}); err == nil {
 		t.Error("a -I naming a file must be an error")
 	}
 }
 
 // Two inputs that resolve to one import string are an error rather than a
-// silent loss. Under roots [one, two], both `one/x.protop` and `two/x.protop`
-// want the key "x.protop", and an import of "x.protop" can only ever mean one
+// silent loss. Under roots [one, two], both `one/x.prague` and `two/x.prague`
+// want the key "x.prague", and an import of "x.prague" can only ever mean one
 // of them -- so the other is a file the build can never name.
 func TestTwoInputsClaimingOneImportPathIsAnError(t *testing.T) {
 	dir := plant(t,
-		file{"one/x.protop", src("One")},
-		file{"two/x.protop", src("Two")},
+		file{"one/x.prague", src("One")},
+		file{"two/x.prague", src("Two")},
 	)
-	_, _, err := loadIn(t, dir, []string{"one", "two"}, []string{"one/x.protop", "two/x.protop"})
+	_, _, err := loadIn(t, dir, []string{"one", "two"}, []string{"one/x.prague", "two/x.prague"})
 	if err == nil {
 		t.Fatal("two inputs claiming one key must be an error")
 	}
-	if !strings.Contains(err.Error(), "x.protop") {
+	if !strings.Contains(err.Error(), "x.prague") {
 		t.Errorf("err = %v, want it to name the key", err)
 	}
 }
@@ -844,15 +844,15 @@ func TestTwoInputsClaimingOneImportPathIsAnError(t *testing.T) {
 // with no imports is a legitimate thing to ask for.
 func TestAnInputUnderNoRootKeepsItsOwnPath(t *testing.T) {
 	dir := plant(t,
-		file{"elsewhere/a.protop", src("A")},
+		file{"elsewhere/a.prague", src("A")},
 		file{"roots/.keep", ""},
 	)
-	res, bag, err := loadIn(t, dir, []string{"roots"}, []string{"elsewhere/a.protop"})
+	res, bag, err := loadIn(t, dir, []string{"roots"}, []string{"elsewhere/a.prague"})
 	if err != nil {
 		t.Fatal(err)
 	}
 	assertCodes(t, bag)
-	if len(res.Targets) != 1 || !strings.HasSuffix(res.Targets[0], "elsewhere/a.protop") {
+	if len(res.Targets) != 1 || !strings.HasSuffix(res.Targets[0], "elsewhere/a.prague") {
 		t.Errorf("targets = %v, want the input's own path", res.Targets)
 	}
 }
@@ -870,10 +870,10 @@ func TestAnInputUnderNoRootKeepsItsOwnPath(t *testing.T) {
 func TestTheSetTheLoaderBuildsIsTheSetTheCheckerReads(t *testing.T) {
 	t.Run("one spelling", func(t *testing.T) {
 		dir := plant(t,
-			file{"schemas/nested/a.protop", src("A", "nested/b.protop")},
-			file{"schemas/nested/b.protop", src("B")},
+			file{"schemas/nested/a.prague", src("A", "nested/b.prague")},
+			file{"schemas/nested/b.prague", src("B")},
 		)
-		res, bag, err := loadIn(t, dir, []string{"schemas"}, []string{"schemas/nested/a.protop"})
+		res, bag, err := loadIn(t, dir, []string{"schemas"}, []string{"schemas/nested/a.prague"})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -882,43 +882,43 @@ func TestTheSetTheLoaderBuildsIsTheSetTheCheckerReads(t *testing.T) {
 		if schema == nil || len(schema.Files) != 2 {
 			t.Fatalf("schema = %v, want two files", schema)
 		}
-		a := schema.File("nested/a.protop")
+		a := schema.File("nested/a.prague")
 		if a == nil {
 			t.Fatal("the checker does not know the file by the key the loader used")
 		}
 		if len(a.Imports) != 1 {
-			t.Errorf("a.protop has %d imports, want 1", len(a.Imports))
+			t.Errorf("a.prague has %d imports, want 1", len(a.Imports))
 		}
 	})
 
 	// Two spellings of one path, in two files of one compile. Each file alone
 	// loads and checks clean; the pair is what breaks a loader whose set only
-	// answers for the spelling that reached the file first. `./b.protop`
+	// answers for the spelling that reached the file first. `./b.prague`
 	// resolves -- filepath.Join cleans it on the way to the disk -- and then
-	// `b.protop` resolves to the same file and finds it already open, and a
+	// `b.prague` resolves to the same file and finds it already open, and a
 	// loader that stops there has resolved an import it cannot hand over.
 	//
-	// Nothing here says `./b.protop` is a legal import string. Whether a
+	// Nothing here says `./b.prague` is a legal import string. Whether a
 	// non-canonical spelling should be rejected outright is a language
 	// question, unruled; what is ruled is that a *resolved* import is in the
 	// set, so that the answer to that question is never "PROTOP0107, for a
 	// file that is on disk and already loaded".
 	t.Run("two spellings of one path", func(t *testing.T) {
-		for _, alias := range []string{"./b.protop", "sub/../b.protop"} {
+		for _, alias := range []string{"./b.prague", "sub/../b.prague"} {
 			t.Run(alias, func(t *testing.T) {
 				dir := plant(t,
-					file{"s/a.protop", src("A", alias)},
-					file{"s/c.protop", src("C", "b.protop")},
-					file{"s/b.protop", src("B")},
+					file{"s/a.prague", src("A", alias)},
+					file{"s/c.prague", src("C", "b.prague")},
+					file{"s/b.prague", src("B")},
 					file{"s/sub/.keep", ""},
 				)
-				res, bag, err := loadIn(t, dir, []string{"s"}, []string{"s/a.protop", "s/c.protop"})
+				res, bag, err := loadIn(t, dir, []string{"s"}, []string{"s/a.prague", "s/c.prague"})
 				if err != nil {
 					t.Fatal(err)
 				}
 				assertCodes(t, bag)
-				if _, ok := res.Set["b.protop"]; !ok {
-					t.Fatalf("%q resolved and %q did not reach the set: %v", alias, "b.protop", keys(res.Set))
+				if _, ok := res.Set["b.prague"]; !ok {
+					t.Fatalf("%q resolved and %q did not reach the set: %v", alias, "b.prague", keys(res.Set))
 				}
 				check.Check(res.Set, bag)
 				assertCodes(t, bag)

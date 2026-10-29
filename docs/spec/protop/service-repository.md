@@ -1,4 +1,4 @@
-# 2. Service repository — `brand-data-reader.protop`
+# 2. Service repository — `brand-data-reader.prague`
 
 A consuming service imports the shared schema and declares only what it reads.
 
@@ -7,7 +7,7 @@ revision 1;
 
 namespace BrandDataReader.Services.Cache;
 
-import "prague.protop";
+import "prague.prague";
 
 view SlimSportGame of SportGame {
   event_id as id;

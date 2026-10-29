@@ -15,13 +15,13 @@ import (
 // specSubsetFixture is protop lifted verbatim out of section 1 of the spec. It
 // is a file rather than a string literal so that TestSpecSubsetIsVerbatim can
 // hold it against the spec byte for byte.
-const specSubsetFixture = "spec_section1_subset.protop"
+const specSubsetFixture = "spec_section1_subset.prague"
 
 // The two fenced blocks of section 2, lifted the same way: the consuming
 // service's whole file, and the table such a service may declare of its own.
 const (
-	specSection2Fixture      = "spec_section2.protop"
-	specSection2TableFixture = "spec_section2_table.protop"
+	specSection2Fixture      = "spec_section2.prague"
+	specSection2TableFixture = "spec_section2_table.prague"
 )
 
 // specSection1 and specSection2 are the spec files the fixtures are lifted from.
@@ -36,7 +36,7 @@ var (
 // parse runs the whole frontend -- lexer and parser -- over src.
 func parse(t *testing.T, src string) (*source.File, *File, *diag.Bag) {
 	t.Helper()
-	f := source.NewFile("x.protop", src)
+	f := source.NewFile("x.prague", src)
 	var bag diag.Bag
 	return f, Parse(f, &bag), &bag
 }
@@ -454,14 +454,14 @@ func TestSpecSubsetIsVerbatim(t *testing.T) {
 // Nothing here is resolved and that is the milestone's boundary, not an
 // omission. `of SportGame` finds no SportGame, `sport_type_id;` is not held
 // against the source's members, `SlimOdd odds;` is not checked to be a view of
-// whatever type `odds` has, and `import "prague.protop";` opens no file.
+// whatever type `odds` has, and `import "prague.prague";` opens no file.
 func TestParseSpecSection2(t *testing.T) {
 	src := readFixture(t, specSection2Fixture)
 	f, file := parseClean(t, src)
 
 	assertDump(t, file, `revision 1
 namespace BrandDataReader.Services.Cache
-import "prague.protop"
+import "prague.prague"
 view SlimSportGame of SportGame
   event_id as id
   sport_type_id
@@ -984,7 +984,7 @@ struct S {
 }
 `,
 			wantCodes:   []diag.Code{diag.DuplicateTag},
-			wantMessage: "tag 1 is already used at x.protop:4:13; a tag is a position in the MessagePack array and two members cannot hold one position",
+			wantMessage: "tag 1 is already used at x.prague:4:13; a tag is a position in the MessagePack array and two members cannot hold one position",
 			wantLine:    5, wantCol: 13,
 			wantSpan: underlines("1"),
 		},
@@ -1001,7 +1001,7 @@ table T {
 }
 `,
 			wantCodes:   []diag.Code{diag.TagIsReserved},
-			wantMessage: "tag 10 is reserved at x.protop:5:12; a retired tag is never reused, because a reader built against the old schema would decode this field into the old one",
+			wantMessage: "tag 10 is reserved at x.prague:5:12; a retired tag is never reused, because a reader built against the old schema would decode this field into the old one",
 			wantLine:    4, wantCol: 13,
 			wantSpan: underlines("10"),
 		},
@@ -1431,12 +1431,12 @@ namespace A;
 struct S {
   int64 a = 1;
 }
-import "prague.protop";
+import "prague.prague";
 `,
 			wantCodes:   []diag.Code{diag.ImportNotInHeader},
 			wantMessage: "an `import` belongs with the file's other imports, above the first declaration; what a file depends on is a property of the whole file and not of the lines below it",
 			wantLine:    6, wantCol: 1,
-			wantSpan: underlines(`import "prague.protop";`),
+			wantSpan: underlines(`import "prague.prague";`),
 		},
 		{
 			// An import names a file with a string literal. A bare word is not
@@ -1455,7 +1455,7 @@ import prague;
 			// has to be first of -- otherwise a file could stamp its dialect
 			// after depending on another one.
 			name:      "revision after an import",
-			src:       "import \"prague.protop\";\nrevision 1;\nnamespace A;\n",
+			src:       "import \"prague.prague\";\nrevision 1;\nnamespace A;\n",
 			wantCodes: []diag.Code{diag.RevisionNotFirst},
 			wantLine:  2, wantCol: 1,
 			wantSpan: underlines("revision 1;"),
@@ -1714,7 +1714,7 @@ func TestRenderPointsAtTheOffendingToken(t *testing.T) {
 	if bag.Len() != 1 {
 		t.Fatalf("got %d diagnostics, want 1:\n%s", bag.Len(), diag.RenderAll(f, bag))
 	}
-	want := "x.protop:4:14: error PROTOP0300: field tag must be greater than 0; " +
+	want := "x.prague:4:14: error PROTOP0300: field tag must be greater than 0; " +
 		"a MessagePack key is tag - 1, so tag 0 names no slot\n" +
 		"  |\n" +
 		"4 |   int64 id = 0;\n" +
@@ -1757,7 +1757,7 @@ func TestRenderOfTheDiagnosticsThisMilestoneAdds(t *testing.T) {
 			// two places that says so.
 			name: "a tag on a view member",
 			src:  "revision 1;\nnamespace A;\nview V of T {\n  sport_type_id = 5;\n}\n",
-			want: "x.protop:4:17: error PROTOP0308: a view may not write a tag: `sport_type_id` is " +
+			want: "x.prague:4:17: error PROTOP0308: a view may not write a tag: `sport_type_id` is " +
 				"pinned to the tag its source gives it, and only the source extends the tag space; " +
 				"a tag added here is never written by the producer, so it would decode to nil " +
 				"forever while squatting a slot the source may later claim\n" +
@@ -1770,7 +1770,7 @@ func TestRenderOfTheDiagnosticsThisMilestoneAdds(t *testing.T) {
 			// the mistake is usually not knowing a view has a source at all.
 			name: "a view that names no source",
 			src:  "revision 1;\nnamespace A;\nview V {\n  name;\n}\n",
-			want: "x.protop:3:7: error PROTOP0203: a view is a subset of one source and declares no " +
+			want: "x.prague:3:7: error PROTOP0203: a view is a subset of one source and declares no " +
 				"members of its own; name that source, as in `view V of SportGame { ... }`\n" +
 				"  |\n" +
 				"3 | view V {\n" +
@@ -1782,7 +1782,7 @@ func TestRenderOfTheDiagnosticsThisMilestoneAdds(t *testing.T) {
 			// delete.
 			name: "a scalar in a narrowing position",
 			src:  "revision 1;\nnamespace A;\nview V of T {\n  int64 x;\n}\n",
-			want: "x.protop:4:3: error PROTOP0309: `int64` is a scalar and a view member narrows to " +
+			want: "x.prague:4:3: error PROTOP0309: `int64` is a scalar and a view member narrows to " +
 				"another view; a member keeps the type its source gives it when it is written as " +
 				"its name alone\n" +
 				"  |\n" +
@@ -1794,12 +1794,12 @@ func TestRenderOfTheDiagnosticsThisMilestoneAdds(t *testing.T) {
 			// only where it is written is -- and the message says where it
 			// belongs and why the position is not a matter of taste.
 			name: "an import below a declaration",
-			src:  "revision 1;\nnamespace A;\nstruct S {\n  int64 a = 1;\n}\nimport \"prague.protop\";\n",
-			want: "x.protop:6:1: error PROTOP0106: an `import` belongs with the file's other imports, " +
+			src:  "revision 1;\nnamespace A;\nstruct S {\n  int64 a = 1;\n}\nimport \"prague.prague\";\n",
+			want: "x.prague:6:1: error PROTOP0106: an `import` belongs with the file's other imports, " +
 				"above the first declaration; what a file depends on is a property of the whole " +
 				"file and not of the lines below it\n" +
 				"  |\n" +
-				"6 | import \"prague.protop\";\n" +
+				"6 | import \"prague.prague\";\n" +
 				"  | ^^^^^^^^^^^^^^^^^^^^^^^",
 		},
 	} {
@@ -1832,7 +1832,7 @@ func TestRenderOfAMisplacedAnnotationUnderlinesTheWholeAnnotation(t *testing.T) 
 	if bag.Len() != 1 {
 		t.Fatalf("got %d diagnostics, want 1:\n%s", bag.Len(), diag.RenderAll(f, bag))
 	}
-	want := "x.protop:3:1: error PROTOP0400: an annotation follows what it describes and there is " +
+	want := "x.prague:3:1: error PROTOP0400: an annotation follows what it describes and there is " +
 		"no before-slot; write this one after the declaration's name\n" +
 		"  |\n" +
 		"3 | [cs: DataCacheTopic(\"t\")]\n" +
@@ -1887,7 +1887,7 @@ func TestAMisplacedAnnotationThatIsAlsoUnterminatedSaysBoth(t *testing.T) {
 	if underlined := f.Slice(bag.All()[1].Span); underlined != "[cs: X = 1;\n}" {
 		t.Errorf("PROTOP0400 underlines %q, want how far the unclosed bracket reached", underlined)
 	}
-	wantRender := "x.protop:4:11: error PROTOP0400: an annotation follows what it describes and there is " +
+	wantRender := "x.prague:4:11: error PROTOP0400: an annotation follows what it describes and there is " +
 		"no before-slot; write this one after the member's tag\n" +
 		"  |\n" +
 		"4 |   int64 a [cs: X = 1;\n" +
@@ -3039,7 +3039,7 @@ func TestViewAndImportSpansCoverWhatWasWritten(t *testing.T) {
 	src := `revision 1;
 namespace A;
 
-import "prague.protop";
+import "prague.prague";
 
 view SlimBetType of BetType
   [cs: DataCache]
@@ -3059,15 +3059,15 @@ view SlimBetType of BetType
 	}
 
 	im := file.Imports[0]
-	check("an import", im.Span, `import "prague.protop";`)
+	check("an import", im.Span, `import "prague.prague";`)
 	// The path's span is the literal and its quotes, which is what the lexer
 	// emits and what a message about an unresolvable path has to underline.
-	check("an import path", im.Path.Span, `"prague.protop"`)
+	check("an import path", im.Path.Span, `"prague.prague"`)
 	// And the text is that literal as written. Nothing in the frontend decodes
 	// a string, so half-decoding one -- quotes off, escapes untouched -- would
 	// hand a later stage something it could not tell from a raw literal.
-	if got := im.Path.Text; got != `"prague.protop"` {
-		t.Errorf("the path is %s, want %s", got, `"prague.protop"`)
+	if got := im.Path.Text; got != `"prague.prague"` {
+		t.Errorf("the path is %s, want %s", got, `"prague.prague"`)
 	}
 
 	v, ok := file.Decls[0].(*View)
@@ -3094,13 +3094,13 @@ view SlimBetType of BetType
 func TestImportsAreGroupedAndOrdered(t *testing.T) {
 	_, file := parseClean(t, `revision 1;
 namespace A;
-import "prague.protop";
-import "brand.protop";
+import "prague.prague";
+import "brand.prague";
 `)
 	assertDump(t, file, `revision 1
 namespace A
-import "prague.protop"
-import "brand.protop"
+import "prague.prague"
+import "brand.prague"
 `)
 	if len(file.Decls) != 0 {
 		t.Errorf("an import landed in Decls; it is a property of the file, not a declaration")
@@ -3117,12 +3117,12 @@ namespace A;
 struct S {
   int64 a = 1;
 }
-import "prague.protop";
+import "prague.prague";
 `)
 	if bag.Len() != 1 || bag.All()[0].Code != diag.ImportNotInHeader {
 		t.Fatalf("got %d diagnostics, want one ImportNotInHeader:\n%s", bag.Len(), diag.RenderAll(f, bag))
 	}
-	if len(file.Imports) != 1 || file.Imports[0].Path.Text != `"prague.protop"` {
+	if len(file.Imports) != 1 || file.Imports[0].Path.Text != `"prague.prague"` {
 		t.Errorf("imports are %+v, want the one that was written", file.Imports)
 	}
 }

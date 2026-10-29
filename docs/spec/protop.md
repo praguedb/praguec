@@ -35,9 +35,9 @@ resolves.
 
 | § | File | Covers | Read it when |
 |---|---|---|---|
-| 1 | [`shared-repository.md`](protop/shared-repository.md) | `prague.protop` in full: revision, namespace, struct, enum, record, and two tables | you need the written form of a declaration, a field, a tag or presence |
+| 1 | [`shared-repository.md`](protop/shared-repository.md) | `prague.prague` in full: revision, namespace, struct, enum, record, and two tables | you need the written form of a declaration, a field, a tag or presence |
 | 2 | [`service-repository.md`](protop/service-repository.md) | the consuming side: `import`, views, and a service's own table | you are working on views or on what a service repo may declare |
-| 2 | [`import-resolution.md`](protop/import-resolution.md) | where `import "prague.protop";` resolves from — git, by tag | you are working on module resolution, the lock file or distribution |
+| 2 | [`import-resolution.md`](protop/import-resolution.md) | where `import "prague.prague";` resolves from — git, by tag | you are working on module resolution, the lock file or distribution |
 | 3 | [`annotations.md`](protop/annotations.md) | one position, one form; the prefix rule and passthrough | you are parsing or emitting `[...]` |
 | 4 | [`declaration-keywords.md`](protop/declaration-keywords.md) | `struct` / `record` / `table` / `view`: identity, emission, referenceability | you need to know what a declaration keyword means |
 | 5 | [`views.md`](protop/views.md) | field subsets, narrowing, narrowing with a rename, computed members, composite identity, aliases | you are working on views, `key` or `alias` |
