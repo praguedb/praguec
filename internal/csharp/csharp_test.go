@@ -1182,3 +1182,23 @@ func TestDeclarationShapes(t *testing.T) {
 		}
 	}
 }
+
+// Annotations are per backend: a `go:` annotation is the Go backend's and must
+// not reach the C# emission, or adding a second backend breaks the first.
+func TestAnotherBackendsAnnotationsDoNotCross(t *testing.T) {
+	units := emitSource(t, map[string]string{"a.prague": `revision 1;
+namespace A;
+struct S [go: Deprecated: use T.] [cs: Serializable] {
+  int64 a = 1 [go: json:"a"] [cs: JsonPropertyName("a")];
+}
+`})
+	src := units[0].Source
+	if strings.Contains(src, "json:") || strings.Contains(src, "Deprecated") {
+		t.Errorf("a go: annotation reached the C#:\n%s", src)
+	}
+	for _, want := range []string{"[Serializable]", `[JsonPropertyName("a")]`} {
+		if !strings.Contains(src, want) {
+			t.Errorf("C# lacks %s:\n%s", want, src)
+		}
+	}
+}

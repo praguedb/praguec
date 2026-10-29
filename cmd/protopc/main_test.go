@@ -436,6 +436,9 @@ func TestExitCodes(t *testing.T) {
 		{"a -I that is not there", []string{"check", "-I", "nosuch", good}, exitUsage},
 		{"a format protopc does not have", []string{"check", "--error-format=json", good}, exitUsage},
 		{"a flag protopc does not have", []string{"check", "--strict", good}, exitUsage},
+		{"generate Go", []string{"generate", "--lang", "go", "-I", examplesDir, "-o", t.TempDir(), good}, exitOK},
+		{"a language protopc does not have", []string{"generate", "--lang", "rust", "-o", t.TempDir(), good}, exitUsage},
+		{"--lang on check", []string{"check", "--lang", "go", good}, exitUsage},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			if got := runCLI(t, tc.args...); got != tc.want {

@@ -18,9 +18,9 @@ Legal on a table, record, struct, view, field, view member, or alias. Same rule 
 |---|---|
 | `[references(SportGame)]` | protop's own closed set. Read, checked, unknown is an error. |
 | `[cs: DataCacheTopic("...")]` | Verbatim C# attribute text. Copied out, never inspected. |
-| `[go: json:"sportGame"]` | Verbatim Go tag text, when a Go backend exists. |
+| `[go: json:"sportGame"]` | On a member: verbatim Go struct-tag text. On a declaration: a doc-comment line. |
 
-The legal prefix set is exactly the backends protopc has. An unknown prefix is an error rather than a silent drop, because a typo that vanishes from the output is worse than the lexical rule this replaced. Adding `go:` means adding a backend, not just a keyword.
+The legal prefix set is exactly the backends protopc has. An unknown prefix is an error rather than a silent drop, because a typo that vanishes from the output is worse than the lexical rule this replaced. The set is `cs` and `go`; each backend copies only its own prefix.
 
 Everything after the prefix is raw text up to the matching close bracket, with nesting counted and string literals respected. This is the one place protopc parses something it does not understand, so the grammar states it explicitly.
 

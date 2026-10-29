@@ -93,6 +93,10 @@ func EmitDecl(d *check.Decl) string {
 // anything the schema says.
 const messagePackNamespace = "MessagePack"
 
+// Prefix is the annotation prefix this backend reads. An annotation for
+// another backend -- `[go: json:"x"]` -- is that backend's and is not copied.
+const Prefix = "cs"
+
 // usings is `using MessagePack;` plus the namespace of every declaration this
 // one names, minus its own, sorted ordinally as the corpus sorts them.
 //
@@ -408,10 +412,11 @@ func writeKey(b *strings.Builder, m *check.Member) {
 // matters happens when the generated code does. protop's own annotations carry
 // no prefix and are read by the checker, so they reach the backend as resolved
 // relations and emit nothing here: `[references(SportGame)]` is a fact about
-// the schema and not a C# attribute.
+// the schema and not a C# attribute. Another backend's annotations are skipped
+// the same way.
 func writeAnnotations(b *strings.Builder, indent string, anns []*syntax.Annotation) {
 	for _, a := range anns {
-		if a.Prefix == nil {
+		if a.Prefix == nil || a.Prefix.Text != Prefix {
 			continue
 		}
 		b.WriteString(indent)

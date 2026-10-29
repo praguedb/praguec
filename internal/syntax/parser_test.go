@@ -869,17 +869,17 @@ struct S {
 			src: `revision 1;
 namespace A;
 struct S {
-  int64 a = 1 [go: json:"a"];
+  int64 a = 1 [rs: serde(rename = "a")];
 }
 `,
 			wantCodes: []diag.Code{diag.UnknownAnnotationPrefix},
 			wantMessageHas: []string{
-				"unknown annotation prefix `go`",
-				"protopc's backends are `cs`",
+				"unknown annotation prefix `rs`",
+				"protopc's backends are `cs`, `go`",
 				"writing a backend rather than a keyword",
 			},
 			wantLine: 4, wantCol: 16,
-			wantSpan: underlines("go"),
+			wantSpan: underlines("rs"),
 		},
 		{
 			// protop's own set is closed, so an unprefixed name outside it is a
@@ -2107,7 +2107,7 @@ struct S
 // narrowed with the suite green is not closed in any sense that matters.
 var (
 	wantScalarTypes       = []string{"bool", "decimal", "double", "int32", "int64", "string"}
-	wantBackends          = []string{"cs"}
+	wantBackends          = []string{"cs", "go"}
 	wantProtopAnnotations = []string{"references"}
 	wantCollectionTypes   = map[string]int{"list": 1, "map": 2}
 )

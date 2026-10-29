@@ -112,10 +112,10 @@ func BuiltinTypeNames() []string {
 const RelationAnnotation = "references"
 
 // backends is the legal set of annotation prefixes, which is exactly the
-// backends protopc has. `[go: json:"sportGame"]` becomes legal by a Go backend
-// being written, not by a word being added here.
+// backends protopc has: `cs` (internal/csharp) and `go` (internal/golang).
 var backends = map[string]bool{
 	"cs": true,
+	"go": true,
 }
 
 // protopAnnotations is protop's own set, the annotations written with no

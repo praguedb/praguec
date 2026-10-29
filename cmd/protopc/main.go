@@ -26,6 +26,7 @@ import (
 	"github.com/nanov/protobuf-to-messagepack-sharp/internal/check"
 	"github.com/nanov/protobuf-to-messagepack-sharp/internal/csharp"
 	"github.com/nanov/protobuf-to-messagepack-sharp/internal/diag"
+	"github.com/nanov/protobuf-to-messagepack-sharp/internal/golang"
 	"github.com/nanov/protobuf-to-messagepack-sharp/internal/load"
 	"github.com/nanov/protobuf-to-messagepack-sharp/internal/source"
 )
@@ -47,13 +48,13 @@ const (
 
 func main() { os.Exit(run(os.Args[1:], os.Stdout, os.Stderr)) }
 
-const usage = `protopc compiles protop schemas to C#.
+const usage = `protopc compiles protop schemas to C# or Go.
 
 Usage:
         protopc <command> [flags] <file.prague>...
 
 Commands:
-        generate   parse, check, and write the C# for the named files
+        generate   parse, check, and write code for the named files
         check      parse and check the named files, writing nothing
 
 Flags:
@@ -61,6 +62,10 @@ Flags:
                            searched in the order given. Defaults to the
                            directory of each named file.
         -o dir             where generate writes (default ".")
+        --lang l           generate: cs (default) or go
+        --go-package name  generate --lang go: the Go package name (default:
+                           the last segment of the first file's namespace,
+                           lower-cased)
         --error-format f   gcc (default) or msvs
         --manifest path    generate: write the list of emitted files here
 
@@ -113,10 +118,12 @@ func compile(name string, args []string, write bool, stdout, stderr io.Writer) i
 	// `check` writes nothing, so it does not have -o or --manifest at all.
 	// Accepting a flag and then ignoring it is worse than rejecting it: the
 	// user who writes `protopc check -o out` believes something was written.
-	outDir, manifestPath := new(string), new(string)
+	outDir, manifestPath, lang, goPkg := new(string), new(string), new(string), new(string)
 	if write {
 		outDir = fs.String("o", ".", "output directory")
 		manifestPath = fs.String("manifest", "", "write the list of emitted files here")
+		lang = fs.String("lang", "cs", "target language: cs or go")
+		goPkg = fs.String("go-package", "", "Go package name for --lang go")
 	}
 
 	if err := fs.Parse(args); err != nil {
@@ -125,6 +132,10 @@ func compile(name string, args []string, write bool, stdout, stderr io.Writer) i
 	errFormat, ok := diag.ParseFormat(*format)
 	if !ok {
 		fmt.Fprintf(stderr, "protopc: unknown --error-format %q; protopc has gcc and msvs\n", *format)
+		return exitUsage
+	}
+	if write && *lang != "cs" && *lang != "go" {
+		fmt.Fprintf(stderr, "protopc: unknown --lang %q; protopc has cs and go\n", *lang)
 		return exitUsage
 	}
 	inputs := fs.Args()
@@ -153,7 +164,12 @@ func compile(name string, args []string, write bool, stdout, stderr io.Writer) i
 		return exitOK
 	}
 
-	written, err := emit(*outDir, schema, res.Targets)
+	var written []string
+	if *lang == "go" {
+		written, err = emitGo(*outDir, *goPkg, schema, res.Targets)
+	} else {
+		written, err = emit(*outDir, schema, res.Targets)
+	}
 	if err != nil {
 		fmt.Fprintln(stderr, "protopc:", err)
 		return exitUsage
@@ -244,4 +260,53 @@ func emit(dir string, schema *check.Schema, targets []string) ([]string, error) 
 	}
 	sort.Strings(written)
 	return written, nil
+}
+
+// emitGo writes one .go file per target file, all in one package. A Go package
+// is a directory, so every named file lands in -o under the same package
+// clause; a type a target references from a file that was only imported is not
+// emitted, and the generated package will not compile until that file is named
+// too.
+func emitGo(dir, pkg string, schema *check.Schema, targets []string) ([]string, error) {
+	want := make(map[string]bool, len(targets))
+	for _, t := range targets {
+		want[t] = true
+	}
+	if pkg == "" {
+		for _, f := range schema.Files {
+			if want[f.Path] {
+				pkg = goPackageName(f.Namespace)
+				break
+			}
+		}
+	}
+	units, err := golang.Emit(schema, pkg, func(f *check.File) bool { return want[f.Path] })
+	if err != nil {
+		return nil, err
+	}
+	if len(units) == 0 {
+		return nil, errors.New("nothing to write: the named files declare nothing")
+	}
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return nil, err
+	}
+	var written []string
+	for _, u := range units {
+		p := filepath.Join(dir, u.Name)
+		if err := os.WriteFile(p, []byte(u.Source), 0o644); err != nil {
+			return nil, err
+		}
+		written = append(written, p)
+	}
+	sort.Strings(written)
+	return written, nil
+}
+
+// goPackageName is a namespace's last segment, lower-cased: the Go convention
+// for a package named after the directory it lives in.
+func goPackageName(ns string) string {
+	if i := strings.LastIndex(ns, "."); i >= 0 {
+		ns = ns[i+1:]
+	}
+	return strings.ToLower(ns)
 }
