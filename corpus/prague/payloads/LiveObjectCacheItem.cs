@@ -1,8 +1,8 @@
-using B2Tech.Feed.Cache.Core;
-using Common.IntegratedEventApi.Models.LiveObject;
+using Prague.Feed.Cache.Core;
+using Common.EventApi.Models.LiveObject;
 using MessagePack;
 
-namespace Common.IntegratedEventApi.Cache.Prague.Models;
+namespace Common.EventApi.Cache.Prague.Models;
 
 [MessagePackObject]
 [DataCache(CacheClassName = nameof(LiveObjectCache))]

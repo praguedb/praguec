@@ -1,5 +1,5 @@
-using B2Tech.Feed.Cache.Core;
-using Common.IntegratedEventApi.Models.LiveObject;
+using Prague.Feed.Cache.Core;
+using Common.EventApi.Models.LiveObject;
 using MessagePack;
 
 namespace BO.Services.Prague.Models;

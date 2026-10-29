@@ -121,7 +121,7 @@
 
 revision 1;
 
-namespace Common.IntegratedEventApi.Cache.Prague.Models;
+namespace Common.EventApi.Cache.Prague.Models;
 
 // --- STRUCT -----------------------------------------------------------------
 // Value payload, embedded, emitted as a C# struct. FlatBuffers' struct rule —

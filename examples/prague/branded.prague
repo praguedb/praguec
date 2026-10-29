@@ -1,8 +1,8 @@
 revision 1;
 
-// Common.IntegratedEventApi.Models.Branded: the shared payload types the Prague
+// Common.EventApi.Models.Branded: the shared payload types the Prague
 // caches embed.
-namespace Common.IntegratedEventApi.Models.Branded;
+namespace Common.EventApi.Models.Branded;
 
 import "common-feed-enums.prague";
 

@@ -21,12 +21,12 @@ import (
 const examplesDir = "../../examples/prague"
 
 // researchDoc is the record the exclusion rules below were lifted from.
-const researchDoc = "../../docs/research/b2tech-feed-cache.md"
+const researchDoc = "../../docs/research/prague-feed-cache.md"
 
 // ---------------------------------------------------------------------------
 // The trip-wire.
 //
-// B2Tech.Feed.Cache's generator rejects a candidate file before any semantic
+// Prague.Feed.Cache's generator rejects a candidate file before any semantic
 // analysis, with no error and no diagnostic. The failure mode is a missing
 // partial half and a wall of CS0246 pointing at everything except the cause.
 //
@@ -49,7 +49,7 @@ const excludedBanner = "auto-generated"
 
 // bannerWindow is how far in the generator looks for it.
 //
-// The record is ambiguous: b2tech-feed-cache.md:352 says the first 500
+// The record is ambiguous: prague-feed-cache.md:352 says the first 500
 // *characters*; the same document at :432 and #25 both say the first 500
 // *bytes*. The reading taken here is bytes, and it is the *looser* of the two,
 // which is the opposite of what this comment used to claim.

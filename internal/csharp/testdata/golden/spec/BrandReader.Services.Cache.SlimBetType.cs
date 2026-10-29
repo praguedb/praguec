@@ -1,7 +1,7 @@
-using Common.IntegratedEventApi.Cache.Prague.Models;
+using Common.EventApi.Cache.Prague.Models;
 using MessagePack;
 
-namespace BrandDataReader.Services.Cache;
+namespace BrandReader.Services.Cache;
 
 [MessagePackObject]
 public sealed partial class SlimBetType

@@ -1,13 +1,13 @@
 revision 1;
 
-// Common.IntegratedEventApi.Models.VirtualGameEntity exists in this example for
+// Common.EventApi.Models.VirtualGameEntity exists in this example for
 // one member: `List<Runner> Runners` at key 46 of both SportGame twins.
 //
 // Runner's own shape is not in the corpus and is not in SOURCE.md's copied set,
 // so the record is empty for the same reason the enums are: the corpus carries
 // the name and not the definition, and a body invented here would be checked by
 // nothing.
-namespace Common.IntegratedEventApi.Models.VirtualGameEntity;
+namespace Common.EventApi.Models.VirtualGameEntity;
 
 record Runner {
 }

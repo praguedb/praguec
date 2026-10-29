@@ -13,7 +13,7 @@ import (
 // before praguedb/praguec#44 rules on when praguec runs is
 // that the answer does not change who owns stale output. MSBuild's
 // IncrementalClean only reaches $(OutDir) and $(IntermediateOutputPath), and
-// B2Tech.Feed.Cache's generator skips anything under obj/ or bin/ -- so
+// Prague.Feed.Cache's generator skips anything under obj/ or bin/ -- so
 // praguec's output has to live outside both, which puts it outside everything
 // MSBuild would clean. Under either answer to #44, praguec is the only thing
 // that can delete a file praguec wrote and no longer writes.

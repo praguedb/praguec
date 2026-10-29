@@ -105,7 +105,7 @@ const Prefix = "cs"
 // needs is not a thing this function could know: an annotation that needs a
 // using is written fully qualified, or the using is in the hand-written half.
 // That is a real limit of the passthrough rule and not an oversight -- the
-// corpus's own `using B2Tech.Feed.Cache.Core;` is unreachable from here.
+// corpus's own `using Prague.Feed.Cache.Core;` is unreachable from here.
 //
 // An enum names no types and carries no MessagePack attribute, so it emits no
 // usings at all.
@@ -237,7 +237,7 @@ func writeEnum(b *strings.Builder, d *check.Decl) {
 
 // dataCacheKeyAttribute marks the member that carries the declaration's
 // identity. It is the one attribute praguec writes that belongs to
-// `B2Tech.Feed.Cache.Core` rather than to MessagePack, and it is written
+// `Prague.Feed.Cache.Core` rather than to MessagePack, and it is written
 // because the corpus writes it on every key it has and protop's `key` keyword
 // is the only thing that could produce it: 11 sites over the 14 payload types,
 // the other three -- Venue, BOVenue and SlimOdd -- having no key at all. Which

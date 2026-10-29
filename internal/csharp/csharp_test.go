@@ -1082,7 +1082,7 @@ view TargetNotSelected of Outer {
 // `DataCache(CacheClassName = nameof(BPSportGameCache))` names, cannot know
 // which namespace defines it, and therefore never adds a using for one --
 // which is a real limit of section 3's passthrough rule and the reason the
-// corpus's own `using B2Tech.Feed.Cache.Core;` is unreachable from here.
+// corpus's own `using Prague.Feed.Cache.Core;` is unreachable from here.
 func TestAnnotationsNeverProduceAUsing(t *testing.T) {
 	units := emitFixtures(t, pragueFixture, consumerFixture)
 	for _, u := range units {

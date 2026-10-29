@@ -275,7 +275,7 @@ func TestParseSpecSection1Subset(t *testing.T) {
 	f, file := parseClean(t, src)
 
 	assertDump(t, file, `revision 1
-namespace Common.IntegratedEventApi.Cache.Prague.Models
+namespace Common.EventApi.Cache.Prague.Models
 struct Venue
   int64 id = 2
   string name = 3
@@ -460,7 +460,7 @@ func TestParseSpecSection2(t *testing.T) {
 	f, file := parseClean(t, src)
 
 	assertDump(t, file, `revision 1
-namespace BrandDataReader.Services.Cache
+namespace BrandReader.Services.Cache
 import "prague.prague"
 view SlimSportGame of SportGame
   event_id as id

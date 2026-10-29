@@ -1,10 +1,10 @@
 using System.Text.Json.Serialization;
-using B2Tech.Feed.Cache.Core;
-using Common.IntegratedEventApi.Models.Branded;
+using Prague.Feed.Cache.Core;
+using Common.EventApi.Models.Branded;
 using CommonFeedModels.Enums;
 using MessagePack;
 
-namespace Common.IntegratedEventApi.Cache.Prague.Models;
+namespace Common.EventApi.Cache.Prague.Models;
 
 [MessagePackObject]
 [DataCache(CacheClassName = nameof(Prague.Models.BPBetTypeCache))]

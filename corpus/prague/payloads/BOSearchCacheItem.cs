@@ -1,5 +1,5 @@
-using B2Tech.Feed.Cache.Core;
-using Common.IntegratedEventApi.Models.Enums;
+using Prague.Feed.Cache.Core;
+using Common.EventApi.Models.Enums;
 using CommonFeedModels.Enums;
 using MessagePack;
 

@@ -1,6 +1,6 @@
 ﻿using MessagePack;
 
-namespace Common.IntegratedEventApi.Models.Branded;
+namespace Common.EventApi.Models.Branded;
 
 [MessagePackObject]
 public class BaseProviderObject

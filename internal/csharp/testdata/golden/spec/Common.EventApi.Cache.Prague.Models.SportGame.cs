@@ -1,6 +1,6 @@
 using MessagePack;
 
-namespace Common.IntegratedEventApi.Cache.Prague.Models;
+namespace Common.EventApi.Cache.Prague.Models;
 
 [MessagePackObject]
 [DataCache(CacheClassName = nameof(Prague.Models.BPSportGameCache))]

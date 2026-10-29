@@ -64,9 +64,9 @@ type corpusRow struct {
 }
 
 const (
-	cacheCore  = "B2Tech.Feed.Cache.Core"         // every [DataCache*] attribute
+	cacheCore  = "Prague.Feed.Cache.Core"         // every [DataCache*] attribute
 	jsonIgnore = "System.Text.Json.Serialization" // [JsonIgnore] on the alias
-	liveObject = "Common.IntegratedEventApi.Models.LiveObject"
+	liveObject = "Common.EventApi.Models.LiveObject"
 )
 
 // temporal is #15: the corpus carries instants as DateTime and protop has no
@@ -699,9 +699,9 @@ var exampleSupport = map[string]string{
 	// numbers are the whole of an enum's wire contract and inventing them would
 	// put unchecked values on the wire. What they exist for is to make the
 	// names resolve, so members carry a type and files carry a using.
-	"EventStatus":    "CommonIntegratedEventApi enum; SOURCE.md does not copy the declaration",
-	"BookingStatus":  "CommonIntegratedEventApi enum; SOURCE.md does not copy the declaration",
-	"Channel":        "CommonIntegratedEventApi enum; SOURCE.md does not copy the declaration",
+	"EventStatus":    "CommonEventApi enum; SOURCE.md does not copy the declaration",
+	"BookingStatus":  "CommonEventApi enum; SOURCE.md does not copy the declaration",
+	"Channel":        "CommonEventApi enum; SOURCE.md does not copy the declaration",
 	"BetTypeStatus":  "CommonFeedModels enum; SOURCE.md does not copy the declaration",
 	"OddStatus":      "CommonFeedModels enum; SOURCE.md does not copy the declaration",
 	"WinStatus":      "CommonFeedModels enum; SOURCE.md does not copy the declaration",

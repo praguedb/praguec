@@ -50,7 +50,7 @@ Never used in this repo to mean a type's *identity* — the corpus's
 ## identity
 
 The member of a payload type that names the instance for the cache — what
-`B2Tech.Feed.Cache` marks `[DataCacheKey]`. Distinct from **key**, which is a
+`Prague.Feed.Cache` marks `[DataCacheKey]`. Distinct from **key**, which is a
 position in the MessagePack array and says nothing about what a value means.
 
 Identity takes two forms in the corpus: a stored field *is* the identity, or a

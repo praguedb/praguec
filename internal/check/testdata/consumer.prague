@@ -1,6 +1,6 @@
 revision 1;
 
-namespace BrandDataReader.Services.Cache;
+namespace BrandReader.Services.Cache;
 
 import "prague.prague";
 

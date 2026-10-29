@@ -348,7 +348,7 @@ A settable tuple member is a normal round-tripping member, as the control shows:
 
 ## 5. Sub-question 5 — what Prague actually does at `22331403`
 
-Read-only inspection of `/Users/dimitarnanov/work/github/integratedeventapi` via `git show <rev>:<path>` and
+Read-only inspection of the event API service's repository via `git show <rev>:<path>` and
 `git grep <rev>` at commit `22331403a40c93448b4ee8a35e83dc484ba95d60` (branch `origin/feature/BO_Pragure_Integration`).
 Nothing was written, staged, committed, or checked out there.
 
@@ -362,8 +362,8 @@ get-only expression-bodied `ValueTuple` `[DataCacheKey]`, and **all eight carry 
 | 2 | `BO/BO.Services/Prague/Models/BOSearchCacheItem.cs:18` | `(long EventId, Channel ChannelId) Key` |
 | 3 | `BP/BrandProcessor.Services/Prague/Models/BPBetTypeCacheItem.cs:24` | `(long EventId, long BetTypeId) Key` |
 | 4 | `BP/BrandProcessor.Services/Prague/Models/BPSearchCacheItem.cs:18` | `(long EventId, Channel ChannelId) Key` |
-| 5 | `Common/Common.IntegratedEventApi.Cache/Prague/Models/SlimBetType.cs:44` | `(long EventId, long BetTypeId) Id` |
-| 6 | `BrandDataReader/BrandDataReader.Services/Models/SearchCacheItem.cs:18` | `(long EventId, Channel ChannelId) Key` |
+| 5 | `Common/Common.EventApi.Cache/Prague/Models/SlimBetType.cs:44` | `(long EventId, long BetTypeId) Id` |
+| 6 | `BrandReader/BrandReader.Services/Models/SearchCacheItem.cs:18` | `(long EventId, Channel ChannelId) Key` |
 | 7 | `Processors/EventsBackgroundProcessor/Services/Cache/BetTypeCacheItem.cs:24` | `(long EventId, long BetTypeId) Key` |
 | 8 | `Processors/EventsBackgroundProcessor/Services/Cache/SearchCacheItem.cs:15` | `(long EventId, Channel ChannelId) Key` |
 

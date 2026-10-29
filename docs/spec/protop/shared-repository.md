@@ -5,7 +5,7 @@ Tables, records, structs and enums live here, in one repo, owned by one team. No
 ```protop
 revision 1;
 
-namespace Common.IntegratedEventApi.Cache.Prague.Models;
+namespace Common.EventApi.Cache.Prague.Models;
 
 // --- STRUCT -----------------------------------------------------------------
 struct Venue {

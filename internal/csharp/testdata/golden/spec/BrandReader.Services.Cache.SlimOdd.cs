@@ -1,6 +1,6 @@
 using MessagePack;
 
-namespace BrandDataReader.Services.Cache;
+namespace BrandReader.Services.Cache;
 
 [MessagePackObject]
 public class SlimOdd

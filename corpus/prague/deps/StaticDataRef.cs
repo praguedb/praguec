@@ -1,7 +1,7 @@
 using MessagePack;
 using MongoDB.Bson.Serialization.Attributes;
 
-namespace Common.IntegratedEventApi.Models.Branded;
+namespace Common.EventApi.Models.Branded;
 
 /// <summary>
 /// Reference to static data

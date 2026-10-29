@@ -1,11 +1,11 @@
-using B2Tech.Feed.Cache.Core;
-using Common.IntegratedEventApi.Models.Branded;
-using Common.IntegratedEventApi.Models.Enums;
-using Common.IntegratedEventApi.Models.VirtualGameEntity;
+using Prague.Feed.Cache.Core;
+using Common.EventApi.Models.Branded;
+using Common.EventApi.Models.Enums;
+using Common.EventApi.Models.VirtualGameEntity;
 using CommonFeedModels.Enums;
 using MessagePack;
 
-namespace Common.IntegratedEventApi.Cache.Prague.Models;
+namespace Common.EventApi.Cache.Prague.Models;
 
 [MessagePackObject]
 [DataCache(CacheClassName = nameof(Prague.Models.BPSportGameCache))]

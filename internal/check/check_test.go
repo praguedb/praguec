@@ -277,7 +277,7 @@ func TestCheckSpecSections(t *testing.T) {
 	})
 
 	assertDump(t, schema, `file consumer.prague
-  namespace BrandDataReader.Services.Cache
+  namespace BrandReader.Services.Cache
   import prague.prague
   view SlimSportGame of SportGame
     key field id = 1 int64 from SportGame.event_id
@@ -302,7 +302,7 @@ func TestCheckSpecSections(t *testing.T) {
     field timestamp = 25 int64 from BetType.timestamp
     field odds = 26 list<view:SlimOdd> from BetType.odds
 file prague.prague
-  namespace Common.IntegratedEventApi.Cache.Prague.Models
+  namespace Common.EventApi.Cache.Prague.Models
   struct Venue
     field id = 2 int64
     field name = 3 string

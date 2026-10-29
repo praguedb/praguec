@@ -153,7 +153,7 @@ confirm nor refute it. Evidence for #24, which is unruled.
 - Mostly `{ get; set; }`. `init` appears only on `SlimOdd` (all 14 members) and
   `SlimSportGame.Id`.
 - No inheritance among Prague types themselves.
-- `partial` is load-bearing where it appears — `B2Tech.Feed.Cache` writes the
+- `partial` is load-bearing where it appears — `Prague.Feed.Cache` writes the
   other half — but it is not universal. The three exceptions have no generated
   half at all, so "a payload type is `partial`" is a rule with three counterexamples
   out of fourteen rather than an invariant.

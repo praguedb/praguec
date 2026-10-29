@@ -5,7 +5,7 @@ package prague;
 import "protop/options.proto";
 option (protop.revision) = REVISION_1;
 
-option csharp_namespace = "Common.IntegratedEventApi.Cache.Prague.Models";
+option csharp_namespace = "Common.EventApi.Cache.Prague.Models";
 
 // 188 of the corpus's 333 members are non-nullable; Editions 2023 defaults to
 // EXPLICIT presence, i.e. nullable. So the file flips the default and the 145

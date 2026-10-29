@@ -8,7 +8,7 @@ edited — if the upstream changes, re-pin rather than patch.
 
 | | |
 |---|---|
-| Source repo | `/Users/dimitarnanov/work/github/integratedeventapi` |
+| Source repo | the event API service's repository |
 | Branch | `origin/feature/BO_Pragure_Integration` (the typo is upstream's) |
 | Commit | `22331403a40c93448b4ee8a35e83dc484ba95d60` |
 | Commit date | 2026-02-20 10:26:37 +0100 |
@@ -33,7 +33,7 @@ be re-taken. Worth confirming this is the intended target and not an abandoned s
   `public sealed partial class XCache`. **Only three of them are empty** —
   `LiveObjectCache`, `SlimBetTypeCache` and `SlimSportGameCache`. The other
   eight carry a `public void Clear()` written against members
-  `B2Tech.Feed.Cache` generates: `Query()`, `Execute()`, `Remove()`. So the
+  `Prague.Feed.Cache` generates: `Query()`, `Execute()`, `Remove()`. So the
   shell is not a formality a generator could emit blind and be done with. It is
   a file the human writes real code into, calling into the generated half — a
   stronger constraint on `praguec` than "emit an empty class", and the reason
@@ -48,9 +48,9 @@ be re-taken. Worth confirming this is the intended target and not an abandoned s
 |---|---|
 | `payloads/BO*.cs`, `payloads/BOVenue.cs` | `BO/BO.Services/Prague/Models/` |
 | `payloads/BP*.cs`, `payloads/Venue.cs` | `BP/BrandProcessor.Services/Prague/Models/` |
-| `payloads/LiveObjectCacheItem.cs`, `payloads/Slim*.cs` | `Common/Common.IntegratedEventApi.Cache/Prague/Models/` |
-| `deps/BaseProviderObject.cs`, `deps/StaticDataRef.cs` | `Common/Common.IntegratedEventApi.Models/Branded/` |
-| `deps/IBaseLiveData.cs` | `Common/Common.IntegratedEventApi.Models/LiveObject/` |
+| `payloads/LiveObjectCacheItem.cs`, `payloads/Slim*.cs` | `Common/Common.EventApi.Cache/Prague/Models/` |
+| `deps/BaseProviderObject.cs`, `deps/StaticDataRef.cs` | `Common/Common.EventApi.Models/Branded/` |
+| `deps/IBaseLiveData.cs` | `Common/Common.EventApi.Models/LiveObject/` |
 
 Not copied: the 19 `IBaseLiveData` implementations — large, and the interface
 declaration carries everything a schema decision needs — and every enum and value

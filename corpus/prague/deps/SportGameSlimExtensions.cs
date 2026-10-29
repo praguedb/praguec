@@ -1,6 +1,6 @@
 using CommonFeedModels.Enums;
 
-namespace Common.IntegratedEventApi.Cache.Prague.Models;
+namespace Common.EventApi.Cache.Prague.Models;
 
 public static class SportGameSlimExtensions
 {

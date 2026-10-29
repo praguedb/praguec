@@ -13,9 +13,9 @@ revision 1;
 // What is deliberately absent: the hand-written partial half of each cache type
 // (computed members, constructors, indexes -- #25), and the `using` lines the
 // corpus needs for its attributes. protop never inspects an annotation's
-// contents (section 3), so `using B2Tech.Feed.Cache.Core;` is not derivable
+// contents (section 3), so `using Prague.Feed.Cache.Core;` is not derivable
 // from anything written here.
-namespace Common.IntegratedEventApi.Cache.Prague.Models;
+namespace Common.EventApi.Cache.Prague.Models;
 
 import "api-enums.prague";
 import "branded.prague";

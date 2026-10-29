@@ -2,7 +2,7 @@
 using CommonFeedModels.Enums;
 using MessagePack;
 
-namespace Common.IntegratedEventApi.Models.LiveObject;
+namespace Common.EventApi.Models.LiveObject;
 
 [Union(0, typeof(BaseLiveData))]
 [Union(1, typeof(TableTennisLiveData))]

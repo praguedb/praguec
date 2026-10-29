@@ -5,7 +5,7 @@ A consuming service imports the shared schema and declares only what it reads.
 ```protop
 revision 1;
 
-namespace BrandDataReader.Services.Cache;
+namespace BrandReader.Services.Cache;
 
 import "prague.prague";
 

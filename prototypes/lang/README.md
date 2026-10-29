@@ -56,7 +56,7 @@ and does not read it.
 
 The same move retires `[DataCacheFromTimestamp]`, which had earned a
 `$from_timestamp` spelling it did not deserve, and it gives the long tail of
-`B2Tech.Feed.Cache` attributes a home without a keyword each.
+`Prague.Feed.Cache` attributes a home without a keyword each.
 
 ## 2. An index is not a fact about data
 
