@@ -57,7 +57,7 @@ func TestLexCoversTheWholePunctuationSet(t *testing.T) {
 // words: `list` and `map` lex as idents like everything else, which is what
 // leaves a field free to be named either.
 func TestLexTypeArguments(t *testing.T) {
-	_, toks := lex(t, "map<string, list<Odd>> m = 1;")
+	_, toks := lex(t, "map<string, list<Quote>> m = 1;")
 	assertKinds(t, kinds(toks),
 		KindIdent, KindLAngle, KindIdent, KindComma, KindIdent, KindLAngle, KindIdent,
 		KindRAngle, KindRAngle, KindIdent, KindAssign, KindInt, KindSemi, KindEOF)
@@ -105,8 +105,8 @@ func TestLexReservedRange(t *testing.T) {
 // lines are unparseable by a lexer that reserves words, and both are protop.
 func TestLexEmitsEveryWordAsAnIdent(t *testing.T) {
 	for _, src := range []string{
-		"key key = 1 (event_id, bet_type_id);",
-		"alias bet_type_id = id;",
+		"key key = 1 (event_id, ticket_type_id);",
+		"alias ticket_type_id = id;",
 		"struct struct = 1;",
 	} {
 		_, toks := lex(t, src)

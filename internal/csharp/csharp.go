@@ -168,8 +168,8 @@ func typeNamespaces(t check.Type) []string {
 // A view emits whatever its source emits, which is a correction to #45's
 // mapping table rather than a reading of it. The ticket says a view emits "as
 // table" and cites `Slim*.cs`; two of those three files agree and
-// `corpus/prague/payloads/SlimOdd.cs:7` does not -- it is `public class
-// SlimOdd`, and it is the one Slim type whose source is a `record` rather than
+// `corpus/prague/payloads/SlimQuote.cs:7` does not -- it is `public class
+// SlimQuote`, and it is the one Slim type whose source is a `record` rather than
 // a `table`. Section 4 already has a view *inherit its source's identity*, and
 // the shape follows the identity: a view of a table is cached and has the
 // hand-written partial half that `partial` exists for, and a view of a record
@@ -240,7 +240,7 @@ func writeEnum(b *strings.Builder, d *check.Decl) {
 // `Prague.Feed.Cache.Core` rather than to MessagePack, and it is written
 // because the corpus writes it on every key it has and protop's `key` keyword
 // is the only thing that could produce it: 11 sites over the 14 payload types,
-// the other three -- Venue, BOVenue and SlimOdd -- having no key at all. Which
+// the other three -- Venue, BOVenue and SlimQuote -- having no key at all. Which
 // version of that package protop targets is #21 and is open; nothing here pins
 // one.
 const dataCacheKeyAttribute = "[DataCacheKey]\n"
@@ -277,7 +277,7 @@ func writeField(b *strings.Builder, d *check.Decl, m *check.Member) {
 	b.WriteString(" { get; set; }\n")
 }
 
-// writeCompositeKey emits `key key = 1 (event_id, bet_type_id);` as the
+// writeCompositeKey emits `key key = 1 (event_id, ticket_type_id);` as the
 // get-only ValueTuple the corpus writes. #20 measured what that costs: the
 // member serializes on every message and is Skip()ped on the way back, so four
 // of its eight bytes are never read. It is emitted anyway because the corpus's
@@ -287,8 +287,8 @@ func writeField(b *strings.Builder, d *check.Decl, m *check.Member) {
 // The tuple's element names are the parts' own names. In a view they are the
 // *source's* part names, since a view member selecting a composite key carries
 // the source's parts: a view that renamed one of the parts would emit a body
-// naming a member it does not have. No corpus view does that -- SlimBetType
-// renames `id` to `bet_type_id`, which is the name the source's own alias
+// naming a member it does not have. No corpus view does that -- SlimTicketType
+// renames `id` to `ticket_type_id`, which is the name the source's own alias
 // already gives it -- and the language does not currently say whether it may.
 func writeCompositeKey(b *strings.Builder, d *check.Decl, m *check.Member) {
 	writeKey(b, m)
@@ -318,7 +318,7 @@ func writeCompositeKey(b *strings.Builder, d *check.Decl, m *check.Member) {
 	b.WriteString(");\n")
 }
 
-// writeAlias emits `alias bet_type_id = id;` as a get and set passthrough with
+// writeAlias emits `alias ticket_type_id = id;` as a get and set passthrough with
 // no wire slot. `[IgnoreMember]` is not decoration: #20 measured that `[Key(N)]`
 // is not optional on a member MessagePack can see -- MsgPack004 is a hard error
 // -- so the only way to say "no slot" is to say it explicitly.
@@ -411,7 +411,7 @@ func writeKey(b *strings.Builder, m *check.Member) {
 // it names, and has no opinion about whether it compiles -- the check that
 // matters happens when the generated code does. protop's own annotations carry
 // no prefix and are read by the checker, so they reach the backend as resolved
-// relations and emit nothing here: `[references(SportGame)]` is a fact about
+// relations and emit nothing here: `[references(Show)]` is a fact about
 // the schema and not a C# attribute. Another backend's annotations are skipped
 // the same way.
 func writeAnnotations(b *strings.Builder, indent string, anns []*syntax.Annotation) {

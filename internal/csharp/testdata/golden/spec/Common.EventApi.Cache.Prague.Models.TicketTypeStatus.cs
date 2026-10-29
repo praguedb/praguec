@@ -1,6 +1,6 @@
 namespace Common.EventApi.Cache.Prague.Models;
 
-public enum BetTypeStatus
+public enum TicketTypeStatus
 {
     Unknown = 0,
     Open = 1,

@@ -15,7 +15,7 @@ enum EventStatus {
   FINISHED    = 3;
 }
 
-enum BetTypeStatus {
+enum TicketTypeStatus {
   UNKNOWN   = 0;
   OPEN      = 1;
   SUSPENDED = 2;
@@ -32,31 +32,31 @@ record StaticDataRef
   int64   provider_key        = 4;
 }
 
-record Odd {
+record Quote {
   string name        = 1;
-  double odds_actual = 9;
+  double quotes_actual = 9;
   int64  timestamp   = 5;
 }
 
 // --- TABLE, SIMPLE KEY ------------------------------------------------------
-table SportGame
-  [cs: DataCache(CacheClassName = nameof(Prague.Models.BPSportGameCache))]
-  [cs: DataCacheTopic("Cache.[v:brandId].SportGame")]
+table Show
+  [cs: DataCache(CacheClassName = nameof(Prague.Models.BPShowCache))]
+  [cs: DataCacheTopic("Cache.[v:brandId].Show")]
 {
   reserved 8..14, 16..23, 25..27, 29..34, 37..46, 48..54;
 
   key int64 event_id = 1;
 
-  int64 sport_type_id = 2;
+  int64 genre_id = 2;
   int64 country_id    = 3;
-  int64 league_id     = 4;
+  int64 tour_id     = 4;
 
-  int64? home_team_id = 5;
-  int64? away_team_id = 6;
+  int64? headliner_id = 5;
+  int64? opener_id = 6;
 
   Venue? venue = 7;
 
-  int32? fixture_id = 15;
+  int32? listing_id = 15;
 
   EventStatus event_status = 24;
 
@@ -65,42 +65,42 @@ table SportGame
 
   decimal(4)? live_limit_manual_single = 36;
 
-  // Element type unverified against the pin. The corpus writes `List<Runner>`
-  // in this slot and `Runner` was never copied, so the pin cannot settle whether
+  // Element type unverified against the pin. The corpus writes `List<Performer>`
+  // in this slot and `Performer` was never copied, so the pin cannot settle whether
   // `StaticDataRef` here is faithful, a substitution, or an error.
   // corpus/prague/SOURCE.md records the gap; tracked on #38.
-  list<StaticDataRef> runners = 47;
+  list<StaticDataRef> performers = 47;
 
-  StaticDataRef  sport_type = 55;
+  StaticDataRef  genre = 55;
   StaticDataRef  country    = 56;
-  StaticDataRef  league     = 57;
-  StaticDataRef? home_team  = 58;
-  StaticDataRef? away_team  = 59;
+  StaticDataRef  tour     = 57;
+  StaticDataRef? headliner  = 58;
+  StaticDataRef? opener  = 59;
 }
 
 // --- TABLE, COMPOSITE KEY ---------------------------------------------------
-table BetType
-  [cs: DataCache(CacheClassName = nameof(Prague.Models.BPBetTypeCache))]
-  [cs: DataCacheTopic("Cache.[v:brandId].BetType")]
+table TicketType
+  [cs: DataCache(CacheClassName = nameof(Prague.Models.BPTicketTypeCache))]
+  [cs: DataCacheTopic("Cache.[v:brandId].TicketType")]
 {
   reserved 5, 6, 10..21, 23, 24;
 
-  key key = 1 (event_id, bet_type_id);
+  key key = 1 (event_id, ticket_type_id);
 
-  int64 event_id = 2 [references(SportGame)];
+  int64 event_id = 2 [references(Show)];
   int64 id       = 3;
 
-  alias bet_type_id = id;
+  alias ticket_type_id = id;
 
   string name = 4;
 
-  BetTypeStatus  status           = 7;
-  BetTypeStatus? status_manual    = 8;
-  BetTypeStatus? status_watch_dog = 9;
+  TicketTypeStatus  status           = 7;
+  TicketTypeStatus? status_manual    = 8;
+  TicketTypeStatus? status_watch_dog = 9;
 
   decimal(4)? limit_manual_single = 22;
 
   int64 timestamp = 25 [cs: DataCacheIndex(DataCacheIndexType.Range)] [cs: DataCacheFromTimestamp];
 
-  list<Odd> odds = 26;
+  list<Quote> quotes = 26;
 }

@@ -83,20 +83,20 @@ var coverage = []corpusRow{
 	{Path: "deps/BaseProviderObject.cs", Decl: "BaseProviderObject"},
 	{Path: "deps/IBaseLiveData.cs",
 		Blocked: "#9, unions. A 19-arm interface, and protop has no sum type."},
-	{Path: "deps/SportGameSlimExtensions.cs",
+	{Path: "deps/ShowSlimExtensions.cs",
 		Blocked: "not a MessagePack type: a static projection helper, which is code rather than schema."},
 	{Path: "deps/StaticDataRef.cs",
 		Blocked: "#11, inheritance. The corpus writes `class StaticDataRef : BaseProviderObject` with an empty body; #11 ruled protop flattens, so the emission carries the four inherited members and the C# hierarchy forks."},
 
 	// --- payloads: the branded producer -------------------------------------
 	{Path: "payloads/Venue.cs", Decl: "Venue"},
-	{Path: "payloads/BPSportGameCacheItem.cs", Decl: "BPSportGameCacheItem",
+	{Path: "payloads/BPShowCacheItem.cs", Decl: "BPShowCacheItem",
 		Extra: []string{cacheCore},
 		Missing: map[int]string{
 			11: unsigned, 27: temporal, 28: temporal, 29: temporal,
 			30: temporal, 31: temporal, 50: temporal,
 		}},
-	{Path: "payloads/BPBetTypeCacheItem.cs", Decl: "BPBetTypeCacheItem",
+	{Path: "payloads/BPTicketTypeCacheItem.cs", Decl: "BPTicketTypeCacheItem",
 		Extra:   []string{cacheCore, jsonIgnore},
 		Missing: map[int]string{15: temporal, 16: temporal, 17: temporal}},
 	{Path: "payloads/BPSearchCacheItem.cs", Decl: "BPSearchCacheItem",
@@ -108,13 +108,13 @@ var coverage = []corpusRow{
 
 	// --- payloads: the back office ------------------------------------------
 	{Path: "payloads/BOVenue.cs", Decl: "BOVenue"},
-	{Path: "payloads/BOSportGameCacheItem.cs", Decl: "BOSportGameCacheItem",
+	{Path: "payloads/BOShowCacheItem.cs", Decl: "BOShowCacheItem",
 		Extra: []string{cacheCore},
 		Missing: map[int]string{
 			11: unsigned, 27: temporal, 28: temporal, 29: temporal,
 			30: temporal, 31: temporal, 50: temporal,
 		}},
-	{Path: "payloads/BOBetTypeCacheItem.cs", Decl: "BOBetTypeCacheItem",
+	{Path: "payloads/BOTicketTypeCacheItem.cs", Decl: "BOTicketTypeCacheItem",
 		Extra:   []string{cacheCore, jsonIgnore},
 		Missing: map[int]string{15: temporal, 16: temporal, 17: temporal}},
 	{Path: "payloads/BOSearchCacheItem.cs", Decl: "BOSearchCacheItem",
@@ -128,7 +128,7 @@ var coverage = []corpusRow{
 	{Path: "payloads/LiveObjectCacheItem.cs", Decl: "LiveObjectCacheItem",
 		Extra:   []string{cacheCore, liveObject},
 		Missing: map[int]string{1: "#9, unions; corpus IBaseLiveData?"}},
-	{Path: "payloads/SlimSportGame.cs", Decl: "SlimSportGame",
+	{Path: "payloads/SlimShow.cs", Decl: "SlimShow",
 		Extra:   []string{cacheCore},
 		Missing: map[int]string{11: unsigned, 27: temporal, 29: temporal},
 		Diverges: map[int]string{
@@ -136,34 +136,34 @@ var coverage = []corpusRow{
 			57: "the corpus view types this `StaticDataRef` and the table types it `StaticDataRef?`. A view cannot change presence either.",
 			58: "same as 57.",
 		}},
-	{Path: "payloads/SlimBetType.cs", Decl: "SlimBetType",
+	{Path: "payloads/SlimTicketType.cs", Decl: "SlimTicketType",
 		Extra: []string{cacheCore},
 		Diverges: map[int]string{
-			25: "#24. The corpus writes `SlimOdd[]` here and `List<T>` at its other six collection sites; praguec writes the majority form. Inferring `a view emits T[]` from one sample is a language ruling.",
+			25: "#24. The corpus writes `SlimQuote[]` here and `List<T>` at its other six collection sites; praguec writes the majority form. Inferring `a view emits T[]` from one sample is a language ruling.",
 		}},
-	{Path: "payloads/SlimOdd.cs", Decl: "SlimOdd"},
+	{Path: "payloads/SlimQuote.cs", Decl: "SlimQuote"},
 
 	// --- shells -------------------------------------------------------------
 	// The 11 hand-written halves. #25 owns whether praguec emits a shell at
 	// all; until it rules, none of these is praguec's output to check.
 	//
 	// SOURCE.md records that only three of the eleven are empty --
-	// LiveObjectCache, SlimBetTypeCache and SlimSportGameCache. The other eight
+	// LiveObjectCache, SlimTicketTypeCache and SlimShowCache. The other eight
 	// carry a `Clear()` written against members the generator emits, and the
 	// Search ones carry more. That is evidence for #25 rather than against the
 	// corpus -- the hand-written half is not a formality that could be
 	// generated away.
-	{Path: "shells/BOBetTypeCache.cs", Blocked: shellBlocked},
+	{Path: "shells/BOTicketTypeCache.cs", Blocked: shellBlocked},
 	{Path: "shells/BOLiveObjectCache.cs", Blocked: shellBlocked},
 	{Path: "shells/BOSearchCache.cs", Blocked: shellBlocked},
-	{Path: "shells/BOSportGameCache.cs", Blocked: shellBlocked},
-	{Path: "shells/BPBetTypeCache.cs", Blocked: shellBlocked},
+	{Path: "shells/BOShowCache.cs", Blocked: shellBlocked},
+	{Path: "shells/BPTicketTypeCache.cs", Blocked: shellBlocked},
 	{Path: "shells/BPLiveObjectCache.cs", Blocked: shellBlocked},
 	{Path: "shells/BPSearchCache.cs", Blocked: shellBlocked},
-	{Path: "shells/BPSportGameCache.cs", Blocked: shellBlocked},
+	{Path: "shells/BPShowCache.cs", Blocked: shellBlocked},
 	{Path: "shells/LiveObjectCache.cs", Blocked: shellBlocked},
-	{Path: "shells/SlimBetTypeCache.cs", Blocked: shellBlocked},
-	{Path: "shells/SlimSportGameCache.cs", Blocked: shellBlocked},
+	{Path: "shells/SlimTicketTypeCache.cs", Blocked: shellBlocked},
+	{Path: "shells/SlimShowCache.cs", Blocked: shellBlocked},
 }
 
 const shellBlocked = "#25, the hand-written half. Not a [MessagePackObject] type and not praguec's output."
@@ -181,19 +181,19 @@ const shellBlocked = "#25, the hand-written half. Not a [MessagePackObject] type
 // measuring a payload.
 var blockedPaths = []string{
 	"deps/IBaseLiveData.cs",
-	"deps/SportGameSlimExtensions.cs",
+	"deps/ShowSlimExtensions.cs",
 	"deps/StaticDataRef.cs",
-	"shells/BOBetTypeCache.cs",
+	"shells/BOTicketTypeCache.cs",
 	"shells/BOLiveObjectCache.cs",
 	"shells/BOSearchCache.cs",
-	"shells/BOSportGameCache.cs",
-	"shells/BPBetTypeCache.cs",
+	"shells/BOShowCache.cs",
+	"shells/BPTicketTypeCache.cs",
 	"shells/BPLiveObjectCache.cs",
 	"shells/BPSearchCache.cs",
-	"shells/BPSportGameCache.cs",
+	"shells/BPShowCache.cs",
 	"shells/LiveObjectCache.cs",
-	"shells/SlimBetTypeCache.cs",
-	"shells/SlimSportGameCache.cs",
+	"shells/SlimTicketTypeCache.cs",
+	"shells/SlimShowCache.cs",
 }
 
 // --- loading -----------------------------------------------------------------
@@ -202,7 +202,7 @@ var blockedPaths = []string{
 // by declaration name.
 //
 // examples/prague is the protop that renders the corpus. Section 1 declares
-// `SportGame` once and the corpus has BO, BP and Slim variants of it, so the
+// `Show` once and the corpus has BO, BP and Slim variants of it, so the
 // file the oracle needs did not exist and writing it is part of this milestone.
 func exampleUnits(t *testing.T) map[string]Unit {
 	t.Helper()
@@ -411,7 +411,7 @@ func TestBlockedCorpusFilesNameATicket(t *testing.T) {
 // declaration line.
 //
 // Usings compare as a set. The corpus sorts `System.*` first (see
-// payloads/BPBetTypeCacheItem.cs, lines 1 to 5) and praguec sorts ordinally;
+// payloads/BPTicketTypeCacheItem.cs, lines 1 to 5) and praguec sorts ordinally;
 // which order is right is a style question that no ticket owns and that nothing
 // on the wire depends on. What the set comparison still catches is a using that
 // should have been derived and was not, which is the part that matters.
@@ -621,8 +621,8 @@ func assertTheCensusReachesTheCoverageTable(t *testing.T, decls map[string]examp
 // nothing -- so deleting a tag from a `reserved` list changes no output and
 // fails nothing. What it does change is the language's cross-repo guarantee:
 // section 7 retires a tag where it was declared, and a tag that is not retired
-// is a tag the next member may take. Tag 51 of BPSportGameCacheItem is the
-// corpus's `DateTime? BetDataLastUpdateAt`; dropping it from the reserved list
+// is a tag the next member may take. Tag 51 of BPShowCacheItem is the
+// corpus's `DateTime? PurchaseDataLastUpdateAt`; dropping it from the reserved list
 // leaves the slot free for a future field to silently collide with a member of
 // a running system.
 //
@@ -699,28 +699,28 @@ var exampleSupport = map[string]string{
 	// numbers are the whole of an enum's wire contract and inventing them would
 	// put unchecked values on the wire. What they exist for is to make the
 	// names resolve, so members carry a type and files carry a using.
-	"EventStatus":    "CommonEventApi enum; SOURCE.md does not copy the declaration",
-	"BookingStatus":  "CommonEventApi enum; SOURCE.md does not copy the declaration",
-	"Channel":        "CommonEventApi enum; SOURCE.md does not copy the declaration",
-	"BetTypeStatus":  "CommonFeedModels enum; SOURCE.md does not copy the declaration",
-	"OddStatus":      "CommonFeedModels enum; SOURCE.md does not copy the declaration",
-	"WinStatus":      "CommonFeedModels enum; SOURCE.md does not copy the declaration",
-	"WatchDogAction": "CommonFeedModels enum; SOURCE.md does not copy the declaration",
+	"EventStatus":      "CommonEventApi enum; SOURCE.md does not copy the declaration",
+	"BookingStatus":    "CommonEventApi enum; SOURCE.md does not copy the declaration",
+	"Channel":          "CommonEventApi enum; SOURCE.md does not copy the declaration",
+	"TicketTypeStatus": "CommonFeedModels enum; SOURCE.md does not copy the declaration",
+	"QuoteStatus":      "CommonFeedModels enum; SOURCE.md does not copy the declaration",
+	"WinStatus":        "CommonFeedModels enum; SOURCE.md does not copy the declaration",
+	"WatchDogAction":   "CommonFeedModels enum; SOURCE.md does not copy the declaration",
 
 	// deps/StaticDataRef.cs is in the coverage table and is blocked by #11:
 	// the corpus writes `class StaticDataRef : BaseProviderObject` with an
 	// empty body and protop flattens. So the row names no declaration, and the
-	// declaration is still needed -- both SportGame twins carry eight members
+	// declaration is still needed -- both Show twins carry eight members
 	// typed by it.
 	"StaticDataRef": "#11; the corpus file is blocked and the type is still referenced",
 
 	// Not copied by SOURCE.md at all, and referenced by members that are:
-	// `Odd` is what SlimOdd is a view of and what the corpus's six `List<Odd>`
-	// members hold, and `Runner` is the element type of `List<Runner>` at key
-	// 46 of both SportGame twins. Odd's tags are recoverable from SlimOdd,
-	// which is a view of it; Runner's are not, so Runner is empty.
-	"Odd":    "SOURCE.md does not copy it; SlimOdd is a view of it and six members hold it",
-	"Runner": "SOURCE.md does not copy it; `List<Runner>` at key 46 of both SportGame twins",
+	// `Quote` is what SlimQuote is a view of and what the corpus's six `List<Quote>`
+	// members hold, and `Performer` is the element type of `List<Performer>` at key
+	// 46 of both Show twins. Quote's tags are recoverable from SlimQuote,
+	// which is a view of it; Performer's are not, so Performer is empty.
+	"Quote":     "SOURCE.md does not copy it; SlimQuote is a view of it and six members hold it",
+	"Performer": "SOURCE.md does not copy it; `List<Performer>` at key 46 of both Show twins",
 }
 
 // TestTheExamplesDeclareNothingUnreviewed makes the input side of the oracle
@@ -783,9 +783,9 @@ func TestNormalisationSitesAreEnumerated(t *testing.T) {
 		// key 0 breaks deserializing-constructor matching on both MessagePack
 		// paths. So `init` becomes `set`, at all fifteen corpus sites.
 		"init:Id",
-		"init:IsBalancedLine", "init:IsBoosted", "init:IsDynamic", "init:Line",
-		"init:Name", "init:OddsActual", "init:OddsFair", "init:OddsManual",
-		"init:PlayerId", "init:Status", "init:StatusManual", "init:Timestamp",
+		"init:IsBalancedLine", "init:IsFeatured", "init:IsDynamic", "init:Line",
+		"init:Name", "init:QuotesActual", "init:QuotesFair", "init:QuotesManual",
+		"init:CustomerId", "init:Status", "init:StatusManual", "init:Timestamp",
 		"init:WinStatusId", "init:WinStatusIdManual",
 
 		// protop has no default-value syntax. Every one of these is a C#
@@ -793,23 +793,23 @@ func TestNormalisationSitesAreEnumerated(t *testing.T) {
 		// `= string.Empty`, `= []`, `= null!` and one enum default -- but that
 		// is a judgement about C#, and the list is here so that the judgement
 		// is visible rather than assumed.
-		"initialiser:AwayTeam = null!;", "initialiser:AwayTeam = null!;", "initialiser:AwayTeam = null!;",
+		"initialiser:Opener = null!;", "initialiser:Opener = null!;", "initialiser:Opener = null!;",
 		"initialiser:Country = null!;", "initialiser:Country = null!;", "initialiser:Country = null!;",
 		"initialiser:EventStatus = EventStatus.Unknown;", "initialiser:EventStatus = EventStatus.Unknown;",
 		"initialiser:Groups = [];", "initialiser:Groups = [];",
-		"initialiser:HomeTeam = null!;", "initialiser:HomeTeam = null!;", "initialiser:HomeTeam = null!;",
-		"initialiser:League = null!;", "initialiser:League = null!;", "initialiser:League = null!;",
+		"initialiser:Headliner = null!;", "initialiser:Headliner = null!;", "initialiser:Headliner = null!;",
+		"initialiser:Tour = null!;", "initialiser:Tour = null!;", "initialiser:Tour = null!;",
 		"initialiser:Name = string.Empty;", "initialiser:Name = string.Empty;",
 		"initialiser:Name = string.Empty;", "initialiser:Name = string.Empty;",
 		"initialiser:Name = string.Empty;", "initialiser:Name = string.Empty;",
-		"initialiser:Odds = [];", "initialiser:Odds = [];", "initialiser:Odds = [];",
-		"initialiser:Runners = [];", "initialiser:Runners = [];",
-		"initialiser:SportType = null!;", "initialiser:SportType = null!;", "initialiser:SportType = null!;",
-		"initialiser:WinningSelectionId = string.Empty;", "initialiser:WinningSelectionId = string.Empty;",
+		"initialiser:Quotes = [];", "initialiser:Quotes = [];", "initialiser:Quotes = [];",
+		"initialiser:Performers = [];", "initialiser:Performers = [];",
+		"initialiser:Genre = null!;", "initialiser:Genre = null!;", "initialiser:Genre = null!;",
+		"initialiser:AssignedSeatId = string.Empty;", "initialiser:AssignedSeatId = string.Empty;",
 
 		// The one computed member the corpus writes in the generated half:
-		// `public int FixtureIdIndex => FixtureId ?? 0;`, which
-		// BOSportGameCacheItem's own `[DataCacheIndex(nameof(FixtureIdIndex),
+		// `public int ListingIdIndex => ListingId ?? 0;`, which
+		// BOShowCacheItem's own `[DataCacheIndex(nameof(ListingIdIndex),
 		// ...)]` names. Section 5 puts computed members in the hand-written
 		// partial; this one is not there, and protop has no expression syntax
 		// to write it with, so the annotation passes through and the member it
@@ -817,11 +817,11 @@ func TestNormalisationSitesAreEnumerated(t *testing.T) {
 		// annotation passthrough rule -- an attribute can name a member protop
 		// cannot produce -- and it is one site, so it is listed rather than
 		// generalised.
-		"computed:FixtureIdIndex",
+		"computed:ListingIdIndex",
 
 		// #25, the hand-written half arriving in the same file. Two of the
 		// three views carry a parameterless and a full constructor.
-		"ctor:SlimBetType", "ctor:SlimBetType", "ctor:SlimOdd", "ctor:SlimOdd",
+		"ctor:SlimTicketType", "ctor:SlimTicketType", "ctor:SlimQuote", "ctor:SlimQuote",
 	}
 	var got []string
 	for _, r := range coverage {
@@ -855,9 +855,9 @@ func TestNormalisationSitesAreEnumerated(t *testing.T) {
 // as the member's identity and TestCorpusMembers compares them as the key and
 // the `alias:` id. The one attribute missing from the census that the corpus
 // does write on a member is the `[DataCacheIndex]` on
-// payloads/BOSportGameCacheItem.cs:61 -- it sits on the computed
-// `FixtureIdIndex`, which the reader skips on both sides and records as
-// `computed:FixtureIdIndex` above.
+// payloads/BOShowCacheItem.cs:61 -- it sits on the computed
+// `ListingIdIndex`, which the reader skips on both sides and records as
+// `computed:ListingIdIndex` above.
 func TestMemberAttributesAreEnumerated(t *testing.T) {
 	want := []string{
 		// protop's `key` is the only thing that produces a [DataCacheKey], and
@@ -873,7 +873,7 @@ func TestMemberAttributesAreEnumerated(t *testing.T) {
 		// copies: dropping `index` from the language moved these into the
 		// annotation passthrough, and this list is what that passthrough is
 		// carrying today.
-		"DataCacheIndex on BetTypeId",
+		"DataCacheIndex on TicketTypeId",
 		"DataCacheIndex on BookingStatus",
 		"DataCacheIndex on ChannelId", "DataCacheIndex on ChannelId",
 		"DataCacheIndex on CountryId",
@@ -882,8 +882,8 @@ func TestMemberAttributesAreEnumerated(t *testing.T) {
 		"DataCacheIndex on EventStatus", "DataCacheIndex on EventStatus", "DataCacheIndex on EventStatus",
 		"DataCacheIndex on EventTypeId",
 		"DataCacheIndex on IsLive", "DataCacheIndex on IsLive",
-		"DataCacheIndex on LeagueId",
-		"DataCacheIndex on SportTypeId",
+		"DataCacheIndex on TourId",
+		"DataCacheIndex on GenreId",
 		"DataCacheIndex on Status",
 		"DataCacheIndex on WatchDogAction", "DataCacheIndex on WatchDogAction", "DataCacheIndex on WatchDogAction",
 		"DataCacheIndex(DataCacheIndexType.Range) on EventDate",
@@ -898,7 +898,7 @@ func TestMemberAttributesAreEnumerated(t *testing.T) {
 		// The two aliases that are also hidden from System.Text.Json, and the
 		// only member attribute in the corpus that belongs to neither
 		// MessagePack nor the cache generator.
-		"JsonIgnore on BetTypeId", "JsonIgnore on BetTypeId",
+		"JsonIgnore on TicketTypeId", "JsonIgnore on TicketTypeId",
 	}
 	var got []string
 	for _, r := range coverage {
@@ -950,10 +950,10 @@ func TestCorpusCensus(t *testing.T) {
 		{"Dictionary<", "corpus", 0,
 			"#24: the corpus *cannot check* a Dictionary row, which is not the same as saying no map is needed. " +
 				"INVARIANTS.md's `Type tally` section carries, marked as not re-derivable from the pin, a report " +
-				"that a `Dictionary<,>` does appear transitively and string-keyed via `Odd.Specifiers`; " +
-				"SOURCE.md's `Upstream paths` section lists `Odd` among the fourteen types deliberately not " +
+				"that a `Dictionary<,>` does appear transitively and string-keyed via `Quote.Specifiers`; " +
+				"SOURCE.md's `Upstream paths` section lists `Quote` among the fourteen types deliberately not " +
 				"copied. So the zero is an artefact of where the copy stopped, and " +
-				"examples/prague/branded.prague's stand-in `record Odd` omits the member that would have needed " +
+				"examples/prague/branded.prague's stand-in `record Quote` omits the member that would have needed " +
 				"one. Evidence for #24, which is human-in-the-loop and unruled. " +
 				"(Cited by section rather than by line: both regions moved in #38, and a line number into a " +
 				"prose document is a citation that rots without telling anyone)"},
@@ -967,7 +967,7 @@ func TestCorpusCensus(t *testing.T) {
 		// --- claims about what praguec emits: payloads/ only ---
 		{"List<", "payloads", 6,
 			"the majority collection form in the generated half, which is why `list<T>` emits List<T> (deps/ adds two more, in types praguec does not emit)"},
-		{"SlimOdd[]", "payloads", 1,
+		{"SlimQuote[]", "payloads", 1,
 			"the corpus's one array, and #24's whole question"},
 		{"DateTime", "payloads", 22,
 			"#15: the members protop cannot spell at all"},
@@ -976,13 +976,13 @@ func TestCorpusCensus(t *testing.T) {
 		{"decimal", "payloads", 30,
 			"#13: every one of them unscaled on the wire today"},
 		{"[DataCacheKey]", "payloads", 11,
-			"protop's `key` is the only thing that produces it; 11 of the 14 payload types have a key and the other three -- Venue, BOVenue, SlimOdd -- have none"},
+			"protop's `key` is the only thing that produces it; 11 of the 14 payload types have a key and the other three -- Venue, BOVenue, SlimQuote -- have none"},
 		{"sealed partial class", "payloads", 11,
 			"11 for 11 in the generated half, which is why a table emits `sealed partial`; the 11 shells/ files make 22 corpus-wide and #25 still owns whether `partial` is mandatory"},
 		{"public struct", "payloads", 2,
 			"Venue and BOVenue, the two declarations section 4's `struct` row is measured against"},
 		{"public class", "payloads", 1,
-			"SlimOdd, and the whole of the correction to #45: it is a view, and it is the only view that is not `sealed partial` because it is the only one whose source is a record"},
+			"SlimQuote, and the whole of the correction to #45: it is a view, and it is the only view that is not `sealed partial` because it is the only one whose source is a record"},
 	} {
 		body, ok := map[string]string{"payloads": payloads, "corpus": whole}[tt.scope]
 		if !ok {
@@ -1012,8 +1012,8 @@ func TestCorpusCensus(t *testing.T) {
 // every attribute name section 1 writes is an attribute name the pin uses.
 //
 // What it does not check, said rather than implied: the arguments. Section 1's
-// `nameof(BPSportGameCache)` against the corpus's
-// `nameof(Prague.Models.BPSportGameCache)` is a real divergence this test
+// `nameof(BPShowCache)` against the corpus's
+// `nameof(Prague.Models.BPShowCache)` is a real divergence this test
 // cannot see, because an argument list is exactly the part praguec is forbidden
 // to understand. Names are the part a census can settle, and all three defects
 // #43 found were names or forms of names.
@@ -1048,8 +1048,8 @@ func TestCorpusCensus(t *testing.T) {
 // remembering to.
 //
 // Where the census gives up rather than widens: normalisation is whitespace and
-// nothing else, so an annotation naming a section 1 declaration -- `SportGame`,
-// where the pin's class is `BPSportGameCacheItem` -- would match nothing and
+// nothing else, so an annotation naming a section 1 declaration -- `Show`,
+// where the pin's class is `BPShowCacheItem` -- would match nothing and
 // fail here. None does today. Order within one member's stack is pinned by
 // `want` against section 1 and is not measured against the corpus; it is
 // meaningful to praguec, which emits in source order and never sorts, but
@@ -1064,12 +1064,12 @@ func TestSection1AnnotatesOnlyWhatThePinCarries(t *testing.T) {
 	// annotations is meant to be an edit to this list as well.
 	want := []csAnnotation{
 		{decl: "StaticDataRef", text: "[BsonIgnoreExtraElements]"},
-		{decl: "SportGame", text: "[DataCache(CacheClassName = nameof(Prague.Models.BPSportGameCache))]"},
-		{decl: "SportGame", text: `[DataCacheTopic("Cache.[v:brandId].SportGame")]`},
-		{decl: "BetType", text: "[DataCache(CacheClassName = nameof(Prague.Models.BPBetTypeCache))]"},
-		{decl: "BetType", text: `[DataCacheTopic("Cache.[v:brandId].BetType")]`},
-		{decl: "BetType", member: "timestamp", text: "[DataCacheIndex(DataCacheIndexType.Range)]"},
-		{decl: "BetType", member: "timestamp", text: "[DataCacheFromTimestamp]"},
+		{decl: "Show", text: "[DataCache(CacheClassName = nameof(Prague.Models.BPShowCache))]"},
+		{decl: "Show", text: `[DataCacheTopic("Cache.[v:brandId].Show")]`},
+		{decl: "TicketType", text: "[DataCache(CacheClassName = nameof(Prague.Models.BPTicketTypeCache))]"},
+		{decl: "TicketType", text: `[DataCacheTopic("Cache.[v:brandId].TicketType")]`},
+		{decl: "TicketType", member: "timestamp", text: "[DataCacheIndex(DataCacheIndexType.Range)]"},
+		{decl: "TicketType", member: "timestamp", text: "[DataCacheFromTimestamp]"},
 	}
 	if !slices.Equal(got, want) {
 		t.Errorf("section 1 writes these annotations:\n  %v\nand this test expects:\n  %v", got, want)
@@ -1136,22 +1136,22 @@ func TestSection1AnnotatesOnlyWhatThePinCarries(t *testing.T) {
 //
 // That paragraph names a corpus file for every annotation in the block: the two
 // table heads follow the two BP payload files, the record head follows
-// deps/StaticDataRef.cs, and the pair on `timestamp` follows SlimBetType.cs --
-// which is a different file from the one BetType's head follows, because
-// BPBetTypeCacheItem.cs writes `Timestamp` with nothing on it but its `[Key]`.
+// deps/StaticDataRef.cs, and the pair on `timestamp` follows SlimTicketType.cs --
+// which is a different file from the one TicketType's head follows, because
+// BPTicketTypeCacheItem.cs writes `Timestamp` with nothing on it but its `[Key]`.
 //
 // It is hand-written because it is that sentence's own claim and not an
-// inference from anything: no rule relates section 1's `SportGame` to the pin's
-// `BPSportGameCacheItem`, the coverage table above is where that relation is
+// inference from anything: no rule relates section 1's `Show` to the pin's
+// `BPShowCacheItem`, the coverage table above is where that relation is
 // stated, and a map derived from a guess would agree with whatever it guessed.
 // The two must move together -- editing the paragraph without editing this map
 // leaves the spec asserting one thing and the test checking another, which is
 // the shape of the defect #43 was filed about.
 var section1Follows = map[string]string{
-	"StaticDataRef":     corpusRoot + "/deps/StaticDataRef.cs",
-	"SportGame":         corpusRoot + "/payloads/BPSportGameCacheItem.cs",
-	"BetType":           corpusRoot + "/payloads/BPBetTypeCacheItem.cs",
-	"BetType.timestamp": corpusRoot + "/payloads/SlimBetType.cs",
+	"StaticDataRef":        corpusRoot + "/deps/StaticDataRef.cs",
+	"Show":                 corpusRoot + "/payloads/BPShowCacheItem.cs",
+	"TicketType":           corpusRoot + "/payloads/BPTicketTypeCacheItem.cs",
+	"TicketType.timestamp": corpusRoot + "/payloads/SlimTicketType.cs",
 }
 
 // praguecsOwnAttributes is every attribute name praguec writes without being
@@ -1237,20 +1237,20 @@ func TestSection1sStaticDataRefIsTheOneTheCorpusChecks(t *testing.T) {
 	}
 }
 
-// section1RunnersCaveat is the note section 1 carries above the member it is
+// section1PerformersCaveat is the note section 1 carries above the member it is
 // about, quoted with that member on the end of it. The member is the citation:
 // #38 was filed because line numbers into these documents had rotted, and a pin
 // that named a line would rot the same way the next time the block moves.
-const section1RunnersCaveat = "  // Element type unverified against the pin. The corpus writes `List<Runner>`\n" +
-	"  // in this slot and `Runner` was never copied, so the pin cannot settle whether\n" +
+const section1PerformersCaveat = "  // Element type unverified against the pin. The corpus writes `List<Performer>`\n" +
+	"  // in this slot and `Performer` was never copied, so the pin cannot settle whether\n" +
 	"  // `StaticDataRef` here is faithful, a substitution, or an error.\n" +
 	"  // corpus/prague/SOURCE.md records the gap; tracked on #38.\n" +
-	"  list<StaticDataRef> runners = 47;"
+	"  list<StaticDataRef> performers = 47;"
 
-// runnerDeclared matches a C# declaration of Runner. The corpus USES the name
-// -- `List<Runner>` in both SportGame twins -- so an occurrence count would say
+// performerDeclared matches a C# declaration of Performer. The corpus USES the name
+// -- `List<Performer>` in both Show twins -- so an occurrence count would say
 // nothing; what is absent is a definition, which is what an oracle would be.
-var runnerDeclared = regexp.MustCompile(`\b(?:class|struct|record|interface|enum)\s+Runner\b`)
+var performerDeclared = regexp.MustCompile(`\b(?:class|struct|record|interface|enum)\s+Performer\b`)
 
 // The one member of section 1 whose element type the pin cannot check, held to
 // the gap that makes that true.
@@ -1265,18 +1265,18 @@ var runnerDeclared = regexp.MustCompile(`\b(?:class|struct|record|interface|enum
 // What goes red, and when. Three assertions and only one of them is about a
 // sentence:
 //
-//   - `List<Runner>` still in the pin, twice. ANCHOR. The note's first clause
+//   - `List<Performer>` still in the pin, twice. ANCHOR. The note's first clause
 //     is a claim about the corpus; if the next pin drops the member or renames
 //     the type, the clause is false and nothing else in this file would notice.
 //
-//   - no corpus file DECLARES Runner. ANCHOR, and the half that is usually
-//     missed: it fails when the gap CLOSES. The day `Runner` is copied, the
+//   - no corpus file DECLARES Performer. ANCHOR, and the half that is usually
+//     missed: it fails when the gap CLOSES. The day `Performer` is copied, the
 //     element type has an oracle, the note is a lie, and this is what says so.
 //     A test that only checked the note was present would let that lie stand
 //     forever -- which is the anchor-versus-decoration mistake this repository
 //     has now made six times, in its quieter direction.
 //
-//   - the note is in section 1, above `runners`. DECORATION, and named as
+//   - the note is in section 1, above `performers`. DECORATION, and named as
 //     such: what turns it red is someone editing or deleting the note. That is
 //     the half the ticket asked for and it is worth exactly what it costs --
 //     with the two above it, neither side of the pair can move alone.
@@ -1284,22 +1284,22 @@ var runnerDeclared = regexp.MustCompile(`\b(?:class|struct|record|interface|enum
 // Why not the stronger, derived version. The obvious upgrade is to stop pinning
 // the note's text and instead compute, from the corpus, which of section 1's
 // element types have no declaration there, then require a caveat on exactly
-// those. It does not survive contact: `Odd` has no corpus declaration either
+// those. It does not survive contact: `Quote` has no corpus declaration either
 // and correctly carries no caveat, because its tags are recoverable from
-// SlimOdd, which is a view of it, and Runner's are not. "Has an oracle" is not
+// SlimQuote, which is a view of it, and Performer's are not. "Has an oracle" is not
 // "is declared", and the difference is a judgement per type -- so the derived
 // rule needs a hand-maintained exception beside it, which is the copy this
 // anchor exists to avoid. The conjunction is what can actually be held.
-func TestSection1sRunnersCaveatStandsExactlyWhileTheGapDoes(t *testing.T) {
+func TestSection1sPerformersCaveatStandsExactlyWhileTheGapDoes(t *testing.T) {
 	whole := corpusText(t, corpusRoot)
 
-	if n := strings.Count(whole, "List<Runner>"); n != 2 {
-		t.Errorf("the pin has %d `List<Runner>` sites, not the two SportGame twins section 1's note "+
+	if n := strings.Count(whole, "List<Performer>"); n != 2 {
+		t.Errorf("the pin has %d `List<Performer>` sites, not the two Show twins section 1's note "+
 			"describes; the note's first clause is about the corpus and has stopped matching it", n)
 	}
-	if decl := runnerDeclared.FindString(whole); decl != "" {
-		t.Errorf("the corpus now declares Runner (`%s`), so the element type of section 1's "+
-			"`list<StaticDataRef> runners = 47` has an oracle and the #38 caveat above it is false. "+
+	if decl := performerDeclared.FindString(whole); decl != "" {
+		t.Errorf("the corpus now declares Performer (`%s`), so the element type of section 1's "+
+			"`list<StaticDataRef> performers = 47` has an oracle and the #38 caveat above it is false. "+
 			"The caveat goes, this assertion goes with it, and the transcription gets checked instead", decl)
 	}
 
@@ -1307,10 +1307,10 @@ func TestSection1sRunnersCaveatStandsExactlyWhileTheGapDoes(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(spec), section1RunnersCaveat) {
-		t.Errorf("section 1 no longer carries, above its `runners` member:\n\n%s\n\n"+
+	if !strings.Contains(string(spec), section1PerformersCaveat) {
+		t.Errorf("section 1 no longer carries, above its `performers` member:\n\n%s\n\n"+
 			"The gap it records is still open -- the two assertions above just measured it -- so "+
-			"section 1 now reads as uniformly pin-backed when one member is not", section1RunnersCaveat)
+			"section 1 now reads as uniformly pin-backed when one member is not", section1PerformersCaveat)
 	}
 }
 
@@ -1391,7 +1391,7 @@ func csAnnotations(src string) []csAnnotation {
 
 // bracketed is every outermost `[...]` run on a line.
 //
-// Depth is what makes `[DataCacheTopic("Cache.[v:brandId].SportGame")]` come
+// Depth is what makes `[DataCacheTopic("Cache.[v:brandId].Show")]` come
 // back whole: a scanner that stopped at the first `]` would truncate the pin's
 // most-written annotation to something no corpus file carries. The inner pair
 // happens to balance, so depth alone would carry today's section 1 -- the
@@ -1430,7 +1430,7 @@ func TestBracketedReadsWholeAnnotations(t *testing.T) {
 		in   string
 		want []string
 	}{
-		{`  [cs: DataCacheTopic("Cache.[v:brandId].SportGame")]`, []string{`[cs: DataCacheTopic("Cache.[v:brandId].SportGame")]`}},
+		{`  [cs: DataCacheTopic("Cache.[v:brandId].Show")]`, []string{`[cs: DataCacheTopic("Cache.[v:brandId].Show")]`}},
 		{"  int64 timestamp = 25 [cs: A] [cs: B];", []string{"[cs: A]", "[cs: B]"}},
 		{"  int64 id = 1;", nil},
 		{`  [cs: T("a [ b")] [cs: After]`, []string{`[cs: T("a [ b")]`, "[cs: After]"}},
@@ -1475,12 +1475,12 @@ var csProperty = regexp.MustCompile(`^\s+public\s.*[^A-Za-z0-9_]([A-Za-z_][A-Za-
 // either one leaves the whole suite passing until someone writes the annotation
 // it was there to catch. This is the test that fails instead.
 //
-// The input is the shape of corpus/prague/payloads/SlimBetType.cs:83-86 and of
+// The input is the shape of corpus/prague/payloads/SlimTicketType.cs:83-86 and of
 // a class head, which is where the distinction comes from.
 func TestCorpusAttributesKeepsHeadAndPropertyApart(t *testing.T) {
 	onType, onMember := corpusAttributes(`[MessagePackObject]
-[DataCacheTopic("Cache.[v:brandId].BetType")]
-public sealed partial class BPBetTypeCacheItem
+[DataCacheTopic("Cache.[v:brandId].TicketType")]
+public sealed partial class BPTicketTypeCacheItem
 {
     [Key(24)]
     [DataCacheIndex(DataCacheIndexType.Range)]
@@ -1488,10 +1488,10 @@ public sealed partial class BPBetTypeCacheItem
     public long Timestamp { get; set; }
 
     [JsonIgnore]
-    public long BetTypeId { get; set; }
+    public long TicketTypeId { get; set; }
 }
 `)
-	for _, want := range []string{"[MessagePackObject]", `[DataCacheTopic("Cache.[v:brandId].BetType")]`} {
+	for _, want := range []string{"[MessagePackObject]", `[DataCacheTopic("Cache.[v:brandId].TicketType")]`} {
 		if !onType[want] {
 			t.Errorf("%s is written in column zero and did not land on the type", want)
 		}
@@ -1505,14 +1505,14 @@ public sealed partial class BPBetTypeCacheItem
 	for _, want := range [][2]string{
 		{"Timestamp", "[DataCacheIndex(DataCacheIndexType.Range)]"},
 		{"Timestamp", "[DataCacheFromTimestamp]"},
-		{"BetTypeId", "[JsonIgnore]"},
+		{"TicketTypeId", "[JsonIgnore]"},
 	} {
 		if !onMember[want] {
 			t.Errorf("%s did not land on the property %s", want[1], want[0])
 		}
 	}
 	for _, notWanted := range [][2]string{
-		{"BetTypeId", "[DataCacheFromTimestamp]"},
+		{"TicketTypeId", "[DataCacheFromTimestamp]"},
 		{"Timestamp", "[JsonIgnore]"},
 	} {
 		if onMember[notWanted] {
@@ -1642,7 +1642,7 @@ func section3CommaIllustrations(t *testing.T) []string {
 //     -- which is a way for this to rot that replacing the name does not fix.
 //
 // Why the corpus is searched with the brackets on. A bare `strings.Contains`
-// accepts any substring, and `FixtureIdIndex), nameof(FixtureId` is a substring
+// accepts any substring, and `ListingIdIndex), nameof(ListingId` is a substring
 // of the pin that carries a comma, is not an attribute, and is not even
 // balanced. Searching for `[` + illustration + `]` asks the question the
 // sentence actually asks -- is this an annotation the pin writes -- and no file
@@ -1651,7 +1651,7 @@ func section3CommaIllustrations(t *testing.T) []string {
 //
 // Why this one paragraph and not a census of the file. Section 1 is a
 // transcription and every name in it is measured; section 3 is a rules file and
-// its illustrations are allowed to be synthetic -- `[go: json:"sportGame"]` is
+// its illustrations are allowed to be synthetic -- `[go: json:"show"]` is
 // explicitly for a backend that does not exist, and syntax's parser fixture
 // uses a fictional attribute on purpose, because it is testing verbatim copying
 // and makes no claim about the corpus. Extending section 1's census here would
@@ -1795,14 +1795,14 @@ const invariantsDoc = corpusRoot + "/INVARIANTS.md"
 //
 // Which side is dropped matters for exactly one figure. The keyed members are
 // identical either way; the BO side carries the corpus's only type-level
-// `[DataCacheIndex]` and an unkeyed `FixtureIdIndex`, neither of which is a
+// `[DataCacheIndex]` and an unkeyed `ListingIdIndex`, neither of which is a
 // keyed member. Dropping BO is what makes the document's "22 annotations sit on
 // members" true, and the document now says so and gives the raw 31 beside it.
 var detwinnedDrops = []string{
-	"BOBetTypeCacheItem.cs",
+	"BOTicketTypeCacheItem.cs",
 	"BOLiveObjectCacheItem.cs",
 	"BOSearchCacheItem.cs",
-	"BOSportGameCacheItem.cs",
+	"BOShowCacheItem.cs",
 	"BOVenue.cs",
 }
 
@@ -1818,8 +1818,8 @@ var detwinnedDrops = []string{
 // that matters: a re-pin introducing a new type name stops the suite instead of
 // landing in an enum bucket unnoticed.
 var corpusEnums = []string{
-	"BetTypeStatus", "BookingStatus", "Channel", "EventSource",
-	"EventStatus", "OddStatus", "WatchDogAction", "WinStatus",
+	"TicketTypeStatus", "BookingStatus", "Channel", "EventSource",
+	"EventStatus", "QuoteStatus", "WatchDogAction", "WinStatus",
 }
 
 // tallyScalars and tallyRefTypes are every other base type a keyed payload
@@ -1827,7 +1827,7 @@ var corpusEnums = []string{
 // the pin, and tallyBucket enforces that.
 var (
 	tallyScalars  = []string{"DateTime", "bool", "byte", "decimal", "double", "int", "long", "string"}
-	tallyRefTypes = []string{"BOVenue", "IBaseLiveData", "Odd", "SlimOdd", "StaticDataRef", "Venue"}
+	tallyRefTypes = []string{"BOVenue", "IBaseLiveData", "Quote", "SlimQuote", "StaticDataRef", "Venue"}
 )
 
 // tallyEntry is one bucket of the tally, on either side of the comparison.
@@ -1950,16 +1950,16 @@ func TestTheInvariantsDocumentMatchesTheCorpus(t *testing.T) {
 			}
 		}
 
-		// The money/odds split and the int count, each restated a paragraph
+		// The money/quotes split and the int count, each restated a paragraph
 		// after the entry it restates.
-		m = docPhrase(t, u, reMoneyOdds)
+		m = docPhrase(t, u, reMoneyQuotes)
 		for i, label := range []string{"decimal?", "double", "double?"} {
 			if n, _ := strconv.Atoi(m[i+1]); n != by[label] {
-				t.Errorf("the money/odds sentence says %s %d; the tally says %d", label, n, by[label])
+				t.Errorf("the money/quotes sentence says %s %d; the tally says %d", label, n, by[label])
 			}
 		}
 		if got := docPhrase(t, u, reNinthInt)[1]; got != ordinal(t, by["int"]+1) {
-			t.Errorf("`int` is %d keyed members, so the unkeyed FixtureIdIndex is the %s in the "+
+			t.Errorf("`int` is %d keyed members, so the unkeyed ListingIdIndex is the %s in the "+
 				"directory, not the %q", by["int"], ordinal(t, by["int"]+1), got)
 		}
 		if n, _ := strconv.Atoi(docPhrase(t, u, reValueTuple)[1]); n != by["ValueTuple"] {
@@ -2043,13 +2043,13 @@ func TestTheInvariantsDocumentMatchesTheCorpus(t *testing.T) {
 		}
 
 		// The exceptions are the rest, and naming them is the half that was
-		// wrong: SlimOdd is a bare `public class`, which csharp.go's view row
+		// wrong: SlimQuote is a bare `public class`, which csharp.go's view row
 		// and TestCorpusCensus's three declaration rows both already encode,
 		// and which the document used to contradict.
 		//
 		// Copy-editor's warning: this reads every backticked name up to the
 		// first ". ", so the sentence has to name the three and then stop.
-		// "`BOVenue` and `Venue` are both `struct`, and `SlimOdd`" is true and
+		// "`BOVenue` and `Venue` are both `struct`, and `SlimQuote`" is true and
 		// fails here, because `struct` is not a type name. That is the safe
 		// direction -- it fails loudly and in front of you rather than
 		// silently agreeing -- but reword the second sentence, not the first.
@@ -2070,7 +2070,7 @@ func TestTheInvariantsDocumentMatchesTheCorpus(t *testing.T) {
 //
 // It reads through readCS, the same reader every other corpus comparison in
 // this package goes through, so "a member" means here what it means there. A
-// member is keyed or it is not: `FixtureIdIndex` is expression-bodied and
+// member is keyed or it is not: `ListingIdIndex` is expression-bodied and
 // `[IgnoreMember]`, so readCS skips it as a computed member and it is in no
 // count below -- which is the whole of the old tally's `int` 9.
 func corpusTally(t *testing.T) (raw int, detwinned []tallyEntry) {
@@ -2210,8 +2210,8 @@ var (
 	reRatio          = regexp.MustCompile("`StaticDataRef` outnumbers `StaticDataRef[?]` (\\w+) to one")
 	reTenUses        = regexp.MustCompile(`the (\w+) uses line up with`)
 	reUsedBy         = regexp.MustCompile(`Used by (\d+) members`)
-	reMoneyOdds      = regexp.MustCompile("The `decimal[?]` (\\d+) are all money and the `double` (\\d+) / `double[?]` (\\d+) are all odds")
-	reNinthInt       = regexp.MustCompile("`FixtureIdIndex` is a (\\w+) `public int`")
+	reMoneyQuotes    = regexp.MustCompile("The `decimal[?]` (\\d+) are all money and the `double` (\\d+) / `double[?]` (\\d+) are all quotes")
+	reNinthInt       = regexp.MustCompile("`ListingIdIndex` is a (\\w+) `public int`")
 	reValueTuple     = regexp.MustCompile(`ValueTuple counts [*]members[*], (\d+) of them`)
 
 	reDCIMembers = regexp.MustCompile("(\\d+) `\\[DataCacheIndex\\]` annotations sit on [*][*]members[*][*] under the de-twinning rule")
@@ -2238,10 +2238,10 @@ type dataCacheIndexCensus struct {
 // road not taken is derived rather than remembered, and so a re-pin that adds a
 // twin pair breaks both lists at once instead of only the live one.
 var detwinnedDropsKeepingBO = []string{
-	"BPBetTypeCacheItem.cs",
+	"BPTicketTypeCacheItem.cs",
 	"BPLiveObjectCacheItem.cs",
 	"BPSearchCacheItem.cs",
-	"BPSportGameCacheItem.cs",
+	"BPShowCacheItem.cs",
 	"Venue.cs",
 }
 
@@ -2249,7 +2249,7 @@ var detwinnedDropsKeepingBO = []string{
 // through readCS.
 //
 // readCS is right for members and wrong here. It drops the `[DataCacheIndex]`
-// on BOSportGameCacheItem's computed `FixtureIdIndex`, which is why the census
+// on BOShowCacheItem's computed `ListingIdIndex`, which is why the census
 // TestMemberAttributesAreEnumerated holds says 29 where the document says 30 --
 // both correct, about different things. The document counts what the corpus
 // writes, so this counts that: every attribute occurrence, type-level ones

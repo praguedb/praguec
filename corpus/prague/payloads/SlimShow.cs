@@ -7,9 +7,9 @@ using MessagePack;
 namespace Common.EventApi.Cache.Prague.Models;
 
 [MessagePackObject]
-[DataCache(CacheClassName = nameof(SlimSportGameCache))]
-[DataCacheTopic("Cache.[v:brandId].SportGame")]
-public sealed partial class SlimSportGame
+[DataCache(CacheClassName = nameof(SlimShowCache))]
+[DataCacheTopic("Cache.[v:brandId].Show")]
+public sealed partial class SlimShow
 {
     [Key(0)]
     [DataCacheKey]
@@ -18,7 +18,7 @@ public sealed partial class SlimSportGame
     // Identifiers
     [Key(1)]
     [DataCacheIndex]
-    public long SportTypeId { get; set; }
+    public long GenreId { get; set; }
 
     [Key(2)]
     [DataCacheIndex]
@@ -26,13 +26,13 @@ public sealed partial class SlimSportGame
 
     [Key(3)]
     [DataCacheIndex]
-    public long LeagueId { get; set; }
+    public long TourId { get; set; }
 
     [Key(4)]
-    public long? HomeTeamId { get; set; }
+    public long? HeadlinerId { get; set; }
 
     [Key(5)]
-    public long? AwayTeamId { get; set; }
+    public long? OpenerId { get; set; }
 
     [Key(7)]
     public long? StatisticsCenterId { get; set; }
@@ -55,7 +55,7 @@ public sealed partial class SlimSportGame
     public int EventTypeId { get; set; }
 
     [Key(14)]
-    public int? FixtureId { get; set; }
+    public int? ListingId { get; set; }
 
     [Key(15)]
     [DataCacheIndex]
@@ -68,7 +68,7 @@ public sealed partial class SlimSportGame
     public bool? IsPinned { get; set; }
 
     [Key(20)]
-    public bool IsContainsPendingOddsWithBets { get; set; }
+    public bool IsContainsPendingQuotesWithPurchases { get; set; }
 
     [Key(21)]
     [DataCacheIndex]
@@ -110,22 +110,22 @@ public sealed partial class SlimSportGame
     public decimal? LiveLimitManualSingle { get; set; }
 
     [Key(36)]
-    public decimal? PrematchLimitManualSingle { get; set; }
+    public decimal? PresaleLimitManualSingle { get; set; }
 
     [Key(37)]
-    public decimal? LiveLimitManualCombo { get; set; }
+    public decimal? LiveLimitManualBundle { get; set; }
 
     [Key(38)]
-    public decimal? PrematchLimitManualCombo { get; set; }
+    public decimal? PresaleLimitManualBundle { get; set; }
 
     [Key(39)]
-    public decimal? LiveBetBuilderManualLimit { get; set; }
+    public decimal? LivePurchaseBuilderManualLimit { get; set; }
 
     [Key(40)]
-    public decimal? PrematchBetBuilderManualLimit { get; set; }
+    public decimal? PresalePurchaseBuilderManualLimit { get; set; }
 
     [Key(44)]
-    public bool HasBetTypes { get; set; }
+    public bool HasTicketTypes { get; set; }
 
     // Coverage
     [Key(47)]
@@ -135,17 +135,17 @@ public sealed partial class SlimSportGame
     public EventSource? EventSource { get; set; }
 
     [Key(54)]
-    public StaticDataRef SportType { get; set; } = null!;
+    public StaticDataRef Genre { get; set; } = null!;
 
     [Key(55)]
     public StaticDataRef Country { get; set; } = null!;
 
     [Key(56)]
-    public StaticDataRef League { get; set; } = null!;
+    public StaticDataRef Tour { get; set; } = null!;
 
     [Key(57)]
-    public StaticDataRef HomeTeam { get; set; } = null!;
+    public StaticDataRef Headliner { get; set; } = null!;
 
     [Key(58)]
-    public StaticDataRef AwayTeam { get; set; } = null!;
+    public StaticDataRef Opener { get; set; } = null!;
 }

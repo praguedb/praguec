@@ -10,7 +10,7 @@ Scope note: this document assumes the settled architecture — **`praguec` compi
 
 **1. The architecture is settled and the research supports it.** Under a direct compiler, the two things that make a protoc-based pipeline painful both evaporate: protop never has to allocate extension field numbers defensively (it resolves `(protop.entity)` by name in its own symbol table, §4.1), and it never has to re-parse custom options back out of a serialized descriptor with a bootstrapped `ExtensionRegistry`. protoc's remaining role is as a **differential-test oracle**, and that role is important enough to build on day one (§10).
 
-**2. Protobuf is a genuinely capable schema language, with exactly two holes that matter to this domain.** It has field numbers as stable identity, an evolution model that maps cleanly onto database migrations, and — in Editions 2023+, contrary to the usual proto3 framing — a real required/optional axis via `features.field_presence`, including `LEGACY_REQUIRED` on message fields (§1.3). What it does not have: **no decimal**, and **no way to say "this string is a foreign key to that message"**. Those two gaps are the entire justification for a metadata vocabulary, and they are not incidental — they are precisely the two things a betting/wallet domain needs most.
+**2. Protobuf is a genuinely capable schema language, with exactly two holes that matter to this domain.** It has field numbers as stable identity, an evolution model that maps cleanly onto database migrations, and — in Editions 2023+, contrary to the usual proto3 framing — a real required/optional axis via `features.field_presence`, including `LEGACY_REQUIRED` on message fields (§1.3). What it does not have: **no decimal**, and **no way to say "this string is a foreign key to that message"**. Those two gaps are the entire justification for a metadata vocabulary, and they are not incidental — they are precisely the two things a ticketing/wallet domain needs most.
 
 **3. Decimal is the load-bearing case, and the answer is a scaled integer with a schema-declared scale** — `sint64` plus `(protop.decimal) { scale: 4 }` — not `google.type.Money` (currency-coupled, unit/nano-split, cannot express a fee rate) and not `google.type.Decimal` (a string; every arithmetic operation is a parse). The official protobuf guidance is "use a string", which is an admission rather than a design (§2.1). A schema-declared scale lets protop do six things protoc cannot, including reject `double` for money outright and check that two fields being compared share a scale (§2.6).
 
@@ -58,7 +58,7 @@ protop's premise is that a `.proto` file can carry a domain/data schema — enti
 
 C# mapping is fixed and documented (<https://learn.microsoft.com/en-us/aspnet/core/grpc/protobuf>): `double→double, float→float, int32/sint32/sfixed32→int, int64/sint64/sfixed64→long, uint32/fixed32→uint, uint64/fixed64→ulong, bool→bool, string→string, bytes→ByteString`. The same page states the constraint that bites a nullable-column mapping: *"Scalar values always have a default value and can't be set to `null`. This constraint includes `string` and `ByteString` which are C# classes."*
 
-**Enums must start at zero and are open by default.** `[protoc 36.1]` on `enum E { E_ONE = 1; }` under proto3: `The first enum value must be zero for open enums.` The wording is deliberate — Editions makes openness configurable (`features.enum_type = OPEN | CLOSED`), and `descriptor.proto` records `edition_defaults = { edition: EDITION_PROTO3, value: "OPEN" }`. **Consequence for a domain schema: an open enum field can legally hold a value your schema has never heard of.** A `BetStatus` read off the wire may be `7` when the generated record only knows `0..5`. A generated C# `enum` will happily hold it.
+**Enums must start at zero and are open by default.** `[protoc 36.1]` on `enum E { E_ONE = 1; }` under proto3: `The first enum value must be zero for open enums.` The wording is deliberate — Editions makes openness configurable (`features.enum_type = OPEN | CLOSED`), and `descriptor.proto` records `edition_defaults = { edition: EDITION_PROTO3, value: "OPEN" }`. **Consequence for a domain schema: an open enum field can legally hold a value your schema has never heard of.** A `PurchaseStatus` read off the wire may be `7` when the generated record only knows `0..5`. A generated C# `enum` will happily hold it.
 
 **`oneof` is a labelled sum type over fields, not a union over types.** It discriminates on field number, so two members may share a type — `[protoc 36.1]` accepts `oneof v { int64 a = 1; int64 b = 2; }` without complaint. Restrictions, quoted from <https://protobuf.dev/programming-guides/proto3/#oneof>: *"You can add fields of any type, except `map` fields and `repeated` fields"*; *"A oneof cannot be `repeated`"*; *"if multiple values are set, the last set value as determined by the order in the proto will overwrite all previous ones"*. Verified: `oneof v { repeated int64 a = 1; }` → `Fields in oneofs must not have labels (required / optional / repeated).`; `oneof v { map<string,int64> a = 1; }` → `Map fields are not allowed in oneofs.`
 
@@ -76,7 +76,7 @@ This is genuinely useful for protop — a `oneof` maps cleanly onto a closed C# 
 | Field-level constraints / validation | **Absent from the language** | No constraint production in the grammar. The only validation feature anywhere is `features.utf8_validation`, which is about string encoding. Every constraint system in existence (protovalidate, PGV) is third-party custom options. |
 | Non-null guarantee on a message field | **Absent in proto3**; expressible but unenforced in Editions | §1.3 |
 | UUID | **Absent** | Not a scalar; not in the WKT index (<https://protobuf.dev/reference/protobuf/google.protobuf/>); **no `uuid.proto` in `google/type/`** (directory verified) |
-| Date/time | Only `Timestamp` + `Duration` in core | `google/type/` (googleapis, *not* core protobuf) adds `date`, `datetime`, `timeofday`, `interval`, `dayofweek`, `month`, `calendar_period` |
+| Date/time | Only `Timestamp` + `Duration` in core | `google/type/` (googleapis, *not* core protobuf) adds `date`, `datetime`, `timeofday`, `interval`, `dayofweek`, `month`, `calendar_segment` |
 | Decimal | **Absent** | §2 |
 | Explicit default values | **Absent in proto3; present in Editions** | `[protoc 36.1]` proto3: `Explicit default values are not allowed in proto3.` Edition 2023 `int32 x = 1 [default = 5];` → accepted |
 | Primary key, foreign key, uniqueness, index, cross-field invariant | **Absent** | Not in the grammar at any production |
@@ -244,7 +244,7 @@ That sentence describes exactly what a proto→C#-record mapper does. Combined w
 
 ## 2. Decimal and money — the motivating case for the whole options mechanism
 
-The domain is betting and wallets. `Bet`, `wallet.Account`, stakes, balances, odds. Money is the type protobuf does not have, and the gap is entirely on the protobuf side — **MessagePack-CSharp has no decimal problem at all** (see §7.7). This makes decimal the cleanest possible justification for protop's metadata layer: the information needed to generate a correct `decimal` is knowable, is not expressible in the base language, and rides perfectly on a custom option.
+The domain is ticketing and wallets. `Purchase`, `wallet.Account`, amounts, balances, quotes. Money is the type protobuf does not have, and the gap is entirely on the protobuf side — **MessagePack-CSharp has no decimal problem at all** (see §7.7). This makes decimal the cleanest possible justification for protop's metadata layer: the information needed to generate a correct `decimal` is knowable, is not expressible in the base language, and rides perfectly on a custom option.
 
 ### 2.1 There is no decimal, and the official answer is "use a string"
 
@@ -258,7 +258,7 @@ The maintainer position lives in an issue, not the docs. **protocolbuffers/proto
 
 > As noted above, we have no intention of pursuing this in the near term. The language specific aspects of this make it a very large amount of effort to implement across our entire surface. **I recommend that users use a string field with appropriate parsing in their own code.**
 
-> While you are welcome to create a PR, the odds that it is adopted are low. As mentioned, any sort of increased precision datatype needs to be handled in the full set of languages supported consistently which makes this a substantially larger amount of effort then most anticipate.
+> While you are welcome to create a PR, the quotes that it is adopted are low. As mentioned, any sort of increased precision datatype needs to be handled in the full set of languages supported consistently which makes this a substantially larger amount of effort then most anticipate.
 
 A prototype existed — PR #7847, "DO NOT MERGE: Prototype decimal message types", by JamesNK (author of the Microsoft gRPC/protobuf doc), opened 2020, closed unmerged 2021. *(Which issue #4406 was marked duplicate of could not be determined — the timeline API returned no resolvable target. Unverified.)*
 
@@ -348,7 +348,7 @@ The comment is long and good — it defines an EBNF, mandates `.` as the separat
 
 **`google.type.Decimal` deliberately pushes range, precision and scale out of the schema and into per-service prose.** As a schema artifact it expresses nothing about the value domain. That is precisely the hole protop fills.
 
-Also present and relevant to betting: `google/type/fraction.proto` — `Fraction { int64 numerator = 1; int64 denominator = 2; }`. Fractional odds (5/2) are exactly representable here where decimal odds are not always. "Must be positive" is, again, a comment. The full `google/type/` inventory is `calendar_period, color, date, datetime, dayofweek, decimal, expr, fraction, interval, latlng, localized_text, money, month, phone_number, postal_address, quaternion, timeofday` — **no `uuid`**.
+Also present and relevant to ticketing: `google/type/fraction.proto` — `Fraction { int64 numerator = 1; int64 denominator = 2; }`. Fractional quotes (5/2) are exactly representable here where decimal quotes are not always. "Must be positive" is, again, a comment. The full `google/type/` inventory is `calendar_segment, color, date, datetime, dayofweek, decimal, expr, fraction, interval, latlng, localized_text, money, month, phone_number, postal_address, quaternion, timeofday` — **no `uuid`**.
 
 ### 2.5 Mapping to `System.Decimal`, precisely
 
@@ -369,7 +369,7 @@ Overflow behaviour on parse: *"A `Decimal` has 29 digits of precision. If `s` re
 
 ### 2.6 The recommendation, and why it is the argument for custom options
 
-**For wallet and ledger amounts: scaled `sint64` with a schema-declared scale.** It is the only option that is exact, allocation-free on both sides, and cheapest on the wire including negatives. Reserve `string` / `google.type.Decimal` for values whose scale is genuinely open — odds, exchange rates, RTP. Do **not** use `google.type.Money` for the ledger.
+**For wallet and ledger amounts: scaled `sint64` with a schema-declared scale.** It is the only option that is exact, allocation-free on both sides, and cheapest on the wire including negatives. Reserve `string` / `google.type.Decimal` for values whose scale is genuinely open — quotes, exchange rates, RTP. Do **not** use `google.type.Money` for the ledger.
 
 But scaled `sint64` has one fatal property as raw protobuf: **the scale is invisible.** `sint64 balance = 3;` tells a reader, a generator, and a migration tool nothing. Worse, per §1.5, **changing the scale is wire-*compatible*** — going from scale 2 to scale 4 parses cleanly and turns every historical amount into 1/100th of its value. Protobuf offers zero protection.
 
@@ -631,8 +631,8 @@ The language guide asks that extension numbers be registered globally to avoid c
 The syntax protop must parse:
 
 ```proto
-message Bet {
-  option (entity) = { table: "bets" primary_key: "id" };
+message Purchase {
+  option (entity) = { table: "purchases" primary_key: "id" };
   int64  id = 1;
   string account_id = 2 [(relation) = {
     references: "wallet.Account"
@@ -765,43 +765,43 @@ Before — the user's original, which stock protoc accepts and understands nothi
 
 ```proto
 syntax = "proto3";
-package betting;
+package ticketing;
 
-message Bet {
-  option (entity) = { table: "bets" primary_key: "id" };
+message Purchase {
+  option (entity) = { table: "purchases" primary_key: "id" };
   int64  id         = 1;
   string account_id = 2 [(relation) = { references: "wallet.Account" cardinality: MANY_TO_ONE }];
-  double stake      = 3;
+  double amount      = 3;
   string status     = 4;
 }
 ```
 
-Five defects, each caught by a rule from the validation section: `double stake` for money (§2 — binary floating point cannot represent 0.1); `string status` where an enum belongs; `string account_id` referencing an entity whose primary key is `int64` (a type mismatch nothing checks); no presence anywhere, so every column silently becomes NOT NULL (§1.4); and no `on_delete`.
+Five defects, each caught by a rule from the validation section: `double amount` for money (§2 — binary floating point cannot represent 0.1); `string status` where an enum belongs; `string account_id` referencing an entity whose primary key is `int64` (a type mismatch nothing checks); no presence anywhere, so every column silently becomes NOT NULL (§1.4); and no `on_delete`.
 
 After:
 
 ```proto
 edition = "2023";
-package betting;
+package ticketing;
 
 import "protop/options.proto";
 import "wallet/account.proto";
 
-option (protop.default_schema) = "betting";
+option (protop.default_schema) = "ticketing";
 
-enum BetStatus {
-  BET_STATUS_UNSPECIFIED = 0;
+enum PurchaseStatus {
+  PURCHASE_STATUS_UNSPECIFIED = 0;
   PENDING                = 1;
   SETTLED                = 2;
   VOID                   = 3;
 }
 
-message Bet {
+message Purchase {
   option (protop.entity) = {
-    table:       "bets"
+    table:       "purchases"
     primary_key: "id"
     index: {
-      name:   "ix_bets_account_placed"
+      name:   "ix_purchases_account_placed"
       column: { field: "account_id" }
       column: { field: "placed_at" direction: DESC }
     }
@@ -812,11 +812,11 @@ message Bet {
                            references:  "wallet.Account"
                            cardinality: MANY_TO_ONE
                            on_delete:   RESTRICT
-                           inverse:     "bets"
+                           inverse:     "purchases"
                          }];
-  sint64 stake      = 3 [(protop.decimal) = { scale: 4 precision: 19 currency_field: "currency" }];
+  sint64 amount      = 3 [(protop.decimal) = { scale: 4 precision: 19 currency_field: "currency" }];
   string currency   = 4 [(protop.column)  = { max_length: 3 }];
-  BetStatus status  = 5;
+  PurchaseStatus status  = 5;
   google.protobuf.Timestamp placed_at = 6 [features.field_presence = LEGACY_REQUIRED];
   string settled_note = 7 [features.field_presence = EXPLICIT];   // -> string? / NULL
 }
@@ -828,12 +828,12 @@ What protop emits from that (shape only — see the MessagePack section for the 
 
 ```csharp
 [MessagePackObject]
-public sealed record Bet(
+public sealed record Purchase(
     [property: Key(0)] long                     Id,
     [property: Key(1)] long                     AccountId,
-    [property: Key(2)] decimal                  Stake,
+    [property: Key(2)] decimal                  Amount,
     [property: Key(3)] string                   Currency,
-    [property: Key(4)] BetStatus                Status,
+    [property: Key(4)] PurchaseStatus                Status,
     [property: Key(5)] DateTimeOffset           PlacedAt,
     [property: Key(6)] string?                  SettledNote);
 ```
@@ -866,15 +866,15 @@ This is the single clearest place where protop earns its existence over plain pr
 ### 6.1 The problem, in the user's own example
 
 ```proto
-message Bet {
-  option (entity) = { table: "bets" primary_key: "id" };
+message Purchase {
+  option (entity) = { table: "purchases" primary_key: "id" };
   int64  id         = 1;
   string account_id = 2 [(relation) = { references: "wallet.Account" cardinality: MANY_TO_ONE }];
-  sint64 stake      = 3;
+  sint64 amount      = 3;
 }
 ```
 
-To protoc, `"id"` and `"wallet.Account"` are opaque string literals. protoc type-checks that `primary_key` is a `string` field on the `Entity` option message and stops. Rename `id` to `bet_id` and the schema still compiles; delete `wallet.Account` entirely and it still compiles. **Every one of these is a silent build-time failure that surfaces as a runtime or migration failure later.**
+To protoc, `"id"` and `"wallet.Account"` are opaque string literals. protoc type-checks that `primary_key` is a `string` field on the `Entity` option message and stops. Rename `id` to `purchase_id` and the schema still compiles; delete `wallet.Account` entirely and it still compiles. **Every one of these is a silent build-time failure that surfaces as a runtime or migration failure later.**
 
 googleapis hit the identical wall with `google.api.ResourceReference.type` and the design scars are visible: a naming regex and a 100-character limit written into a doc comment; a wildcard `type: "*"` because the string space has no way to say "any"; a second field `child_type` that exists only to invert the reference's direction; and validation delegated entirely to an external linter (`linter.aip.dev`), switched on by an opt-in `Style.DECLARATIVE_FRIENDLY` flag. (See §3.5.)
 
@@ -884,25 +884,25 @@ Every one of these is a pure function of the resolved schema graph. None needs n
 
 | Check | Example diagnostic |
 |---|---|
-| `primary_key` names a field that exists on this message | `bets.proto(3,32): error PROTOP0101: Entity 'Bet' declares primary_key "id" but no such field exists. Did you mean 'bet_id'?` |
+| `primary_key` names a field that exists on this message | `purchases.proto(3,32): error PROTOP0101: Entity 'Purchase' declares primary_key "id" but no such field exists. Did you mean 'purchase_id'?` |
 | every `primary_key` component is a legal key type (not `repeated`, not `map`, not a message, not `bytes` unless permitted) | `PROTOP0102: primary_key component "tags" is repeated; a key component must be singular.` |
 | `primary_key` components have non-nullable presence | `PROTOP0103: primary_key component "id" is 'optional'; key components must not be nullable.` |
-| `references` resolves to a message in the schema graph | `PROTOP0110: relation on 'Bet.account_id' references "wallet.Account", which is not defined or imported.` |
+| `references` resolves to a message in the schema graph | `PROTOP0110: relation on 'Purchase.account_id' references "wallet.Account", which is not defined or imported.` |
 | the referenced message is itself an entity | `PROTOP0111: "wallet.Account" is not declared as an entity; add option (protop.entity).` |
-| the referencing field's type matches the referent's primary-key type | `PROTOP0112: 'Bet.account_id' is 'string' but the primary key of 'wallet.Account' is 'int64'.` |
+| the referencing field's type matches the referent's primary-key type | `PROTOP0112: 'Purchase.account_id' is 'string' but the primary key of 'wallet.Account' is 'int64'.` |
 | composite-key arity matches | `PROTOP0113: 'wallet.Account' has a 2-component primary key; a single scalar field cannot reference it.` |
 | `cardinality` agrees with the field label | `PROTOP0114: cardinality MANY_TO_ONE declared on a 'repeated' field; did you mean ONE_TO_MANY?` |
 | `on_delete` is legal for the cardinality and nullability | `PROTOP0115: on_delete = SET_NULL requires the referencing field to be 'optional'.` |
-| index components name real fields, and column order is explicit | `PROTOP0120: index "ix_bets_account" names column "acct_id"; no such field.` |
-| no reference cycle that makes insertion order impossible | `PROTOP0130: mandatory relation cycle: Bet -> Account -> Bet.` |
-| the inverse side of a bidirectional relation agrees | `PROTOP0131: 'Account.bets' declares inverse "account_id" but 'Bet.account_id' references 'wallet.Ledger'.` |
+| index components name real fields, and column order is explicit | `PROTOP0120: index "ix_purchases_account" names column "acct_id"; no such field.` |
+| no reference cycle that makes insertion order impossible | `PROTOP0130: mandatory relation cycle: Purchase -> Account -> Purchase.` |
+| the inverse side of a bidirectional relation agrees | `PROTOP0131: 'Account.purchases' declares inverse "account_id" but 'Purchase.account_id' references 'wallet.Ledger'.` |
 | `decimal` scale ≤ 28; `currency_field` names a sibling `string` | §2.6 |
 
 The taxonomy is deliberately the same as a compiler's: **existence, kind, type-compatibility, arity, agreement, and acyclicity.** That is the whole list; there is nothing exotic here.
 
 ### 6.3 Source locations: how to point at the right characters
 
-To emit `bets.proto(3,32)` protop needs the span of the *string literal inside the option value*, not of the field. Two facts matter.
+To emit `purchases.proto(3,32)` protop needs the span of the *string literal inside the option value*, not of the field. Two facts matter.
 
 **If protop keeps its own AST** — which under the settled architecture it does — this is free: the lexer already has a `(line, column)` for every token, and the option-literal tree (§4.2) just needs to carry the span of each scalar value alongside the value. **Do this from the first commit.** Retrofitting spans into a literal tree that was built without them is a miserable refactor, and the diagnostics are the product.
 
@@ -916,7 +916,7 @@ That gives you the span of the *option*, not of a string inside its aggregate va
 
 ```
 Origin: Subcategory Category Code: Text
-bets.proto(3,32): error PROTOP0110: relation references "wallet.Account", which is not defined.
+purchases.proto(3,32): error PROTOP0110: relation references "wallet.Account", which is not defined.
 ```
 
 and `TaskLoggingHelper.LogError(subcategory, errorCode, helpKeyword, file, lineNumber, columnNumber, endLineNumber, endColumnNumber, message, messageArgs)` takes one-based line and column. If protop emits that format, Visual Studio's error list, `dotnet build`, and GitHub Actions all light up for free.
@@ -1028,7 +1028,7 @@ for (int i = 0; i < length; i++)
 if (length <= <#= memberIndex #>) { goto MEMBER_ASSIGNMENT_END; }
 ```
 
-So: a payload written for `Bet` deserializes into `BetSummary` (a tag-preserving projection) without error, and a payload written for an older, shorter `Bet` deserializes into a newer one. **MessagePack-CSharp's int-key layout has the same "ignore unknown, default missing" tolerance protobuf has.** This is verified from the generator source, not inferred.
+So: a payload written for `Purchase` deserializes into `PurchaseSummary` (a tag-preserving projection) without error, and a payload written for an older, shorter `Purchase` deserializes into a newer one. **MessagePack-CSharp's int-key layout has the same "ignore unknown, default missing" tolerance protobuf has.** This is verified from the generator source, not inferred.
 
 Note the one asymmetry with protobuf: protobuf *preserves* unknown fields on round-trip by default; MessagePack-CSharp **discards** them (`reader.Skip()`), so a read-modify-write through a projection loses the dropped fields.
 
@@ -1144,7 +1144,7 @@ Public **mutable fields**, explicit layout, no constructor, not `readonly`. And 
 | Does the declaration change anything? | **Yes, substantially** | **Marginally** |
 | What changes | `readonly record struct` vs `sealed record`: no heap allocation, no GC pressure, value equality without a reference compare, `default(T)` reachable | Nothing in the wire bytes. Both emit `WriteArrayHeader(n)` + n values. |
 | What you can additionally do | forbid nullable members, forbid `repeated`/`map`, forbid nested reference types — making the type genuinely blittable-shaped | **guarantee tag density**, since a frozen type can never gain a field, so `[Key(N)]` is dense by construction and the Nil-padding hazard cannot arise |
-| Measured benefit | allocation elimination on hot paths; real for `Money`, `Odds`, `Stake`, point-like types | zero bytes saved; the win is a *guarantee*, not a saving |
+| Measured benefit | allocation elimination on hot paths; real for `Money`, `Quotes`, `Amount`, point-like types | zero bytes saved; the win is a *guarantee*, not a saving |
 
 So the honest statement is: **the struct tier pays off once in C#, and once more as a schema-level guarantee rather than an encoding change.** That second payoff is still worth having — it is the only construct in the language that lets protop *prove* a message's key space is dense — but it should not be sold as an encoding optimisation, because it isn't one.
 
@@ -1259,7 +1259,7 @@ Organised as a ladder, most valuable first.
 **Diagnostic.**
 
 ```
-bets.proto(9,3): error PROTOP0201: field 'currency' has number 4, which is not greater than
+purchases.proto(9,3): error PROTOP0201: field 'currency' has number 4, which is not greater than
   the preceding field 'status' (number 5). Field numbers must be declared in ascending order.
 ```
 
@@ -1457,7 +1457,7 @@ Deferred to a later phase, and recorded here for one reason: **it is a forward c
 ### 12.1 The construct
 
 ```protop
-view BetSummary of Bet { id, stake, status }
+view PurchaseSummary of Purchase { id, amount, status }
 ```
 
 Three prior-art readings, all valid: a SQL view, a GraphQL fragment, a TypeScript `Pick`.
@@ -1466,8 +1466,8 @@ Three prior-art readings, all valid: a SQL view, a GraphQL fragment, a TypeScrip
 
 A view keeps each retained field's original number and simply skips the ones it drops. Everything follows from this:
 
-- **Wire compatibility is free and by construction.** A `BetSummary` payload deserializes correctly as a `Bet` and vice versa, because both protobuf and MessagePack-CSharp tolerate the mismatch (protobuf ignores unknown fields; MessagePack skips extra array slots and leaves missing ones defaulted — verified in `DynamicObjectResolver.cs`, `default: reader.Skip()` at line 915 and `if (length <= memberIndex) goto MEMBER_ASSIGNMENT_END;`).
-- **Adding a field to `Bet` is a non-event** for every view that does not keep it.
+- **Wire compatibility is free and by construction.** A `PurchaseSummary` payload deserializes correctly as a `Purchase` and vice versa, because both protobuf and MessagePack-CSharp tolerate the mismatch (protobuf ignores unknown fields; MessagePack skips extra array slots and leaves missing ones defaulted — verified in `DynamicObjectResolver.cs`, `default: reader.Skip()` at line 915 and `if (length <= memberIndex) goto MEMBER_ASSIGNMENT_END;`).
+- **Adding a field to `Purchase` is a non-event** for every view that does not keep it.
 - The alternative — renumbering a view densely from 1 — reintroduces exactly the Smithy/alloy failure mode described below, at the view layer.
 - Cost: views have holes in their key space and lose the 1-byte-tag advantage for numbers above 15. That is the right trade, and it is why `MAX_TAG_BOUND` bounds the span rather than requiring density.
 
@@ -1484,14 +1484,14 @@ Two rules fall out for protop: **never infer a field number positionally**, and 
 The test from the struct/record section — *annotation → option, generation → syntax* — resolves cleanly here, and the asymmetry is worth stating explicitly because it is the whole reason a Tier-2 tier exists at all:
 
 - `option (protop.csharp_kind) = STRUCT;` **annotates a message that already exists.** protobuf's option mechanism is exactly the right vehicle; stock protoc parses the file and ignores the meaning.
-- `view BetSummary of Bet {...}` **brings a new type into existence.** There is no message for an option to hang on. Encoding it in Tier 1 would mean writing `BetSummary` out longhand with a `(protop.view_of)` option — at which point the option is a comment on hand-maintained duplication, and the construct has bought nothing.
+- `view PurchaseSummary of Purchase {...}` **brings a new type into existence.** There is no message for an option to hang on. Encoding it in Tier 1 would mean writing `PurchaseSummary` out longhand with a `(protop.view_of)` option — at which point the option is a comment on hand-maintained duplication, and the construct has bought nothing.
 
 So views are the first construct where new syntax pays for itself. That is also the moment `.prague` files appear, and the moment protop needs a Tier-2→Tier-1 lowering with a source map — the machinery the rest of the design deliberately avoids.
 
 ### 12.5 Design notes for when the phase arrives
 
-- **Keep-list, not drop-list, as the idiom.** A drop-list is dangerous by default: add a field to `Bet` and it silently appears in `BetSummary`, which for a PII-redaction view is a data leak. A keep-list is additive-safe. Support both if you must; make keep the one people reach for.
-- **Copy field options and doc comments verbatim.** Dropping `(protop.decimal)` would make `BetSummary.stake` a bare `sint64` that the generator maps differently from `Bet.stake` — a latent bug that type-checks.
+- **Keep-list, not drop-list, as the idiom.** A drop-list is dangerous by default: add a field to `Purchase` and it silently appears in `PurchaseSummary`, which for a PII-redaction view is a data leak. A keep-list is additive-safe. Support both if you must; make keep the one people reach for.
+- **Copy field options and doc comments verbatim.** Dropping `(protop.decimal)` would make `PurchaseSummary.amount` a bare `sint64` that the generator maps differently from `Purchase.amount` — a latent bug that type-checks.
 - **Forbid renaming and re-typing.** The moment a view can rename or re-type, it is no longer a projection: it is a mapping DSL that needs runtime conversion code, not just a type. A field number is the field's identity; a view that changes what a number means has broken its own premise.
 - **Views of views: allow, resolve to the root, detect cycles.** protoc will never see a cycle, so protop must.
 - **Reserve nothing in the view.** Reserving the dropped numbers would block a future change from re-adding a field at its original number, and reserving-and-using are mutually exclusive.
@@ -1523,7 +1523,7 @@ Tier 1 — the protop option vocabulary — is the entire mechanism by which sem
 
 **2. `oneof` cannot be emitted.** `ProtoOneOfDeclaration` is defined in `ast.ts:280` and `writeOneOf` exists in `write.ts:151`, but the string `oneof` appears **zero times** in `src/transform/index.ts` — nothing ever constructs one. Unions are a hard error: `unsupported-field-type` / *"a message field's type may not be a union"*.
 
-**3. `decimal` is a hard error.** TypeSpec *has* `decimal` and `decimal128` as built-in scalars, but the emitter's scalar table `getProtoScalarsMap` (`src/transform/index.ts:592-606`) contains only `bytes, boolean, string, int32, int64, uint32, uint64, float32, float64` plus the `Protobuf.*` fixed/sint/sfixed variants. `decimal`'s base scalar is `numeric`, which has no base, so `scalarToProto` bottoms out at `unsupported-field-type/unknown-scalar`. Given that the domain is betting and wallets, this alone is disqualifying.
+**3. `decimal` is a hard error.** TypeSpec *has* `decimal` and `decimal128` as built-in scalars, but the emitter's scalar table `getProtoScalarsMap` (`src/transform/index.ts:592-606`) contains only `bytes, boolean, string, int32, int64, uint32, uint64, float32, float64` plus the `Protobuf.*` fixed/sint/sfixed variants. `decimal`'s base scalar is `numeric`, which has no base, so `scalarToProto` bottoms out at `unsupported-field-type/unknown-scalar`. Given that the domain is ticketing and wallets, this alone is disqualifying.
 
 **4. It is target-only: there is no `.proto` parser anywhere in the monorepo.** `git grep -l "parseProto\|protoParser" -- packages/` returns nothing. `Extern<Path, Name>` is explicitly opaque — TypeSpec emits an `import` and a bare name and never reads the referenced file. There is an OpenAPI3→TypeSpec importer (`packages/openapi3/src/cli`); there is no protobuf analogue. So existing `.proto` cannot be onboarded, migrated incrementally, or diffed against generated output.
 
@@ -1557,13 +1557,13 @@ Corollary: the diagnostic infrastructure — codes, severities, source spans, `-
 
 ### 14.2 Deviation 2 — decimal cannot wait for phase 2
 
-The domain is betting and wallets. A phase-1 tool that accepts
+The domain is ticketing and wallets. A phase-1 tool that accepts
 
 ```proto
-double stake = 3;
+double amount = 3;
 ```
 
-and cheerfully emits `public double Stake { get; init; }` will have that in production before phase 2 ships, and the resulting `.proto` files and payloads become the thing phase 2 has to stay compatible with. The finding in §2 is that protobuf has no decimal and never will; the whole `(protop.decimal)` mechanism exists to close that.
+and cheerfully emits `public double Amount { get; init; }` will have that in production before phase 2 ships, and the resulting `.proto` files and payloads become the thing phase 2 has to stay compatible with. The finding in §2 is that protobuf has no decimal and never will; the whole `(protop.decimal)` mechanism exists to close that.
 
 Two acceptable answers, in order of preference:
 

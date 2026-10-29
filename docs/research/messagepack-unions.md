@@ -483,8 +483,8 @@ Sketch (illustrative; the syntax is not the finding):
 ```proto
 message BaseLiveData {
   option (protop.closed) = {
-    implementor: { key: 0, message: "SoccerLiveData" }
-    implementor: { key: 1, message: "TennisLiveData" }
+    implementor: { key: 0, message: "RockLiveData" }
+    implementor: { key: 1, message: "JazzLiveData" }
     // … 17 more
   };
 }
@@ -493,8 +493,8 @@ message BaseLiveData {
 emitting
 
 ```csharp
-[Union(0, typeof(SoccerLiveData))]
-[Union(1, typeof(TennisLiveData))]
+[Union(0, typeof(RockLiveData))]
+[Union(1, typeof(JazzLiveData))]
 // … 17 more
 public partial interface IBaseLiveData { }
 ```

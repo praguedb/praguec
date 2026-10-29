@@ -462,7 +462,7 @@ struct member unreadable.
    protop wants presence guarantees, they have to be generated as explicit post-deserialisation
    checks, not delegated to `required`. This is independent of struct vs. class.
 5. **`init` costs nothing on the wire** and only changes the generated deserialiser's internal
-   shape (deferred locals + object initializer). The corpus's `SlimOdd`/`SlimSportGame.Id` usage
+   shape (deferred locals + object initializer). The corpus's `SlimQuote`/`SlimShow.Id` usage
    is free. `init` is a fine default for generated immutable messages.
 6. **Keys should start at 0.** Confirmed empirically that `Key(1)`-based `Venue`/`BOVenue` pay one
    `C0` byte per instance forever. If protop's `Key = tag - 1` rule is applied uniformly, that byte

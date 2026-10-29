@@ -334,11 +334,11 @@ func (c *checker) resolveDecls(w *fileWork) {
 		}
 		// Two passes over the body, and the order is the point. An alias takes
 		// its target's type by value, so every field has to have one before any
-		// alias is resolved -- otherwise `alias bet_type_id = id;` written
+		// alias is resolved -- otherwise `alias ticket_type_id = id;` written
 		// *above* `int64 id = 3;` silently takes the zero type and emits a
 		// member with no type at all. Section 1 happens to write the alias
 		// below its target and the corpus writes it above, which is how this
-		// was found: corpus/prague/payloads/BPBetTypeCacheItem.cs opens with
+		// was found: corpus/prague/payloads/BPTicketTypeCacheItem.cs opens with
 		// its alias.
 		//
 		// A composite key does not need the second pass -- its parts are
@@ -396,7 +396,7 @@ func (c *checker) resolveType(w *fileWork, t syntax.TypeRef) Type {
 
 // resolveKeyParts matches a composite key's parts against the members beside
 // it. A part may name an alias: the corpus's own key is `key key = 1 (event_id,
-// bet_type_id)` over a table whose second part is `alias bet_type_id = id;`, so
+// ticket_type_id)` over a table whose second part is `alias ticket_type_id = id;`, so
 // requiring a field here would reject section 1.
 func (c *checker) resolveKeyParts(w *fileWork, dw *declWork, mw *memberWork, k *syntax.CompositeKey) {
 	for _, part := range k.Parts {
@@ -411,7 +411,7 @@ func (c *checker) resolveKeyParts(w *fileWork, dw *declWork, mw *memberWork, k *
 	}
 }
 
-// resolveAlias matches `alias bet_type_id = id;` against the member it passes
+// resolveAlias matches `alias ticket_type_id = id;` against the member it passes
 // through to. The type is the target's when the target has one; an alias of an
 // alias, or of a composite key, leaves it unresolved rather than following a
 // chain the language says nothing about and the corpus does not write.
@@ -433,7 +433,7 @@ func (c *checker) resolveAlias(w *fileWork, dw *declWork, mw *memberWork, a *syn
 // a subset of members at their source's tags, so its source is something that
 // has tags to lend. A struct has members and no identity to inherit, an enum
 // has no members at all, and a view is already pinned to somewhere else's tags
-// -- the narrowing in `SlimOdd odds;` is how a view reaches another view.
+// -- the narrowing in `SlimQuote quotes;` is how a view reaches another view.
 func (c *checker) resolveViewSource(w *fileWork, dw *declWork) {
 	name := dw.view.Source
 	if name.Text == "" {
@@ -504,7 +504,7 @@ func (c *checker) expandViewMember(w *fileWork, dw *declWork, mw *memberWork) {
 	}
 }
 
-// narrow resolves the leading name of `SlimOdd odds;`. It asks for the member's
+// narrow resolves the leading name of `SlimQuote quotes;`. It asks for the member's
 // type to be narrowed to another view, and the view has to be a view of what
 // the member already holds -- a narrowing that points elsewhere would give the
 // member a set of tags belonging to some other declaration, which is the
@@ -547,9 +547,9 @@ func sourceName(view *Decl) string {
 }
 
 // withElement rebuilds a type with its element replaced, which is how a
-// narrowing reaches through `list<Odd>` to the `Odd` it holds. Presence is the
-// outer type's throughout: `list<Odd>?` narrowed is `list<SlimOdd>?`, and
-// `Odd?` narrowed is `SlimOdd?`.
+// narrowing reaches through `list<Quote>` to the `Quote` it holds. Presence is the
+// outer type's throughout: `list<Quote>?` narrowed is `list<SlimQuote>?`, and
+// `Quote?` narrowed is `SlimQuote?`.
 func withElement(t, elem Type) Type {
 	if t.Kind == TypeCollection && len(t.Args) > 0 {
 		args := slices.Clone(t.Args)
@@ -611,7 +611,7 @@ func (c *checker) resolveRelation(w *fileWork, dw *declWork, m *Member, a *synta
 		// to point at, which is the complaint -- so there is nothing narrower
 		// that would be true.
 		w.sink.Raise(diag.MalformedRelation, a.Span,
-			"`%s` names the table a member points at, as in `[%s(SportGame)]`",
+			"`%s` names the table a member points at, as in `[%s(Show)]`",
 			syntax.RelationAnnotation, syntax.RelationAnnotation)
 		return
 	}

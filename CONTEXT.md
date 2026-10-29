@@ -70,8 +70,8 @@ corpus's foreign-key-shaped members have none, and carry a **snapshot** instead.
 ## snapshot
 
 An `Id` field paired with an inline copy of what it identifies, at its own key,
-where **no payload type for the referent exists**. The corpus's `SportType`
-beside `SportTypeId`: two members, two keys, two halves of one referent.
+where **no payload type for the referent exists**. The corpus's `Genre`
+beside `GenreId`: two members, two keys, two halves of one referent.
 
 A snapshot is not a cached relation and not a join — there is nothing to join
 to, which is why the copy is there at all. It is the whole representation. The
@@ -110,8 +110,8 @@ A payload type that carries a subset of another's fields **at the same keys**,
 so the two are wire-compatible without conversion. The corpus's `Slim*` types
 are projections of their full counterparts. A projection may drop fields; it may
 not renumber them. It *may* rename a member — names are not on the wire under
-int-key MessagePack — and the corpus does: `BOSportGameCacheItem.EventId` is
-`SlimSportGame.Id` at the same key.
+int-key MessagePack — and the corpus does: `BOShowCacheItem.EventId` is
+`SlimShow.Id` at the same key.
 
 In protop a projection is declared rather than hand-maintained; the construct is
 a **view**, below.

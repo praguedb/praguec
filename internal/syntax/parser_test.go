@@ -186,8 +186,8 @@ func dumpDecl(b *strings.Builder, keyword string, name Ident, anns []*Annotation
 
 // viewMemberString writes a view member back the way the source spelled it: the
 // narrowing in front of the name, the rename after it. A dump that wrote the
-// three spellings the same way would not be able to tell `SlimOdd odds` from a
-// selection of a member called `SlimOdd` renamed to `odds`.
+// three spellings the same way would not be able to tell `SlimQuote quotes` from a
+// selection of a member called `SlimQuote` renamed to `quotes`.
 func viewMemberString(m *ViewMember) string {
 	s := m.Name.Text
 	if m.Narrow != nil {
@@ -230,7 +230,7 @@ func annSuffix(anns []*Annotation) string {
 }
 
 // typeString writes a TypeRef back the way the source spelled it, arguments
-// included -- which is what makes `list<Odd>?` and `list<Odd?>` two different
+// included -- which is what makes `list<Quote>?` and `list<Quote?>` two different
 // lines of a dump rather than one.
 func typeString(t TypeRef) string {
 	s := t.Name.Text
@@ -284,7 +284,7 @@ enum EventStatus
   NOT_STARTED = 1
   IN_PROGRESS = 2
   FINISHED = 3
-enum BetTypeStatus
+enum TicketTypeStatus
   UNKNOWN = 0
   OPEN = 1
   SUSPENDED = 2
@@ -295,47 +295,47 @@ record StaticDataRef
   string name = 2
   string? provider_source_key = 3
   int64 provider_key = 4
-record Odd
+record Quote
   string name = 1
-  double odds_actual = 9
+  double quotes_actual = 9
   int64 timestamp = 5
-table SportGame
-  [cs: DataCache(CacheClassName = nameof(Prague.Models.BPSportGameCache))]
-  [cs: DataCacheTopic("Cache.[v:brandId].SportGame")]
+table Show
+  [cs: DataCache(CacheClassName = nameof(Prague.Models.BPShowCache))]
+  [cs: DataCacheTopic("Cache.[v:brandId].Show")]
   reserved 8..14, 16..23, 25..27, 29..34, 37..46, 48..54
   key int64 event_id = 1
-  int64 sport_type_id = 2
+  int64 genre_id = 2
   int64 country_id = 3
-  int64 league_id = 4
-  int64? home_team_id = 5
-  int64? away_team_id = 6
+  int64 tour_id = 4
+  int64? headliner_id = 5
+  int64? opener_id = 6
   Venue? venue = 7
-  int32? fixture_id = 15
+  int32? listing_id = 15
   EventStatus event_status = 24
   int64 event_date = 28
   int64 provider_timestamp = 35
   decimal(4)? live_limit_manual_single = 36
-  list<StaticDataRef> runners = 47
-  StaticDataRef sport_type = 55
+  list<StaticDataRef> performers = 47
+  StaticDataRef genre = 55
   StaticDataRef country = 56
-  StaticDataRef league = 57
-  StaticDataRef? home_team = 58
-  StaticDataRef? away_team = 59
-table BetType
-  [cs: DataCache(CacheClassName = nameof(Prague.Models.BPBetTypeCache))]
-  [cs: DataCacheTopic("Cache.[v:brandId].BetType")]
+  StaticDataRef tour = 57
+  StaticDataRef? headliner = 58
+  StaticDataRef? opener = 59
+table TicketType
+  [cs: DataCache(CacheClassName = nameof(Prague.Models.BPTicketTypeCache))]
+  [cs: DataCacheTopic("Cache.[v:brandId].TicketType")]
   reserved 5, 6, 10..21, 23, 24
-  key key = 1 (event_id, bet_type_id)
-  int64 event_id = 2 [references(SportGame)]
+  key key = 1 (event_id, ticket_type_id)
+  int64 event_id = 2 [references(Show)]
   int64 id = 3
-  alias bet_type_id = id
+  alias ticket_type_id = id
   string name = 4
-  BetTypeStatus status = 7
-  BetTypeStatus? status_manual = 8
-  BetTypeStatus? status_watch_dog = 9
+  TicketTypeStatus status = 7
+  TicketTypeStatus? status_manual = 8
+  TicketTypeStatus? status_watch_dog = 9
   decimal(4)? limit_manual_single = 22
   int64 timestamp = 25 [cs: DataCacheIndex(DataCacheIndexType.Range)] [cs: DataCacheFromTimestamp]
-  list<Odd> odds = 26
+  list<Quote> quotes = 26
 `)
 
 	// A declaration's span covers the whole declaration, opening keyword to
@@ -452,9 +452,9 @@ func TestSpecSubsetIsVerbatim(t *testing.T) {
 // about any of it.
 //
 // Nothing here is resolved and that is the milestone's boundary, not an
-// omission. `of SportGame` finds no SportGame, `sport_type_id;` is not held
-// against the source's members, `SlimOdd odds;` is not checked to be a view of
-// whatever type `odds` has, and `import "prague.prague";` opens no file.
+// omission. `of Show` finds no Show, `genre_id;` is not held
+// against the source's members, `SlimQuote quotes;` is not checked to be a view of
+// whatever type `quotes` has, and `import "prague.prague";` opens no file.
 func TestParseSpecSection2(t *testing.T) {
 	src := readFixture(t, specSection2Fixture)
 	f, file := parseClean(t, src)
@@ -462,51 +462,51 @@ func TestParseSpecSection2(t *testing.T) {
 	assertDump(t, file, `revision 1
 namespace BrandReader.Services.Cache
 import "prague.prague"
-view SlimSportGame of SportGame
+view SlimShow of Show
   event_id as id
-  sport_type_id
+  genre_id
   country_id
-  league_id
-  home_team_id
+  tour_id
+  headliner_id
   venue
-  sport_type
-view SlimOdd of Odd
+  genre
+view SlimQuote of Quote
   name
   timestamp
-view SlimBetType of BetType
+view SlimTicketType of TicketType
   key as id
   event_id
-  id as bet_type_id
+  id as ticket_type_id
   name
   status
   status_manual
   status_watch_dog
   limit_manual_single
   timestamp
-  SlimOdd odds
+  SlimQuote quotes
 `)
 
 	// `key as id;` is the line the whole no-keyword-token-kinds decision is for.
 	// `key` is the composite identity section 1 declares, and here it is a name
 	// being selected -- an ident like any other, needing nothing of its own.
-	bet, ok := file.Decls[2].(*View)
+	purchase, ok := file.Decls[2].(*View)
 	if !ok {
 		t.Fatalf("third declaration is %T, want *View", file.Decls[2])
 	}
-	if m := bet.Members[0]; m.Name.Text != "key" || m.As == nil || m.As.Text != "id" || m.Narrow != nil {
+	if m := purchase.Members[0]; m.Name.Text != "key" || m.As == nil || m.As.Text != "id" || m.Narrow != nil {
 		t.Errorf("`key as id;` read as %+v, want the member `key` renamed to `id`", m)
 	}
 	// A narrowing is two idents and nothing else: no `= tag`, which is what
 	// separates it from a field, and one more ident than a plain selection.
-	if m := bet.Members[9]; m.Narrow == nil || m.Narrow.Text != "SlimOdd" || m.Name.Text != "odds" || m.As != nil {
-		t.Errorf("`SlimOdd odds;` read as %+v, want `odds` narrowed to `SlimOdd`", m)
+	if m := purchase.Members[9]; m.Narrow == nil || m.Narrow.Text != "SlimQuote" || m.Name.Text != "quotes" || m.As != nil {
+		t.Errorf("`SlimQuote quotes;` read as %+v, want `quotes` narrowed to `SlimQuote`", m)
 	}
 
 	// A declaration's span covers the whole declaration, and a view's opens at
 	// its keyword and closes at its brace like every other.
-	const wantSlimOdd = "view SlimOdd of Odd {\n  name;\n  timestamp;\n}"
-	if got := f.Slice(file.Decls[1].(*View).Span); got != wantSlimOdd {
-		t.Errorf("SlimOdd spans:\n%s\nwant:\n%s", got, wantSlimOdd)
+	const wantSlimQuote = "view SlimQuote of Quote {\n  name;\n  timestamp;\n}"
+	if got := f.Slice(file.Decls[1].(*View).Span); got != wantSlimQuote {
+		t.Errorf("SlimQuote spans:\n%s\nwant:\n%s", got, wantSlimQuote)
 	}
 }
 
@@ -523,9 +523,9 @@ func TestParseSpecSection2Table(t *testing.T) {
 
 	assertDump(t, file, `revision 1
 namespace A
-table BetTypeBrandSettings
+table TicketTypeBrandSettings
   [cs: DataCache]
-  key int64 bet_type_id = 1
+  key int64 ticket_type_id = 1
   bool is_enabled = 2
 `)
 }
@@ -951,11 +951,11 @@ table T {
 			src: `revision 1;
 namespace A;
 table T {
-  alias bet_type_id = ;
+  alias ticket_type_id = ;
 }
 `,
 			wantCodes: []diag.Code{diag.UnexpectedToken},
-			wantLine:  4, wantCol: 23,
+			wantLine:  4, wantCol: 26,
 			wantSpan: underlines(";"),
 		},
 		{
@@ -1142,16 +1142,16 @@ struct S {
 			src: `revision 1;
 namespace A;
 struct S {
-  list<Odd, Venue> odds = 1;
+  list<Quote, Venue> quotes = 1;
 }
 `,
 			wantCodes: []diag.Code{diag.TypeArgumentCountWrong},
 			wantMessageHas: []string{
 				"`list` takes 1 type argument and was given 2",
-				"as in `list<Odd>`",
+				"as in `list<Quote>`",
 			},
 			wantLine: 4, wantCol: 3,
-			wantSpan: underlines("list<Odd, Venue>"),
+			wantSpan: underlines("list<Quote, Venue>"),
 		},
 		{
 			// A bare `list` in type position is not a declared type named
@@ -1161,13 +1161,13 @@ struct S {
 			src: `revision 1;
 namespace A;
 struct S {
-  list odds = 1;
+  list quotes = 1;
 }
 `,
 			wantCodes: []diag.Code{diag.TypeArgumentCountWrong},
 			wantMessageHas: []string{
 				"`list` takes 1 type argument and was given 0",
-				"as in `list<Odd>`",
+				"as in `list<Quote>`",
 			},
 			wantLine: 4, wantCol: 3,
 			wantSpan: underlines("list"),
@@ -1198,7 +1198,7 @@ struct S {
 			src: `revision 1;
 namespace A;
 struct S {
-  map<string, Odd> odds_by_name = 1;
+  map<string, Quote> quotes_by_name = 1;
 }
 `,
 			wantCodes: []diag.Code{diag.NotYetImplemented},
@@ -1218,7 +1218,7 @@ struct S {
 			wantCodes: []diag.Code{diag.TypeArgumentCountWrong, diag.NotYetImplemented},
 			wantMessageHas: []string{
 				"`map` takes 2 type arguments and was given 1",
-				"as in `map<string, Odd>`",
+				"as in `map<string, Quote>`",
 			},
 			wantLine: 4, wantCol: 3,
 			wantSpan: underlines("map<string>"),
@@ -1230,12 +1230,12 @@ struct S {
 			src: `revision 1;
 namespace A;
 struct S {
-  list<Odd odds = 1;
+  list<Quote quotes = 1;
 }
 `,
 			wantCodes: []diag.Code{diag.UnexpectedToken},
-			wantLine:  4, wantCol: 12,
-			wantSpan: underlines("odds"),
+			wantLine:  4, wantCol: 14,
+			wantSpan: underlines("quotes"),
 		},
 		{
 			// A member that repeats a tag is told that and nothing else. The
@@ -1266,7 +1266,7 @@ table T {
 			// it was ruled correct, and parseViewMember carries the three
 			// reasons. In short: no tag would make the line right, so a caret
 			// under `5` invites the reader to try 6; the report is raised on a
-			// peek and `sport_type_id = ;` has no tag to underline at all, so
+			// peek and `genre_id = ;` has no tag to underline at all, so
 			// the `=` is the only span every arm of the mistake has; and the
 			// message names the member, which leaves the caret free to show
 			// the repair -- delete from here to the `;`.
@@ -1278,12 +1278,12 @@ table T {
 			src: `revision 1;
 namespace A;
 view V of T {
-  sport_type_id = 5;
+  genre_id = 5;
 }
 `,
 			wantCodes:   []diag.Code{diag.TagInViewMember},
-			wantMessage: "a view may not write a tag: `sport_type_id` is pinned to the tag its source gives it, and only the source extends the tag space; a tag added here is never written by the producer, so it would decode to nil forever while squatting a slot the source may later claim",
-			wantLine:    4, wantCol: 17,
+			wantMessage: "a view may not write a tag: `genre_id` is pinned to the tag its source gives it, and only the source extends the tag space; a tag added here is never written by the producer, so it would decode to nil forever while squatting a slot the source may later claim",
+			wantLine:    4, wantCol: 12,
 			wantSpan: underlines("="),
 		},
 		{
@@ -1296,11 +1296,11 @@ view V of T {
 			src: `revision 1;
 namespace A;
 view V of T {
-  sport_type_id = ;
+  genre_id = ;
 }
 `,
 			wantCodes: []diag.Code{diag.TagInViewMember},
-			wantLine:  4, wantCol: 17,
+			wantLine:  4, wantCol: 12,
 			wantSpan: underlines("="),
 		},
 		{
@@ -1321,7 +1321,7 @@ view V {
 }
 `,
 			wantCodes:   []diag.Code{diag.ViewSourceMissing},
-			wantMessage: "a view is a subset of one source and declares no members of its own; name that source, as in `view V of SportGame { ... }`",
+			wantMessage: "a view is a subset of one source and declares no members of its own; name that source, as in `view V of Show { ... }`",
 			wantLine:    3, wantCol: 7,
 			wantSpan: underlines(""),
 		},
@@ -1756,14 +1756,14 @@ func TestRenderOfTheDiagnosticsThisMilestoneAdds(t *testing.T) {
 			// for why it is not under the tag -- and this golden is one of the
 			// two places that says so.
 			name: "a tag on a view member",
-			src:  "revision 1;\nnamespace A;\nview V of T {\n  sport_type_id = 5;\n}\n",
-			want: "x.prague:4:17: error PROTOP0308: a view may not write a tag: `sport_type_id` is " +
+			src:  "revision 1;\nnamespace A;\nview V of T {\n  genre_id = 5;\n}\n",
+			want: "x.prague:4:12: error PROTOP0308: a view may not write a tag: `genre_id` is " +
 				"pinned to the tag its source gives it, and only the source extends the tag space; " +
 				"a tag added here is never written by the producer, so it would decode to nil " +
 				"forever while squatting a slot the source may later claim\n" +
 				"  |\n" +
-				"4 |   sport_type_id = 5;\n" +
-				"  |                 ^",
+				"4 |   genre_id = 5;\n" +
+				"  |            ^",
 		},
 		{
 			// The message names the missing word and shows the shape, because
@@ -1771,7 +1771,7 @@ func TestRenderOfTheDiagnosticsThisMilestoneAdds(t *testing.T) {
 			name: "a view that names no source",
 			src:  "revision 1;\nnamespace A;\nview V {\n  name;\n}\n",
 			want: "x.prague:3:7: error PROTOP0203: a view is a subset of one source and declares no " +
-				"members of its own; name that source, as in `view V of SportGame { ... }`\n" +
+				"members of its own; name that source, as in `view V of Show { ... }`\n" +
 				"  |\n" +
 				"3 | view V {\n" +
 				"  |       ^",
@@ -1999,9 +1999,9 @@ record StaticDataRef {
   string name = 2;
 }
 struct S {
-  StaticDataRef       sport_type = 1;
-  StaticDataRef?      home_team  = 2;
-  list<StaticDataRef> runners    = 3;
+  StaticDataRef       genre = 1;
+  StaticDataRef?      headliner  = 2;
+  list<StaticDataRef> performers    = 3;
   Venue?              venue      = 4;
 }
 `)
@@ -2011,9 +2011,9 @@ record StaticDataRef
   int64 id = 1
   string name = 2
 struct S
-  StaticDataRef sport_type = 1
-  StaticDataRef? home_team = 2
-  list<StaticDataRef> runners = 3
+  StaticDataRef genre = 1
+  StaticDataRef? headliner = 2
+  list<StaticDataRef> performers = 3
   Venue? venue = 4
 `)
 
@@ -2023,34 +2023,34 @@ struct S
 	s := file.Decls[1].(*Struct)
 	// The element type is an argument of the collection type, and the field
 	// carries nothing extra: the whole of the repetition is in TypeRef.
-	runners := s.Members[2].(*Field).Type
-	if runners.Name.Text != "list" || len(runners.Args) != 1 || runners.Args[0].Name.Text != "StaticDataRef" {
-		t.Errorf("runners is %s, want list<StaticDataRef>", typeString(runners))
+	performers := s.Members[2].(*Field).Type
+	if performers.Name.Text != "list" || len(performers.Args) != 1 || performers.Args[0].Name.Text != "StaticDataRef" {
+		t.Errorf("performers is %s, want list<StaticDataRef>", typeString(performers))
 	}
 	if got := s.Members[0].(*Field).Type; len(got.Args) != 0 {
-		t.Errorf("sport_type is %s, want no type arguments", typeString(got))
+		t.Errorf("genre is %s, want no type arguments", typeString(got))
 	}
 }
 
 // The reason repetition moved into the type: presence composes, and the three
-// spellings are three types. `repeated Odd?` could only ever have been one of
+// spellings are three types. `repeated Quote?` could only ever have been one of
 // the last two.
 func TestListComposesWithPresenceAndNests(t *testing.T) {
 	_, file := parseClean(t, `revision 1;
 namespace A;
 struct S {
-  list<Odd>        plain   = 1;
-  list<Odd>?       maybe   = 2;
-  list<Odd?>       holes   = 3;
+  list<Quote>        plain   = 1;
+  list<Quote>?       maybe   = 2;
+  list<Quote?>       holes   = 3;
   list<list<int64>> nested = 4;
 }
 `)
 	assertDump(t, file, `revision 1
 namespace A
 struct S
-  list<Odd> plain = 1
-  list<Odd>? maybe = 2
-  list<Odd?> holes = 3
+  list<Quote> plain = 1
+  list<Quote>? maybe = 2
+  list<Quote?> holes = 3
   list<list<int64>> nested = 4
 `)
 
@@ -2059,16 +2059,16 @@ struct S
 	for i := range types {
 		types[i] = s.Members[i].(*Field).Type
 	}
-	// `list<Odd>?` is Optional on the outer ref; `list<Odd?>` on the inner one.
+	// `list<Quote>?` is Optional on the outer ref; `list<Quote?>` on the inner one.
 	// One bool, two positions, and that is the whole of the disambiguation.
 	if types[1].Optional == types[2].Optional {
-		t.Errorf("list<Odd>? and list<Odd?> agree about Optional on the outer ref")
+		t.Errorf("list<Quote>? and list<Quote?> agree about Optional on the outer ref")
 	}
 	if !types[1].Optional || types[1].Args[0].Optional {
-		t.Errorf("list<Odd>? is %+v, want the `?` on the collection", types[1])
+		t.Errorf("list<Quote>? is %+v, want the `?` on the collection", types[1])
 	}
 	if types[2].Optional || !types[2].Args[0].Optional {
-		t.Errorf("list<Odd?> is %+v, want the `?` on the element", types[2])
+		t.Errorf("list<Quote?> is %+v, want the `?` on the element", types[2])
 	}
 	// Nesting needs no code of its own: Args recurses.
 	if inner := types[3].Args[0]; inner.Name.Text != "list" || inner.Args[0].Name.Text != "int64" {
@@ -2085,7 +2085,7 @@ namespace A;
 struct S {
   int64      list = 1;
   int64      map  = 2;
-  list<Odd>  odds = 3;
+  list<Quote>  quotes = 3;
   list<int64> tags = 4;
 }
 `)
@@ -2094,7 +2094,7 @@ namespace A
 struct S
   int64 list = 1
   int64 map = 2
-  list<Odd> odds = 3
+  list<Quote> quotes = 3
   list<int64> tags = 4
 `)
 }
@@ -2194,7 +2194,7 @@ func TestTheBuiltinNamePredicateIsTheTwoClosedSets(t *testing.T) {
 	// A name that merely resembles one of protop's is not built in. Without
 	// this the predicate could answer true to everything and the walk above
 	// would still pass.
-	for _, name := range []string{"List", "lists", "Map", "int16", "float", "Odd", "Venue", ""} {
+	for _, name := range []string{"List", "lists", "Map", "int16", "float", "Quote", "Venue", ""} {
 		if IsBuiltinTypeName(name) {
 			t.Errorf("IsBuiltinTypeName(%q) is true; only the two closed sets are built in", name)
 		}
@@ -2285,10 +2285,10 @@ func TestParseAnnotations(t *testing.T) {
 	_, file := parseClean(t, `revision 1;
 namespace A;
 record R
-  [cs: DataCacheContract(typeof(SportGameCacheContract), Role = ContractRole.Producer)]
-  [cs: DataCache(CacheClassName = nameof(BPSportGameCache))]
+  [cs: DataCacheContract(typeof(ShowCacheContract), Role = ContractRole.Producer)]
+  [cs: DataCache(CacheClassName = nameof(BPShowCache))]
 {
-  int64 event_id  = 1 [references(SportGame)];
+  int64 event_id  = 1 [references(Show)];
   int64 timestamp = 2 [cs: DataCacheIgnoreEquality] [cs: DataCacheFromTimestamp];
   int64 x         = 3 [cs: A] [cs: A];
   int64 y         = 4 [cs: Zeta] [cs: Mid] [cs: Alpha];
@@ -2297,9 +2297,9 @@ record R
 	assertDump(t, file, `revision 1
 namespace A
 record R
-  [cs: DataCacheContract(typeof(SportGameCacheContract), Role = ContractRole.Producer)]
-  [cs: DataCache(CacheClassName = nameof(BPSportGameCache))]
-  int64 event_id = 1 [references(SportGame)]
+  [cs: DataCacheContract(typeof(ShowCacheContract), Role = ContractRole.Producer)]
+  [cs: DataCache(CacheClassName = nameof(BPShowCache))]
+  int64 event_id = 1 [references(Show)]
   int64 timestamp = 2 [cs: DataCacheIgnoreEquality] [cs: DataCacheFromTimestamp]
   int64 x = 3 [cs: A] [cs: A]
   int64 y = 4 [cs: Zeta] [cs: Mid] [cs: Alpha]
@@ -2356,25 +2356,25 @@ struct S {
 func TestParseTableWithASimpleKey(t *testing.T) {
 	_, file := parseClean(t, `revision 1;
 namespace A;
-table SportGame
-  [cs: DataCacheTopic(TopicNames.BrandFromConfigs.SportGame)]
+table Show
+  [cs: DataCacheTopic(TopicNames.BrandFromConfigs.Show)]
 {
   reserved 8..14, 16..23, 25;
 
   key int64 event_id = 1;
 
-  int64? home_team_id = 5;
-  list<StaticDataRef> runners = 47;
+  int64? headliner_id = 5;
+  list<StaticDataRef> performers = 47;
 }
 `)
 	assertDump(t, file, `revision 1
 namespace A
-table SportGame
-  [cs: DataCacheTopic(TopicNames.BrandFromConfigs.SportGame)]
+table Show
+  [cs: DataCacheTopic(TopicNames.BrandFromConfigs.Show)]
   reserved 8..14, 16..23, 25
   key int64 event_id = 1
-  int64? home_team_id = 5
-  list<StaticDataRef> runners = 47
+  int64? headliner_id = 5
+  list<StaticDataRef> performers = 47
 `)
 
 	tbl, ok := file.Decls[0].(*Table)
@@ -2391,7 +2391,7 @@ table SportGame
 		t.Errorf("key is %+v, want Key int64 with tag 1", key)
 	}
 	if tbl.Members[2].(*Field).Key {
-		t.Error("home_team_id is a Key")
+		t.Error("headliner_id is a Key")
 	}
 	// `reserved` is a member and holds its place: section 1 writes it above the
 	// key, and source order is what a backend emits and a diagnostic quotes.
@@ -2422,7 +2422,7 @@ func TestParseReservedRangesAreInclusive(t *testing.T) {
 }
 
 // The member the whole no-keyword-token-kinds decision was made for: `key key =
-// 1 (event_id, bet_type_id);` is a member named `key`, of a kind named `key`,
+// 1 (event_id, ticket_type_id);` is a member named `key`, of a kind named `key`,
 // over fields that keep their own ordinals. Nothing here is a reserved word, and
 // the two spellings of identity are told apart by what follows rather than by
 // what the lexer called it.
@@ -2434,22 +2434,22 @@ func TestParseReservedRangesAreInclusive(t *testing.T) {
 func TestParseCompositeKeyAndAlias(t *testing.T) {
 	_, file := parseClean(t, `revision 1;
 namespace A;
-table BetType {
-  key key = 1 (event_id, bet_type_id) [cs: Z];
+table TicketType {
+  key key = 1 (event_id, ticket_type_id) [cs: Z];
 
-  int64 event_id = 2 [references(BetType)];
+  int64 event_id = 2 [references(TicketType)];
   int64 id       = 3;
 
-  alias bet_type_id = id [cs: W];
+  alias ticket_type_id = id [cs: W];
 }
 `)
 	assertDump(t, file, `revision 1
 namespace A
-table BetType
-  key key = 1 (event_id, bet_type_id) [cs: Z]
-  int64 event_id = 2 [references(BetType)]
+table TicketType
+  key key = 1 (event_id, ticket_type_id) [cs: Z]
+  int64 event_id = 2 [references(TicketType)]
   int64 id = 3
-  alias bet_type_id = id [cs: W]
+  alias ticket_type_id = id [cs: W]
 `)
 
 	tbl := file.Decls[0].(*Table)
@@ -2463,8 +2463,8 @@ table BetType
 	if k.Name.Text != "key" || k.Tag.Value != 1 {
 		t.Errorf("key is %s = %d, want key = 1", k.Name.Text, k.Tag.Value)
 	}
-	if len(k.Parts) != 2 || k.Parts[0].Text != "event_id" || k.Parts[1].Text != "bet_type_id" {
-		t.Errorf("parts are %+v, want event_id then bet_type_id", k.Parts)
+	if len(k.Parts) != 2 || k.Parts[0].Text != "event_id" || k.Parts[1].Text != "ticket_type_id" {
+		t.Errorf("parts are %+v, want event_id then ticket_type_id", k.Parts)
 	}
 
 	// An alias names no wire slot, so it has no tag to get wrong: it is a second
@@ -2473,8 +2473,8 @@ table BetType
 	if !ok {
 		t.Fatalf("the alias is %T, want *Alias", tbl.Members[3])
 	}
-	if a.Name.Text != "bet_type_id" || a.Source.Text != "id" {
-		t.Errorf("alias is %s = %s, want bet_type_id = id", a.Name.Text, a.Source.Text)
+	if a.Name.Text != "ticket_type_id" || a.Source.Text != "id" {
+		t.Errorf("alias is %s = %s, want ticket_type_id = id", a.Name.Text, a.Source.Text)
 	}
 }
 
@@ -2568,10 +2568,10 @@ table T
 {
   reserved 8..14, 25;
   key key = 1 (a, b) [cs: Z];
-  list<Odd?>? odds = 2 [references(X)];
+  list<Quote?>? quotes = 2 [references(X)];
   decimal(4) amount = 3;
-  list<Odd> plain = 4;
-  alias d = odds;
+  list<Quote> plain = 4;
+  alias d = quotes;
 }
 `
 	f, file := parseClean(t, src)
@@ -2629,18 +2629,18 @@ table T
 	check("a composite key's part", k.Parts[1].Span, "b")
 	check("a composite key's annotation", k.Annotations[0].Span, "[cs: Z]")
 
-	odds, ok := tbl.Members[2].(*Field)
+	quotes, ok := tbl.Members[2].(*Field)
 	if !ok {
 		t.Fatalf("the third member is %T, want *Field", tbl.Members[2])
 	}
-	check("a field", odds.Span, "list<Odd?>? odds = 2 [references(X)];")
+	check("a field", quotes.Span, "list<Quote?>? quotes = 2 [references(X)];")
 	// A collection's type closes at its `>`, and its `?` after that. This is
-	// the assertion that says the outer `?` of `list<Odd?>?` belongs to the
+	// the assertion that says the outer `?` of `list<Quote?>?` belongs to the
 	// outer type: the two are different types and a message that quotes the
 	// wrong one says the wrong thing.
-	check("a collection type", odds.Type.Span, "list<Odd?>?")
-	check("a type argument", odds.Type.Args[0].Span, "Odd?")
-	check("an unprefixed annotation", odds.Annotations[0].Span, "[references(X)]")
+	check("a collection type", quotes.Type.Span, "list<Quote?>?")
+	check("a type argument", quotes.Type.Args[0].Span, "Quote?")
+	check("an unprefixed annotation", quotes.Annotations[0].Span, "[references(X)]")
 
 	amount, ok := tbl.Members[3].(*Field)
 	if !ok {
@@ -2659,14 +2659,14 @@ table T
 	// The same collection with no `?` after it, which is the one shape that
 	// says the span reaches the `>` on its own rather than being carried there
 	// by a trailing presence marker.
-	check("a collection type with no presence marker", plain.Type.Span, "list<Odd>")
+	check("a collection type with no presence marker", plain.Type.Span, "list<Quote>")
 
 	alias, ok := tbl.Members[5].(*Alias)
 	if !ok {
 		t.Fatalf("the sixth member is %T, want *Alias", tbl.Members[5])
 	}
-	check("an alias", alias.Span, "alias d = odds;")
-	check("an alias source", alias.Source.Span, "odds")
+	check("an alias", alias.Span, "alias d = quotes;")
+	check("an alias source", alias.Source.Span, "quotes")
 }
 
 // Annotation.TextSpan is exactly where Text was written, in every shape an
@@ -2804,31 +2804,31 @@ table T {
 func TestParseViewMemberSpellings(t *testing.T) {
 	_, file := parseClean(t, `revision 1;
 namespace A;
-view SlimBetType of BetType
-  [cs: DataCache(CacheClassName = nameof(BPSlimBetTypeCache))]
+view SlimTicketType of TicketType
+  [cs: DataCache(CacheClassName = nameof(BPSlimTicketTypeCache))]
 {
   key as id;
   event_id;
-  id as bet_type_id [cs: DataCacheIgnoreEquality];
-  SlimOdd odds [cs: Zeta] [cs: Alpha];
+  id as ticket_type_id [cs: DataCacheIgnoreEquality];
+  SlimQuote quotes [cs: Zeta] [cs: Alpha];
 }
 `)
 	assertDump(t, file, `revision 1
 namespace A
-view SlimBetType of BetType
-  [cs: DataCache(CacheClassName = nameof(BPSlimBetTypeCache))]
+view SlimTicketType of TicketType
+  [cs: DataCache(CacheClassName = nameof(BPSlimTicketTypeCache))]
   key as id
   event_id
-  id as bet_type_id [cs: DataCacheIgnoreEquality]
-  SlimOdd odds [cs: Zeta] [cs: Alpha]
+  id as ticket_type_id [cs: DataCacheIgnoreEquality]
+  SlimQuote quotes [cs: Zeta] [cs: Alpha]
 `)
 
 	v, ok := file.Decls[0].(*View)
 	if !ok {
 		t.Fatalf("declaration is %T, want *View", file.Decls[0])
 	}
-	if v.Name.Text != "SlimBetType" || v.Source.Text != "BetType" {
-		t.Errorf("head is `view %s of %s`, want `view SlimBetType of BetType`", v.Name.Text, v.Source.Text)
+	if v.Name.Text != "SlimTicketType" || v.Source.Text != "TicketType" {
+		t.Errorf("head is `view %s of %s`, want `view SlimTicketType of TicketType`", v.Name.Text, v.Source.Text)
 	}
 	// A plain selection is one ident: no type, because the type comes from the
 	// source, and no tag, because writing one would be the error.
@@ -2837,13 +2837,13 @@ view SlimBetType of BetType
 	}
 	// A rename carries both names. The one on the left is what the source
 	// calls the member; the one on the right is what this view calls it.
-	if m := v.Members[2]; m.Narrow != nil || m.As == nil || m.Name.Text != "id" || m.As.Text != "bet_type_id" {
-		t.Errorf("`id as bet_type_id;` read as %+v, want `id` renamed to `bet_type_id`", m)
+	if m := v.Members[2]; m.Narrow != nil || m.As == nil || m.Name.Text != "id" || m.As.Text != "ticket_type_id" {
+		t.Errorf("`id as ticket_type_id;` read as %+v, want `id` renamed to `ticket_type_id`", m)
 	}
 	// A narrowing's leading ident is the view, and the trailing one is still
 	// the member selected out of the source -- not the other way round.
-	if m := v.Members[3]; m.Narrow == nil || m.Narrow.Text != "SlimOdd" || m.Name.Text != "odds" {
-		t.Errorf("`SlimOdd odds;` read as %+v, want `odds` narrowed to `SlimOdd`", m)
+	if m := v.Members[3]; m.Narrow == nil || m.Narrow.Text != "SlimQuote" || m.Name.Text != "quotes" {
+		t.Errorf("`SlimQuote quotes;` read as %+v, want `quotes` narrowed to `SlimQuote`", m)
 	}
 }
 
@@ -2852,7 +2852,7 @@ view SlimBetType of BetType
 // idents everywhere else; `key`, `alias` and `reserved` are the words section 1
 // spells members with and are selected here by name.
 //
-// `as as of;` and `SlimOdd as;` are the pair that says the decision is
+// `as as of;` and `SlimQuote as;` are the pair that says the decision is
 // positional rather than textual: in the first, a member named `as` is renamed
 // to `of`; in the second, a member named `as` is narrowed. Only the ident after
 // the second word tells a rename from a narrowing, and a lexer with keyword
@@ -2870,7 +2870,7 @@ view V of of {
   reserved;
   view;
   import;
-  SlimOdd as;
+  SlimQuote as;
 }
 `)
 	assertDump(t, file, `revision 1
@@ -2885,7 +2885,7 @@ view V of of
   reserved
   view
   import
-  SlimOdd as
+  SlimQuote as
 `)
 
 	v := file.Decls[0].(*View)
@@ -2896,10 +2896,10 @@ view V of of
 	if m := v.Members[2]; m.Narrow != nil || m.As == nil || m.Name.Text != "as" || m.As.Text != "of" {
 		t.Errorf("`as as of;` read as %+v, want the member `as` renamed to `of`", m)
 	}
-	// `SlimOdd as;` is a narrowing of a member named `as`, which is the same
+	// `SlimQuote as;` is a narrowing of a member named `as`, which is the same
 	// two words in the same order as a rename minus the third.
-	if m := v.Members[9]; m.Narrow == nil || m.Narrow.Text != "SlimOdd" || m.Name.Text != "as" || m.As != nil {
-		t.Errorf("`SlimOdd as;` read as %+v, want `as` narrowed to `SlimOdd`", m)
+	if m := v.Members[9]; m.Narrow == nil || m.Narrow.Text != "SlimQuote" || m.Name.Text != "as" || m.As != nil {
+		t.Errorf("`SlimQuote as;` read as %+v, want `as` narrowed to `SlimQuote`", m)
 	}
 }
 
@@ -3041,12 +3041,12 @@ namespace A;
 
 import "prague.prague";
 
-view SlimBetType of BetType
+view SlimTicketType of TicketType
   [cs: DataCache]
 {
   key as id;
   event_id;
-  SlimOdd odds [cs: Z];
+  SlimQuote quotes [cs: Z];
 }
 `
 	f, file := parseClean(t, src)
@@ -3074,18 +3074,18 @@ view SlimBetType of BetType
 	if !ok {
 		t.Fatalf("declaration is %T, want *View", file.Decls[0])
 	}
-	check("a view", v.Span, src[strings.Index(src, "view SlimBetType"):strings.LastIndex(src, "}")+1])
-	check("a view's name", v.Name.Span, "SlimBetType")
-	check("a view's source", v.Source.Span, "BetType")
+	check("a view", v.Span, src[strings.Index(src, "view SlimTicketType"):strings.LastIndex(src, "}")+1])
+	check("a view's name", v.Name.Span, "SlimTicketType")
+	check("a view's source", v.Source.Span, "TicketType")
 	check("a view's head annotation", v.Annotations[0].Span, "[cs: DataCache]")
 
 	check("a renamed member", v.Members[0].Span, "key as id;")
 	check("a renamed member's new name", v.Members[0].As.Span, "id")
 	check("a plain selection", v.Members[1].Span, "event_id;")
-	check("a narrowed member", v.Members[2].Span, "SlimOdd odds [cs: Z];")
+	check("a narrowed member", v.Members[2].Span, "SlimQuote quotes [cs: Z];")
 	// The narrowing is the leading ident alone: the diagnostic for a scalar
 	// written there underlines that word and not the member.
-	check("a narrowing", v.Members[2].Narrow.Span, "SlimOdd")
+	check("a narrowing", v.Members[2].Narrow.Span, "SlimQuote")
 	check("a view member's annotation", v.Members[2].Annotations[0].Span, "[cs: Z]")
 }
 
@@ -3425,7 +3425,7 @@ func TestParseKeepsASourcelessViewInTheTree(t *testing.T) {
 // parser can rule out by itself. The boundary is tested from both sides,
 // because it was untested in both: a check that knew only `int64` passed, a
 // check that exempted `decimal` passed, and a check that ALSO rejected `list`
-// and `map` passed -- and that last one would have made `list<Odd>` narrowings
+// and `map` passed -- and that last one would have made `list<Quote>` narrowings
 // unwritable the day M4 decides what they mean.
 //
 // The six come from the literal oracle, not from scalarTypes. Reading the map
@@ -3457,8 +3457,8 @@ func TestEveryScalarIsRejectedInANarrowingPosition(t *testing.T) {
 	// A collection is not a scalar and is not rejected here. Whether `list` can
 	// be narrowed to is a question about what `list` resolves to, which is not
 	// a question this file is allowed to ask.
-	_, file := parseClean(t, "revision 1;\nnamespace A;\nview V of T {\n  list odds;\n  map m;\n}\n")
-	assertDump(t, file, "revision 1\nnamespace A\nview V of T\n  list odds\n  map m\n")
+	_, file := parseClean(t, "revision 1;\nnamespace A;\nview V of T {\n  list quotes;\n  map m;\n}\n")
+	assertDump(t, file, "revision 1\nnamespace A\nview V of T\n  list quotes\n  map m\n")
 }
 
 // peekAt clamps to the EOF token the lexer always emits, and the suite never
@@ -3498,7 +3498,7 @@ func TestLookaheadPastTheEndOfTheFileDoesNotPanic(t *testing.T) {
 // read in a loop, `a b c d;` collapses to a member named `d` and the rest is
 // thrown away in silence.
 //
-// The fourth shape itself is `SlimOdd odds as o;` and is held by
+// The fourth shape itself is `SlimQuote quotes as o;` and is held by
 // TestANarrowedViewMemberMayAlsoBeRenamed. What is here is the arithmetic that
 // tells it apart from the four-ident line that is not one.
 func TestAViewMemberIsOneOfFourShapes(t *testing.T) {
@@ -3582,7 +3582,7 @@ view V of T
 // section5NarrowAndRename is the rule the test below rests on, quoted out of
 // section 5 and held against it by TestSection5StatesTheNarrowAndRename. The
 // span is chosen for what it carries rather than for its length: the rule
-// itself, the example this file parses, and the tag -- 26, BetType's, and
+// itself, the example this file parses, and the tag -- 26, TicketType's, and
 // neither half of the member's doing. Each of the three can be falsified on its
 // own, and nothing else in the suite would notice; `26` changed to `1` reads as
 // a spec that says the member may invent a number after all.
@@ -3591,7 +3591,7 @@ view V of T
 // copies of a sentence in one file are two things to keep true, and the one
 // that is not compared to anything is the one that goes stale.
 const section5NarrowAndRename = "**A view may narrow and rename in one member.** " +
-	"`SlimOdd odds as o;` is still tag 26: the leading type says what the member holds, " +
+	"`SlimQuote quotes as o;` is still tag 26: the leading type says what the member holds, " +
 	"`as o` says what the consumer calls it, and the tag is the source's as it is on " +
 	"every other view line — neither half is about the tag."
 
@@ -3616,8 +3616,8 @@ func TestSection5StatesTheNarrowAndRename(t *testing.T) {
 // source -- is held on the model by internal/check's
 // TestAViewMemberMayNarrowAndRenameAtOnce.
 func TestANarrowedViewMemberMayAlsoBeRenamed(t *testing.T) {
-	_, file := parseClean(t, "revision 1;\nnamespace A;\nview V of T {\n  SlimOdd odds as o;\n}\n")
-	assertDump(t, file, "revision 1\nnamespace A\nview V of T\n  SlimOdd odds as o\n")
+	_, file := parseClean(t, "revision 1;\nnamespace A;\nview V of T {\n  SlimQuote quotes as o;\n}\n")
+	assertDump(t, file, "revision 1\nnamespace A\nview V of T\n  SlimQuote quotes as o\n")
 }
 
 // assertRenamed holds a fixture to the thing it was written to ask about. Each
@@ -3643,7 +3643,7 @@ func TestAViewMemberDiagnosticSurvivesARename(t *testing.T) {
 	// A tag is a tag whatever the member is called. Gating the `=` on the
 	// absence of a rename reports a missing `;` instead, and the milestone's
 	// best-worded diagnostic never gets said.
-	const tagged = "revision 1;\nnamespace A;\nview V of T {\n  SlimOdd odds as o = 3;\n}\n"
+	const tagged = "revision 1;\nnamespace A;\nview V of T {\n  SlimQuote quotes as o = 3;\n}\n"
 	assertRenamed(t, tagged)
 	f, _, bag := parse(t, tagged)
 	if bag.Len() != 1 || bag.All()[0].Code != diag.TagInViewMember {
@@ -3656,7 +3656,7 @@ func TestAViewMemberDiagnosticSurvivesARename(t *testing.T) {
 	// And a scalar in the narrowing position is a scalar whatever the member
 	// is called. The rename is read after the narrowing and says nothing about
 	// what the leading word is allowed to be.
-	const scalar = "revision 1;\nnamespace A;\nview V of T {\n  int64 odds as o;\n}\n"
+	const scalar = "revision 1;\nnamespace A;\nview V of T {\n  int64 quotes as o;\n}\n"
 	assertRenamed(t, scalar)
 	f, _, bag = parse(t, scalar)
 	if bag.Len() != 1 || bag.All()[0].Code != diag.ScalarInViewMember {
@@ -3669,27 +3669,27 @@ func TestAViewMemberDiagnosticSurvivesARename(t *testing.T) {
 
 // A view member's name carries the span of the name itself, on both the plain
 // and the narrowed path. That is the span the next stage underlines for "no
-// such member `odds` on `SportGame`", and a resolver has no other way to point
+// such member `quotes` on `Show`", and a resolver has no other way to point
 // at the word it could not find: the member's own span covers the narrowing and
 // the rename too, so quoting it would underline the whole line for a mistake in
 // one word of it.
 func TestAViewMemberNameCarriesItsOwnSpan(t *testing.T) {
-	f, file := parseClean(t, "revision 1;\nnamespace A;\nview V of T {\n  sport_type_id;\n  SlimOdd odds;\n}\n")
+	f, file := parseClean(t, "revision 1;\nnamespace A;\nview V of T {\n  genre_id;\n  SlimQuote quotes;\n}\n")
 	v := file.Decls[0].(*View)
 	if len(v.Members) != 2 {
 		t.Fatalf("members = %d, want 2", len(v.Members))
 	}
-	for i, want := range []string{"sport_type_id", "odds"} {
+	for i, want := range []string{"genre_id", "quotes"} {
 		if got := f.Slice(v.Members[i].Name.Span); got != want {
 			t.Errorf("member %d's name spans %q, want %q", i, got, want)
 		}
 	}
 	// The narrowing's own span is the narrowing, and the member's span is the
 	// line: three spans, three jobs.
-	if got := f.Slice(v.Members[1].Narrow.Span); got != "SlimOdd" {
-		t.Errorf("the narrowing spans %q, want SlimOdd", got)
+	if got := f.Slice(v.Members[1].Narrow.Span); got != "SlimQuote" {
+		t.Errorf("the narrowing spans %q, want SlimQuote", got)
 	}
-	if got := f.Slice(v.Members[1].Span); got != "SlimOdd odds;" {
+	if got := f.Slice(v.Members[1].Span); got != "SlimQuote quotes;" {
 		t.Errorf("the member spans %q, want the whole line", got)
 	}
 }

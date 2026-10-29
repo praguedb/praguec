@@ -41,7 +41,7 @@ constructor (§6).
 
 **8. The slot is positionally load-bearing.** Deleting the computed member later is a wire-breaking change, because
 every subsequent key shifts down one array index. Measured: a 2-element wire read back into the 3-slot type yields
-`EventId=222, BetTypeId=0` (§1.3).
+`EventId=222, TicketTypeId=0` (§1.3).
 
 ---
 
@@ -68,9 +68,9 @@ The probe type that mirrors Prague exactly:
 [MessagePackObject]
 public sealed partial class TupleKeyItem
 {
-    [Key(0)] public (long EventId, long BetTypeId) Key => (EventId, BetTypeId);
+    [Key(0)] public (long EventId, long TicketTypeId) Key => (EventId, TicketTypeId);
     [Key(1)] public long EventId { get; set; }
-    [Key(2)] public long BetTypeId { get; set; }
+    [Key(2)] public long TicketTypeId { get; set; }
 }
 ```
 
@@ -88,9 +88,9 @@ public void Serialize(ref MsgPack::MessagePackWriter writer, global::Probe.Tuple
     if (value == null) { writer.WriteNil(); return; }
     MsgPack::IFormatterResolver formatterResolver = options.Resolver;
     writer.WriteArrayHeader(3);
-    MsgPack::FormatterResolverExtensions.GetFormatterWithVerify<(long EventId, long BetTypeId)>(formatterResolver).Serialize(ref writer, value.Key, options);
+    MsgPack::FormatterResolverExtensions.GetFormatterWithVerify<(long EventId, long TicketTypeId)>(formatterResolver).Serialize(ref writer, value.Key, options);
     writer.Write(value.EventId);
-    writer.Write(value.BetTypeId);
+    writer.Write(value.TicketTypeId);
 }
 
 public global::Probe.TupleKeyItem Deserialize(ref MsgPack::MessagePackReader reader, MsgPack::MessagePackSerializerOptions options)
@@ -109,7 +109,7 @@ public global::Probe.TupleKeyItem Deserialize(ref MsgPack::MessagePackReader rea
                 ____result.EventId = reader.ReadInt64();
                 break;
             case 2:
-                ____result.BetTypeId = reader.ReadInt64();
+                ____result.TicketTypeId = reader.ReadInt64();
                 break;
             default:
                 reader.Skip();
@@ -197,10 +197,10 @@ The computed key is **4 of 8 bytes — 50% overhead** on a two-field item, for a
 Three further measurements on the same type, all on both paths:
 
 - **The wire value is ignored.** Hand-built wire `9392CD03E7CD03E76FCCDE` = `[[999,999],111,222]` deserializes to
-  `Key=(111, 222)` on both the generated and the reflection path. The property recomputes from `EventId`/`BetTypeId`;
+  `Key=(111, 222)` on both the generated and the reflection path. The property recomputes from `EventId`/`TicketTypeId`;
   the transmitted tuple is discarded.
 - **The slot is positionally load-bearing.** Wire `[111,222]` (2 elements) read back as `TupleKeyItem` gives
-  `EventId=222, BetTypeId=0` — slot 0 was consumed as the skipped key, slot 1 as `EventId`. Removing the computed
+  `EventId=222, TicketTypeId=0` — slot 0 was consumed as the skipped key, slot 1 as `EventId`. Removing the computed
   member from the type later shifts every key down one index and breaks every persisted payload.
 - **Key gaps become explicit nils, and the computed member does not change that.** `GapItem` (computed `[Key(0)]`,
   then keys 1 and 3) serializes to `9492050605C006` = `[[5,6],5,null,6]` — the `C0` hole is emitted by
@@ -254,8 +254,8 @@ Probe type `MapModeComputedItem` — same three members, no `[Key]` attributes, 
 
 | path | hex | bytes | JSON |
 |---|---|---|---|
-| generated | `83A34B6579926FCCDEA74576656E7449646FA9426574547970654964CCDE` | 30 | `{"Key":[111,222],"EventId":111,"BetTypeId":222}` |
-| dynamic | `82A74576656E7449646FA9426574547970654964CCDE` | 22 | `{"EventId":111,"BetTypeId":222}` |
+| generated | `83A34B6579926FCCDEA74576656E7449646FA9426574547970654964CCDE` | 30 | `{"Key":[111,222],"EventId":111,"TicketTypeId":222}` |
+| dynamic | `82A74576656E7449646FA9426574547970654964CCDE` | 22 | `{"EventId":111,"TicketTypeId":222}` |
 
 `gen==dyn bytes: False`. Different map header (`83` vs `82`), different key set. No diagnostic, no exception —
 the two paths simply produce different documents for the same object.
@@ -332,7 +332,7 @@ On the reflection side `src/MessagePack/Resolvers/DynamicGenericResolver.cs:178-
 `System.ValueTuple*` by full name and picks the arity-matching `ValueTupleFormatter<,>`. The implementation lives
 at `src/MessagePack/Formatters/ValueTupleFormatter.cs:58` for the 2-arity case.
 
-**Tuple element names are not on the wire.** `(long EventId, long BetTypeId)` and `(long, long)` produce the same
+**Tuple element names are not on the wire.** `(long EventId, long TicketTypeId)` and `(long, long)` produce the same
 bytes; the names are compile-time metadata (`TupleElementNamesAttribute`) and the formatter writes a positional
 array. A consumer needs the same declared element order, not the same names.
 
@@ -358,30 +358,30 @@ get-only expression-bodied `ValueTuple` `[DataCacheKey]`, and **all eight carry 
 
 | # | path | member |
 |---|---|---|
-| 1 | `BO/BO.Services/Prague/Models/BOBetTypeCacheItem.cs:24` | `(long EventId, long BetTypeId) Key` |
+| 1 | `BO/BO.Services/Prague/Models/BOTicketTypeCacheItem.cs:24` | `(long EventId, long TicketTypeId) Key` |
 | 2 | `BO/BO.Services/Prague/Models/BOSearchCacheItem.cs:18` | `(long EventId, Channel ChannelId) Key` |
-| 3 | `BP/BrandProcessor.Services/Prague/Models/BPBetTypeCacheItem.cs:24` | `(long EventId, long BetTypeId) Key` |
+| 3 | `BP/BrandProcessor.Services/Prague/Models/BPTicketTypeCacheItem.cs:24` | `(long EventId, long TicketTypeId) Key` |
 | 4 | `BP/BrandProcessor.Services/Prague/Models/BPSearchCacheItem.cs:18` | `(long EventId, Channel ChannelId) Key` |
-| 5 | `Common/Common.EventApi.Cache/Prague/Models/SlimBetType.cs:44` | `(long EventId, long BetTypeId) Id` |
+| 5 | `Common/Common.EventApi.Cache/Prague/Models/SlimTicketType.cs:44` | `(long EventId, long TicketTypeId) Id` |
 | 6 | `BrandReader/BrandReader.Services/Models/SearchCacheItem.cs:18` | `(long EventId, Channel ChannelId) Key` |
-| 7 | `Processors/EventsBackgroundProcessor/Services/Cache/BetTypeCacheItem.cs:24` | `(long EventId, long BetTypeId) Key` |
+| 7 | `Processors/EventsBackgroundProcessor/Services/Cache/TicketTypeCacheItem.cs:24` | `(long EventId, long TicketTypeId) Key` |
 | 8 | `Processors/EventsBackgroundProcessor/Services/Cache/SearchCacheItem.cs:15` | `(long EventId, Channel ChannelId) Key` |
 
-Representative, verbatim from `BO/BO.Services/Prague/Models/BOBetTypeCacheItem.cs`:
+Representative, verbatim from `BO/BO.Services/Prague/Models/BOTicketTypeCacheItem.cs`:
 
 ```csharp
 [MessagePackObject]
-[DataCache(CacheClassName = nameof(BOBetTypeCache))]
-[DataCacheTopic("Cache.[v:brandId].BetType")]
-public sealed partial class BOBetTypeCacheItem
+[DataCache(CacheClassName = nameof(BOTicketTypeCache))]
+[DataCacheTopic("Cache.[v:brandId].TicketType")]
+public sealed partial class BOTicketTypeCacheItem
 {
     [IgnoreMember]
     [JsonIgnore]
-    public long BetTypeId { get => Id; set => Id = value; }
+    public long TicketTypeId { get => Id; set => Id = value; }
 
     [Key(0)]
     [DataCacheKey]
-    public (long EventId, long BetTypeId) Key => (EventId, BetTypeId);
+    public (long EventId, long TicketTypeId) Key => (EventId, TicketTypeId);
 
     [Key(1)]
     [DataCacheIndex]
@@ -418,7 +418,7 @@ if (ctorParamIndexIntMembersDictionary.TryGetValue(ctorParamIndex, out ... membe
 Reflection resolver, same mapping at `src/MessagePack/Resolvers/DynamicObjectResolver.cs:1697`.
 
 A computed `[Key(0)]` member therefore occupies **constructor parameter slot 0**. A constructor
-`Ctor(long eventId, long betTypeId)` is then asked to accept a `(long, long)` tuple as its first parameter, the
+`Ctor(long eventId, long ticketTypeId)` is then asked to accept a `(long, long)` tuple as its first parameter, the
 conversion check fails, and the candidate constructor is rejected.
 
 **Generated path** (`/tmp/kp20/ctoronly`, type with a computed `[Key(0)]` and *only* a parameterized constructor):
@@ -445,9 +445,9 @@ Thrown at `src/MessagePack/Resolvers/DynamicObjectResolver.cs:1802`. Note this i
 compile-time warning — the generated path at least fails the build.
 
 The control settles causation: an identical type with the same constructor but **no** computed member compiles
-and round-trips fine on both paths (`926FCCDE`, reads back `EventId=111 BetTypeId=222`).
+and round-trips fine on both paths (`926FCCDE`, reads back `EventId=111 TicketTypeId=222`).
 
-**Prague survives this only by accident of style.** `SlimBetType.cs` declares *both* a parameterless constructor
+**Prague survives this only by accident of style.** `SlimTicketType.cs` declares *both* a parameterless constructor
 (line 12) and a parameterized one (line 17); the parameterless one wins and the computed key is harmless. Add a
 computed `[Key(0)]` to a record or to a type with only a parameterized constructor and it breaks — at build time
 under the generator, at first-serialize under reflection.

@@ -31,7 +31,7 @@ type csDecl struct {
 	Usings    []string
 	Namespace string
 	Attrs     []string // type-level attributes, in source order
-	Head      string   // "public sealed partial class BPSportGameCacheItem"
+	Head      string   // "public sealed partial class BPShowCacheItem"
 	Order     []string // member ids, in source order
 	Members   map[string]string
 
@@ -233,9 +233,9 @@ func readMember(name string, lines []string, i int, id string, attrs []string, d
 	// N-computed: an expression-bodied member with no wire slot is a computed
 	// member, and section 5 puts those in the hand-written partial half. One
 	// corpus file writes one in the generated half anyway --
-	// payloads/BOSportGameCacheItem.cs:63, `public int FixtureIdIndex =>
-	// FixtureId ?? 0;`, which is the member the type's own
-	// `[DataCacheIndex(nameof(FixtureIdIndex), ...)]` names. The attribute
+	// payloads/BOShowCacheItem.cs:63, `public int ListingIdIndex =>
+	// ListingId ?? 0;`, which is the member the type's own
+	// `[DataCacheIndex(nameof(ListingIdIndex), ...)]` names. The attribute
 	// passes through as an annotation; the member it names does not, and
 	// protop has no expression syntax to write one with.
 	//
@@ -424,8 +424,8 @@ public sealed partial class T
 // alias in the corpus as the same empty passthrough, and swapping them reads
 // `get => Id; set => Id = value;` as `set => Id = value; get => Id;` -- which is
 // still a get and a set, still matches the corpus after the same swap is applied
-// to it, and is the half of an emitter that writes `get => BetTypeId;` into
-// BetTypeId's own body. Neither is visible from a corpus comparison, so the
+// to it, and is the half of an emitter that writes `get => TicketTypeId;` into
+// TicketTypeId's own body. Neither is visible from a corpus comparison, so the
 // canonical text is written out here.
 func TestReadCSReadsAnAliasAsAPassthrough(t *testing.T) {
 	d, err := readCS("alias.cs", `namespace N;
@@ -435,7 +435,7 @@ public sealed partial class T
 {
     [IgnoreMember]
     [JsonIgnore]
-    public long BetTypeId
+    public long TicketTypeId
     {
         get => Id;
         set => Id = value;
@@ -448,11 +448,11 @@ public sealed partial class T
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got, want := strings.Join(d.Order, ","), "alias:BetTypeId,0"; got != want {
+	if got, want := strings.Join(d.Order, ","), "alias:TicketTypeId,0"; got != want {
 		t.Fatalf("members = %s, want %s -- an alias has no wire slot and is keyed by name", got, want)
 	}
-	const want = "[JsonIgnore]\npublic long BetTypeId { get => Id; set => Id = value; }"
-	if got := d.Members["alias:BetTypeId"]; got != want {
+	const want = "[JsonIgnore]\npublic long TicketTypeId { get => Id; set => Id = value; }"
+	if got := d.Members["alias:TicketTypeId"]; got != want {
 		t.Errorf("the alias reads as\n%s\nwant\n%s", got, want)
 	}
 }

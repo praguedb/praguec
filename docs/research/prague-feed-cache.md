@@ -57,7 +57,7 @@ So the contract partitions cleanly:
 | `[DataCacheIgnoreEquality]` | class **or** property | **split** — class form to the application, property form to protop | the property form is a statement about the member |
 | `[DataCacheJsonSerializables]`, `[DataCacheFrom<T>]` | class | **application** | serialization wiring; and `[DataCacheFrom]` is a competing source-of-truth (§9) |
 
-**Everything in the "application" column can stay in the hand-written partial half.** Class-level attributes on any partial declaration are merged by the compiler and seen by the generator through `INamedTypeSymbol.GetAttributes()`, which unions across declarations. That is *not* a speculative claim about protop — it is how `BOBetTypeCache.cs` already works today, a second partial declaration of the cache class in a separate file (`BO/BO.Services/Prague/Models/BOBetTypeCache.cs`).
+**Everything in the "application" column can stay in the hand-written partial half.** Class-level attributes on any partial declaration are merged by the compiler and seen by the generator through `INamedTypeSymbol.GetAttributes()`, which unions across declarations. That is *not* a speculative claim about protop — it is how `BOTicketTypeCache.cs` already works today, a second partial declaration of the cache class in a separate file (`BO/BO.Services/Prague/Models/BOTicketTypeCache.cs`).
 
 The consequence is that **protop's passthrough problem reduces to member-level attributes only** — six attribute kinds, 36 occurrences in the Prague corpus. The rest of this document still catalogues the full surface, because protop must not *collide* with what the application half declares and must know what the generator emits; but sections 7 (topic templates) and the cache-class parts of section 4 are reference material about the surrounding system, not requirements on the format.
 
@@ -113,7 +113,7 @@ public enum DataCacheJoinType  { OneToOne, OneToMany }
 | **at least one `public` readable property not marked `[DataCacheIgnoreEquality]`** | line 4111, same early-`null` pattern | silent, as above |
 | **key type implements `IEquatable<TKey>`** | `IDataCacheItem<TKey,TValue> where TKey : IEquatable<TKey>` in `Core/IDataCacheItem.cs` | constraint violation on the emitted interface |
 
-`init`-only setters satisfy the get+set filter (`SetMethod` is non-null for `init`) and work inside an object initializer. `SlimSportGame` uses `public long Id { get; init; }` (`SlimSportGame.cs:16`) and compiles — **VERIFIED by usage, INFERRED as to mechanism** (the Roslyn `SetMethod.IsInitOnly` flag is never inspected by the generator).
+`init`-only setters satisfy the get+set filter (`SetMethod` is non-null for `init`) and work inside an object initializer. `SlimShow` uses `public long Id { get; init; }` (`SlimShow.cs:16`) and compiles — **VERIFIED by usage, INFERRED as to mechanism** (the Roslyn `SetMethod.IsInitOnly` flag is never inspected by the generator).
 
 ### Not required
 
@@ -133,17 +133,17 @@ public enum DataCacheJoinType  { OneToOne, OneToMany }
 The Prague corpus contains exactly one class-level usage:
 
 ```csharp
-// BO/BO.Services/Prague/Models/BOSportGameCacheItem.cs:13
-[DataCacheIndex(nameof(FixtureIdIndex), nameof(FixtureId), DataCacheIndexType.Many)]
+// BO/BO.Services/Prague/Models/BOShowCacheItem.cs:13
+[DataCacheIndex(nameof(ListingIdIndex), nameof(ListingId), DataCacheIndexType.Many)]
 ```
 
 It is a no-op, and the codebase works around it twelve lines later with a member-level index on a computed property:
 
 ```csharp
-// BOSportGameCacheItem.cs:93-95
+// BOShowCacheItem.cs:93-95
 [DataCacheIndex]
 [IgnoreMember]
-public int FixtureIdIndex => FixtureId ?? 0;
+public int ListingIdIndex => ListingId ?? 0;
 ```
 
 (Its argument order is also transposed relative to the `(propertyName, indexName, indexType)` constructor, which is further evidence nobody ever exercised it.)
@@ -155,21 +155,21 @@ public int FixtureIdIndex => FixtureId ?? 0;
 37 `[DataCacheIndex]` occurrences at `22331403`: **36 on members, 1 on a class** (the inert one above). Per file:
 
 ```
-BO/…/BOBetTypeCacheItem.cs                          1
+BO/…/BOTicketTypeCacheItem.cs                          1
 BO/…/BOSearchCacheItem.cs                           2
-BO/…/BOSportGameCacheItem.cs                        5  (+1 class-level)
-BP/…/BPBetTypeCacheItem.cs                          1
+BO/…/BOShowCacheItem.cs                        5  (+1 class-level)
+BP/…/BPTicketTypeCacheItem.cs                          1
 BP/…/BPSearchCacheItem.cs                           2
-BP/…/BPSportGameCacheItem.cs                        4
+BP/…/BPShowCacheItem.cs                        4
 BrandReader/…/SearchCacheItem.cs                2
-Common/…/Prague/Models/SlimBetType.cs               5
-Common/…/Prague/Models/SlimSportGame.cs            10
-Processors/…/Cache/BetTypeCacheItem.cs              1
+Common/…/Prague/Models/SlimTicketType.cs               5
+Common/…/Prague/Models/SlimShow.cs            10
+Processors/…/Cache/TicketTypeCacheItem.cs              1
 Processors/…/Cache/SearchCacheItem.cs               2
-Processors/…/Cache/SportGameCacheItem.cs            1
+Processors/…/Cache/ShowCacheItem.cs            1
 ```
 
-The ticket's figure of 22 is an undercount. The other attributes: `[DataCache]` ×16, `[DataCacheTopic]` ×16, `[DataCacheKey]` ×16, `[DataCacheFromTimestamp]` ×1 (`SlimBetType.cs:85`). `[DataCacheForeignKey]`, `[DataCacheSort]`, `[DataCacheIgnoreEquality]`, `[DataCacheHeader]`, `[DataCacheGlobalLastUpdateIndex]`, `[DataCacheJsonSerializables]` and `[DataCacheFrom]` are **unused** by Prague — praguec must still be able to forward them, since they are part of the contract.
+The ticket's figure of 22 is an undercount. The other attributes: `[DataCache]` ×16, `[DataCacheTopic]` ×16, `[DataCacheKey]` ×16, `[DataCacheFromTimestamp]` ×1 (`SlimTicketType.cs:85`). `[DataCacheForeignKey]`, `[DataCacheSort]`, `[DataCacheIgnoreEquality]`, `[DataCacheHeader]`, `[DataCacheGlobalLastUpdateIndex]`, `[DataCacheJsonSerializables]` and `[DataCacheFrom]` are **unused** by Prague — praguec must still be able to forward them, since they are part of the contract.
 
 ---
 
@@ -230,20 +230,20 @@ The last two rows are the **only** places `RootNamespace` is used, and they are 
 The corpus, at `22331403` — 16 uses, **7 of them get-only computed ValueTuples**:
 
 ```csharp
-// BOBetTypeCacheItem.cs:22-24, and identically in BPBetTypeCacheItem, Processors/…/BetTypeCacheItem
+// BOTicketTypeCacheItem.cs:22-24, and identically in BPTicketTypeCacheItem, Processors/…/TicketTypeCacheItem
 [Key(0)]
 [DataCacheKey]
-public (long EventId, long BetTypeId) Key => (EventId, BetTypeId);
+public (long EventId, long TicketTypeId) Key => (EventId, TicketTypeId);
 
 // BOSearchCacheItem.cs:17-18, BPSearchCacheItem, BrandReader/…/SearchCacheItem, Processors/…/SearchCacheItem
 [Key(0)]
 [DataCacheKey]
 public (long EventId, Channel ChannelId) Key => (EventId, ChannelId);
 
-// SlimBetType.cs:42-44  — same shape, named Id rather than Key
+// SlimTicketType.cs:42-44  — same shape, named Id rather than Key
 [Key(0)]
 [DataCacheKey]
-public (long EventId, long BetTypeId) Id => (EventId, BetTypeId);
+public (long EventId, long TicketTypeId) Id => (EventId, TicketTypeId);
 ```
 
 The other 9 are ordinary settable scalars (`public long EventId { get; set; }`, and one `public long Id { get; init; }`).
@@ -255,11 +255,11 @@ The other 9 are ordinary settable scalars (`public long EventId { get; set; }`, 
 | Does the generator check that it is get-only? | **No.** | `ExtractKeyInfo` (line 6489) filters on the attribute alone — `GetMembers().OfType<IPropertySymbol>().FirstOrDefault(p => FindAttribute(p, "…DataCacheKeyAttribute") != null)`. No accessor inspection anywhere. |
 | Does the generator check that it is a ValueTuple? | **No.** | It takes `p.Type.ToDisplayString()` as `KeyTypeName` and never examines the type's shape. |
 | Does the property name matter? | **Only two names are special-cased.** | `keyPropertyName != "Key"` guards `With{KeyProperty}` emission (lines 1121, 1608, 6272), so a key literally named `Key` suppresses a duplicate helper. `Prague` uses both `Key` and `Id`, so both branches are exercised. |
-| Is get-only-ness load-bearing *in effect*? | **Yes — decisively.** | `Clone` is emitted over public properties with **both** accessors (line 3076). A get-only key is excluded from the object initializer, which is the correct outcome: the clone reconstructs `EventId`/`BetTypeId` and the computed key follows. Give the key a setter and it becomes a clonable property whose value is derived — the initializer would assign it, and on a ValueTuple with no setter body that is a compile error; on a settable key it is a silent duplication of identity. |
+| Is get-only-ness load-bearing *in effect*? | **Yes — decisively.** | `Clone` is emitted over public properties with **both** accessors (line 3076). A get-only key is excluded from the object initializer, which is the correct outcome: the clone reconstructs `EventId`/`TicketTypeId` and the computed key follows. Give the key a setter and it becomes a clonable property whose value is derived — the initializer would assign it, and on a ValueTuple with no setter body that is a compile error; on a settable key it is a silent duplication of identity. |
 | Is the ValueTuple choice load-bearing? | **Yes — for a reason external to the generator.** | The emitted `IDataCacheItem<TKey,TValue>` constrains `where TKey : IEquatable<TKey>` (`Core/IDataCacheItem.cs`), and `IDataCache<TKey,TValue>` repeats it (`Core/IDataCache.cs`). `ValueTuple<long,long>` satisfies it; a composite key expressed as a plain class would not, unless it implemented `IEquatable<>` by hand. |
 | Does it affect anything else? | **Two things.** | (a) `IsTypeParsable` (line 6544) checks for `IParsable<TSelf>`; a ValueTuple is not, so `public static bool IsKeyParsable => false` is emitted and the HTTP query surface loses key parsing. (b) The key property **is** included in `CacheEquals`/`CacheGetHashCode`, because the equality filter requires only a getter (line 3698) — so a computed key is compared redundantly alongside its components. Harmless, but not free. |
 
-**A passthrough hazard worth flagging.** Prague puts `[Key(0)]` (MessagePack) on these get-only computed properties. MessagePack-CSharp can serialize a get-only member but cannot assign it on deserialize without a matching constructor parameter, and `SlimBetType`'s constructor takes `betTypeId`/`eventId`, not `id`. Whether this round-trips, throws at formatter-generation time, or is quietly tolerated was **not verified** — it is outside this ticket's scope and outside the generator's. But praguec has to decide whether to emit `[Key(N)]` on a computed key at all, and the answer is not obviously "yes, because Prague does".
+**A passthrough hazard worth flagging.** Prague puts `[Key(0)]` (MessagePack) on these get-only computed properties. MessagePack-CSharp can serialize a get-only member but cannot assign it on deserialize without a matching constructor parameter, and `SlimTicketType`'s constructor takes `ticketTypeId`/`eventId`, not `id`. Whether this round-trips, throws at formatter-generation time, or is quietly tolerated was **not verified** — it is outside this ticket's scope and outside the generator's. But praguec has to decide whether to emit `[Key(N)]` on a computed key at all, and the answer is not obviously "yes, because Prague does".
 
 ---
 
@@ -322,12 +322,12 @@ Semantics, all verified from the regex and the two `Replace` delegates:
 
 - The identifier is `\w+` — ASCII letters, digits and underscore only. **No dots, no hyphens.** `[v:brand-id]` would not match and would be left in the topic name verbatim.
 - **Lookup is case-sensitive** (`vars.TryGetValue`, default `Dictionary<string,string>` comparer). `[v:brandId]` and `[v:BrandId]` are different variables.
-- **An unresolved placeholder is left literally in place** (`return m.Value`), not blanked and not an error. A typo produces a Kafka topic literally named `Cache.[v:brandid].BetType`.
+- **An unresolved placeholder is left literally in place** (`return m.Value`), not blanked and not an error. A typo produces a Kafka topic literally named `Cache.[v:brandid].TicketType`.
 - **Order is vars first, then environment.** A var *value* containing `[e:X]` **is** subsequently env-expanded; an env value containing `[v:x]` is **not** re-expanded. One level of chaining, one direction only.
 - The whole value is `.Trim()`ed before substitution.
 - Placeholders may appear anywhere and any number of times; the regex is a global replace.
 
-Prague uses a single variable, `brandId`, in all 16 topics: `Cache.[v:brandId].BetType`, `Cache.[v:brandId].LiveObject`, `Cache.[v:brandId].Search`, `Cache.[v:brandId].SportGame`.
+Prague uses a single variable, `brandId`, in all 16 topics: `Cache.[v:brandId].TicketType`, `Cache.[v:brandId].LiveObject`, `Cache.[v:brandId].Search`, `Cache.[v:brandId].Show`.
 
 ---
 
@@ -415,8 +415,8 @@ Read this with §0 in hand: protop describes **items and their relationships**, 
 **C. Some members protop must emit are not fields at all.** Two of the six member-level attribute kinds sit on *computed get-only properties* in the real corpus:
 
 ```csharp
-[DataCacheKey]   public (long EventId, long BetTypeId) Key => (EventId, BetTypeId);
-[DataCacheIndex] public int FixtureIdIndex => FixtureId ?? 0;
+[DataCacheKey]   public (long EventId, long TicketTypeId) Key => (EventId, TicketTypeId);
+[DataCacheIndex] public int ListingIdIndex => ListingId ?? 0;
 ```
 
 Neither is expressible as a protobuf field. protop needs a construct for "a derived member with an expression body, carrying attributes" — a computed-member escape hatch. **This is the hardest requirement in the contract**, and it is harder than it looks: the expression body references other members by name, so it is not opaque text — it has to survive protop's own naming and nullability decisions. A composite key is the *normal* case here, not an edge case: 7 of the 16 Prague keys are computed ValueTuples over two fields.

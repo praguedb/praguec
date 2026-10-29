@@ -1,15 +1,12 @@
 using MessagePack;
 
-namespace Common.EventApi.Cache.Prague.Models;
+namespace BrandReader.Services.Cache;
 
 [MessagePackObject]
-public class Odd
+public class SlimQuote
 {
     [Key(0)]
     public string Name { get; set; }
-
-    [Key(8)]
-    public double OddsActual { get; set; }
 
     [Key(4)]
     public long Timestamp { get; set; }

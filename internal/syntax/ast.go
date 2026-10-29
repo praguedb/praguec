@@ -131,7 +131,7 @@ type Record struct {
 
 func (*Record) isDecl() {}
 
-// Table is `table SportGame [cs: ...] { ... }`: the one declaration that
+// Table is `table Show [cs: ...] { ... }`: the one declaration that
 // carries identity -- a `key` -- and so the only one a relation can name.
 type Table struct {
 	Name        Ident
@@ -142,11 +142,11 @@ type Table struct {
 
 func (*Table) isDecl() {}
 
-// View is `view SlimSportGame of SportGame { ... }`: a field subset of one
+// View is `view SlimShow of Show { ... }`: a field subset of one
 // source, at that source's tags. Tag, type and presence come from the source,
 // and the view line carries the name and an optional rename.
 //
-// Source is the name as written and is not resolved -- whether `SportGame` is a
+// Source is the name as written and is not resolved -- whether `Show` is a
 // table, a record, or nothing at all is a question about a whole program, and
 // the view inherits the source's topic rather than restating it, so there is no
 // second place for the two to disagree.
@@ -162,22 +162,22 @@ func (*View) isDecl() {}
 
 // ViewMember is one line of a view body, in all three of its spellings:
 //
-//	sport_type_id;      a plain selection
+//	genre_id;      a plain selection
 //	event_id as id;     the same, renamed
-//	SlimOdd odds;       narrowed to another view
+//	SlimQuote quotes;       narrowed to another view
 //
 // It is not a Member. A view body and a struct body have no line in common --
 // a view may never write a tag and a struct has nothing to select from -- so
 // one type that could hold either would exist only to be type-switched back
 // apart by everything that reads it.
 type ViewMember struct {
-	// Narrow is the leading name of `SlimOdd odds;`, nil when the member takes
+	// Narrow is the leading name of `SlimQuote quotes;`, nil when the member takes
 	// the source's type unchanged. It asks for the member's type to be narrowed
 	// to another view; that the narrowing is a view, and a view of the right
 	// thing, is checked where the two declarations are both in scope.
 	Narrow *Ident
 
-	// Name is the member selected out of the source -- `odds`, not `SlimOdd`.
+	// Name is the member selected out of the source -- `quotes`, not `SlimQuote`.
 	Name Ident
 
 	// As is the rename of `event_id as id;`, nil when the member keeps its
@@ -227,7 +227,7 @@ type Field struct {
 
 func (*Field) isMember() {}
 
-// CompositeKey is `key key = 1 (event_id, bet_type_id);` -- a name over fields
+// CompositeKey is `key key = 1 (event_id, ticket_type_id);` -- a name over fields
 // that keep their own ordinals, borrowed from Cap'n Proto's group. Cap'n
 // Proto's group consumes no ordinal; this one does, because the corpus's wire
 // format already says so, and writing the tag is what makes the duplication
@@ -245,7 +245,7 @@ type CompositeKey struct {
 
 func (*CompositeKey) isMember() {}
 
-// Alias is `alias bet_type_id = id;`: get and set passthrough, no wire slot and
+// Alias is `alias ticket_type_id = id;`: get and set passthrough, no wire slot and
 // no tag. It exists so a table's API matches the view that renames the field.
 type Alias struct {
 	Name        Ident
@@ -281,7 +281,7 @@ func (r ReservedRange) Contains(tag uint64) bool {
 }
 
 // Annotation is one bracket: `[cs: DataCacheTopic("...")]` or
-// `[references(SportGame)]`. An annotation follows what it describes; there is
+// `[references(Show)]`. An annotation follows what it describes; there is
 // no second position and no before-slot, and annotations stack by juxtaposition
 // with no comma, because their contents already contain commas.
 //
@@ -329,11 +329,11 @@ type Annotation struct {
 type TypeRef struct {
 	Name Ident
 
-	// Args are the type's arguments: `list<Odd>` has one, `map<string, Odd>`
+	// Args are the type's arguments: `list<Quote>` has one, `map<string, Quote>`
 	// two, and everything else none. Repetition is a type here rather than a
-	// label on the field, which is what lets presence compose -- `list<Odd>?`
-	// is Optional on the outer ref and `list<Odd?>` on the inner one, a
-	// difference `repeated Odd?` had no way to write. Nesting needs no further
+	// label on the field, which is what lets presence compose -- `list<Quote>?`
+	// is Optional on the outer ref and `list<Quote?>` on the inner one, a
+	// difference `repeated Quote?` had no way to write. Nesting needs no further
 	// machinery: `list<list<int64>>` is this field twice.
 	Args []TypeRef
 

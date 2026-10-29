@@ -7,8 +7,8 @@ import "github.com/praguedb/praguec/internal/source"
 // There are no keyword kinds, and that is the load-bearing decision in this
 // package. protop spells identity as
 //
-//	key key = 1 (event_id, bet_type_id);
-//	alias bet_type_id = id;
+//	key key = 1 (event_id, ticket_type_id);
+//	alias ticket_type_id = id;
 //
 // where `key` is the construct and also the member's name, and `id` is a field
 // named after a word the language uses elsewhere. A word is a keyword only by
@@ -45,8 +45,8 @@ const (
 	KindLBracket // [
 	KindRBracket // ]
 
-	// KindLAngle and KindRAngle delimit a type's arguments: `list<Odd>`,
-	// `map<string, Odd>`. They are punctuation and nothing more -- the words
+	// KindLAngle and KindRAngle delimit a type's arguments: `list<Quote>`,
+	// `map<string, Quote>`. They are punctuation and nothing more -- the words
 	// `list` and `map` still lex as KindIdent, because a field may be named
 	// either one and the parser decides by position.
 	KindLAngle // <

@@ -12,16 +12,16 @@ public class Shapes
     public bool? MaybeFlag { get; set; }
 
     [Key(2)]
-    public List<Odd> Odds { get; set; }
+    public List<Quote> Quotes { get; set; }
 
     [Key(3)]
-    public List<Odd>? MaybeOdds { get; set; }
+    public List<Quote>? MaybeQuotes { get; set; }
 
     [Key(4)]
-    public List<Odd?> OddMaybes { get; set; }
+    public List<Quote?> QuoteMaybes { get; set; }
 
     [Key(5)]
-    public List<Odd?>? Both { get; set; }
+    public List<Quote?>? Both { get; set; }
 
     [Key(6)]
     public List<string> Groups { get; set; }

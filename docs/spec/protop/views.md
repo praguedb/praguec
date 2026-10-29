@@ -8,11 +8,11 @@ Protobuf's answer to the same pressure is extension ranges: an owner reserves `e
 
 **A view inherits the topic.** It is a property of the table, so restating it on the view was the last piece of view-as-second-copy — and inheriting it means a view cannot point at the wrong topic.
 
-**A view may narrow a member to another view.** `SlimOdd odds;` takes tag 26 and requires `SlimOdd` to be a view of `Odd`. A leading type asks for the narrowing; a bare name takes the source's type unchanged. A view of a view stays pinned to the original tags, so `SlimOdd` cannot quietly renumber and desync tag 26.
+**A view may narrow a member to another view.** `SlimQuote quotes;` takes tag 26 and requires `SlimQuote` to be a view of `Quote`. A leading type asks for the narrowing; a bare name takes the source's type unchanged. A view of a view stays pinned to the original tags, so `SlimQuote` cannot quietly renumber and desync tag 26.
 
-**A view may narrow and rename in one member.** `SlimOdd odds as o;` is still tag 26: the leading type says what the member holds, `as o` says what the consumer calls it, and the tag is the source's as it is on every other view line — neither half is about the tag. The two rules are written apart above only because they are separately motivated; refusing them together would deny a consumer a name for the subset it just took, and would buy nothing back, since the one thing a view must not invent is the number that neither half touches.
+**A view may narrow and rename in one member.** `SlimQuote quotes as o;` is still tag 26: the leading type says what the member holds, `as o` says what the consumer calls it, and the tag is the source's as it is on every other view line — neither half is about the tag. The two rules are written apart above only because they are separately motivated; refusing them together would deny a consumer a name for the subset it just took, and would buy nothing back, since the one thing a view must not invent is the number that neither half touches.
 
-**A view's source is a table or a record.** `SlimOdd of Odd` narrows a record, because a view is about tags and members rather than identity.
+**A view's source is a table or a record.** `SlimQuote of Quote` narrows a record, because a view is about tags and members rather than identity.
 
 ### Computed members
 
@@ -20,5 +20,5 @@ Members that carry no tag and are not aliases — `StatusActual`, `IsAvailableFo
 
 Two classes of computed member remain in the language, neither of them an expression:
 
-- **Composite identity** — `key key = 1 (event_id, bet_type_id);`. Borrowed from Cap'n Proto's `group`, a name over fields that keep their own ordinals. Cap'n Proto's group consumes no ordinal; this one does, because the corpus wire format already says so — the tuple is `[Key(0)]` and duplicates what tags 2 and 3 carry. Writing the tag makes the duplication visible and the collision checkable.
-- **Alias** — `alias bet_type_id = id;`. Get and set passthrough, no wire slot. It exists so a table's API matches the view that renames the field.
+- **Composite identity** — `key key = 1 (event_id, ticket_type_id);`. Borrowed from Cap'n Proto's `group`, a name over fields that keep their own ordinals. Cap'n Proto's group consumes no ordinal; this one does, because the corpus wire format already says so — the tuple is `[Key(0)]` and duplicates what tags 2 and 3 carry. Writing the tag makes the duplication visible and the collision checkable.
+- **Alias** — `alias ticket_type_id = id;`. Get and set passthrough, no wire slot. It exists so a table's API matches the view that renames the field.

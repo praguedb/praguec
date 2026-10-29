@@ -36,7 +36,7 @@ var csScalars = map[string]string{
 	// attributes, so `decimal(4)?` emits `decimal?` and no attribute at all.
 	// (TestCorpusCensus counts 30, and 30 is right as a *text* count: the other
 	// three are the constructor parameters at
-	// corpus/prague/payloads/SlimBetType.cs:25-27, inside the `ctor:` block the
+	// corpus/prague/payloads/SlimTicketType.cs:25-27, inside the `ctor:` block the
 	// reader skips. The census counts text and the noun here is members.)
 	//
 	// All 30 are `decimal?`. There is not one non-nullable `decimal` anywhere in
@@ -62,7 +62,7 @@ const listCollection = "list"
 // TypeName is a resolved protop type as C# spells it.
 //
 // Presence is the whole of the nullable axis: `T` emits `T` and `T?` emits
-// `T?`, at every level, which is what makes `list<Odd>?` and `list<Odd?>`
+// `T?`, at every level, which is what makes `list<Quote>?` and `list<Quote?>`
 // different text rather than the same text twice.
 func TypeName(t check.Type) string {
 	return typeName(t)
@@ -77,11 +77,11 @@ func typeName(t check.Type) string {
 		// The oracle contradicts itself here and no single emission passes all
 		// seven of its goldens. The corpus writes `List<T>` six times, every
 		// one of them in a table, and `T[]` exactly once, at
-		// corpus/prague/payloads/SlimBetType.cs:89, in a view -- the member a
+		// corpus/prague/payloads/SlimTicketType.cs:89, in a view -- the member a
 		// narrowing recursed into. Inferring "table emits List<T>, view emits
 		// T[]" from a single array is a language ruling and #24 is where one
 		// gets made; the emitter takes the majority form and the harness lists
-		// SlimBetType key 25 as the one member it cannot reproduce.
+		// SlimTicketType key 25 as the one member it cannot reproduce.
 		name = "List<" + typeName(t.Args[0]) + ">"
 	case t.Kind == check.TypeScalar:
 		if cs, ok := csScalars[t.Name]; ok {

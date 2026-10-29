@@ -39,8 +39,8 @@ var scalarTypes = map[string]bool{
 // about it.
 //
 // Repetition is spelled here rather than as a field label because a type is
-// where presence can compose: `list<Odd>?` and `list<Odd?>` are different
-// types, and a `repeated Odd?` could only have been one of them.
+// where presence can compose: `list<Quote>?` and `list<Quote?>` are different
+// types, and a `repeated Quote?` could only have been one of them.
 var collectionTypes = map[string]int{
 	"list": 1,
 	"map":  2,
@@ -107,7 +107,7 @@ func BuiltinTypeNames() []string {
 }
 
 // RelationAnnotation is the name of protop's own relation annotation, the
-// `references` of `[references(SportGame)]`. Its contents are read by the stage
+// `references` of `[references(Show)]`. Its contents are read by the stage
 // that can look a name up, which is not this one.
 const RelationAnnotation = "references"
 
@@ -335,7 +335,7 @@ func (p *parser) parseRecord() *Record {
 	return &Record{Name: h.name, Annotations: h.anns, Members: h.members, Span: h.span}
 }
 
-// parseTable reads `table SportGame [cs: ...] { ... }`. Its body is the same
+// parseTable reads `table Show [cs: ...] { ... }`. Its body is the same
 // grammar as a struct's; what a table has that the others do not is identity,
 // and identity is a member -- a `key` -- rather than anything in the head.
 func (p *parser) parseTable() *Table {
@@ -343,14 +343,14 @@ func (p *parser) parseTable() *Table {
 	return &Table{Name: h.name, Annotations: h.anns, Members: h.members, Span: h.span}
 }
 
-// parseView reads `view SlimSportGame of SportGame { ... }`.
+// parseView reads `view SlimShow of Show { ... }`.
 //
 // `of` is an ident in the third position, not a token kind -- which is the
 // no-keyword-token-kinds decision paying out a third time, after `key key` and
 // `alias`. A view may still hold a member named `of`, and a table a field named
 // one.
 //
-// The source is a name and stays one. Whether `SportGame` is declared, whether
+// The source is a name and stays one. Whether `Show` is declared, whether
 // it is a table or a record, and whether every member below selects something
 // it actually has are all questions about a whole program rather than about
 // this file.
@@ -393,7 +393,7 @@ func (p *parser) parseView() *View {
 	return v
 }
 
-// parseViewSource reads the `of SportGame` of a view head. The two ways of
+// parseViewSource reads the `of Show` of a view head. The two ways of
 // getting it wrong -- no `of` at all, and an `of` with nothing after it -- are
 // one mistake said two ways, so they are one diagnostic: the view names nothing
 // to be a view of.
@@ -417,16 +417,16 @@ func (p *parser) parseViewSource() (Ident, bool) {
 		span = tok.Span
 	}
 	p.bag.Raise(diag.ViewSourceMissing, span,
-		"a view is a subset of one source and declares no members of its own; name that source, as in `view V %s SportGame { ... }`", ofWord)
+		"a view is a subset of one source and declares no members of its own; name that source, as in `view V %s Show { ... }`", ofWord)
 	return Ident{}, false
 }
 
 // parseViewMember reads one line of a view body, in all four of its spellings:
 //
-//	sport_type_id;      a plain selection
+//	genre_id;      a plain selection
 //	event_id as id;     the same, renamed
-//	SlimOdd odds;       narrowed to another view
-//	SlimOdd odds as o;  narrowed and renamed
+//	SlimQuote quotes;       narrowed to another view
+//	SlimQuote quotes as o;  narrowed and renamed
 //
 // Each is idents and a `;`, so the shape is told by arity and by position and
 // by nothing else: one ident selects, two narrow, three rename when the middle
@@ -434,7 +434,7 @@ func (p *parser) parseViewSource() (Ident, bool) {
 // in a row are a narrowing -- unless the second is the `as` of a rename, and
 // how many words the member has is what says whether it is. Nothing is
 // reserved anywhere in here: `key as id;` selects the member named `key`, the
-// composite identity's own word, and `SlimOdd as;` would narrow a member named
+// composite identity's own word, and `SlimQuote as;` would narrow a member named
 // `as`.
 func (p *parser) parseViewMember() *ViewMember {
 	p.rejectAnnotations("the member's name")
@@ -522,7 +522,7 @@ func (p *parser) parseViewMember() *ViewMember {
 	//
 	// It is the only span every arm of this mistake has. The report is raised
 	// on a peek, before the tag is read, and the member is recovered rather
-	// than parsed further -- so `sport_type_id = ;` reaches here with no tag to
+	// than parsed further -- so `genre_id = ;` reaches here with no tag to
 	// underline at all. A span that exists in one spelling of a mistake and not
 	// in another is not a span the diagnostic can be written against.
 	//
@@ -543,7 +543,7 @@ func (p *parser) parseViewMember() *ViewMember {
 }
 
 // atRename reports whether the parser is at the `as` of `event_id as id`. The
-// ident after it is what makes it one: `SlimOdd as;` narrows a member named
+// ident after it is what makes it one: `SlimQuote as;` narrows a member named
 // `as`, and only the third word tells the two apart.
 //
 // It answers for the position it is standing on and not for the member. In the
@@ -639,7 +639,7 @@ func (p *parser) parseTypeDecl() declHead {
 // which puts its `=` two tokens in; the simple spelling still has a type to get
 // through, so two tokens in is the field's name. That one lookahead is what the
 // decision to have no keyword token kinds costs, and `key key = 1 (event_id,
-// bet_type_id);` -- a member named `key`, of a kind named `key` -- is what it
+// ticket_type_id);` -- a member named `key`, of a kind named `key` -- is what it
 // buys.
 func (p *parser) parseMember(keyword string) Member {
 	p.rejectAnnotations("the member's tag")
@@ -685,7 +685,7 @@ func (p *parser) parseMember(keyword string) Member {
 	return f
 }
 
-// parseCompositeKey reads `key key = 1 (event_id, bet_type_id);`. The parts are
+// parseCompositeKey reads `key key = 1 (event_id, ticket_type_id);`. The parts are
 // recorded as written: whether they name fields of this declaration is a
 // question about the whole body, and belongs to the stage that has it.
 func (p *parser) parseCompositeKey() *CompositeKey {
@@ -747,7 +747,7 @@ func (p *parser) parseCompositeKey() *CompositeKey {
 	return k
 }
 
-// parseAlias reads `alias bet_type_id = id;`. There is no tag: an alias is a
+// parseAlias reads `alias ticket_type_id = id;`. There is no tag: an alias is a
 // second name for a field that already has one, and naming no wire slot is the
 // whole of what makes it free to add.
 func (p *parser) parseAlias() *Alias {
@@ -1232,9 +1232,9 @@ func collectionKeys() map[string]bool {
 func collectionExample(name string) string {
 	switch collectionTypes[name] {
 	case 1:
-		return name + "<Odd>"
+		return name + "<Quote>"
 	case 2:
-		return name + "<string, Odd>"
+		return name + "<string, Quote>"
 	}
 	return name
 }

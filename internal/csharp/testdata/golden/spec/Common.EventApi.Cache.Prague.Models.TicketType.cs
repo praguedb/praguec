@@ -3,13 +3,13 @@ using MessagePack;
 namespace Common.EventApi.Cache.Prague.Models;
 
 [MessagePackObject]
-[DataCache(CacheClassName = nameof(Prague.Models.BPBetTypeCache))]
-[DataCacheTopic("Cache.[v:brandId].BetType")]
-public sealed partial class BetType
+[DataCache(CacheClassName = nameof(Prague.Models.BPTicketTypeCache))]
+[DataCacheTopic("Cache.[v:brandId].TicketType")]
+public sealed partial class TicketType
 {
     [Key(0)]
     [DataCacheKey]
-    public (long EventId, long BetTypeId) Key => (EventId, BetTypeId);
+    public (long EventId, long TicketTypeId) Key => (EventId, TicketTypeId);
 
     [Key(1)]
     public long EventId { get; set; }
@@ -18,7 +18,7 @@ public sealed partial class BetType
     public long Id { get; set; }
 
     [IgnoreMember]
-    public long BetTypeId
+    public long TicketTypeId
     {
         get => Id;
         set => Id = value;
@@ -28,13 +28,13 @@ public sealed partial class BetType
     public string Name { get; set; }
 
     [Key(6)]
-    public BetTypeStatus Status { get; set; }
+    public TicketTypeStatus Status { get; set; }
 
     [Key(7)]
-    public BetTypeStatus? StatusManual { get; set; }
+    public TicketTypeStatus? StatusManual { get; set; }
 
     [Key(8)]
-    public BetTypeStatus? StatusWatchDog { get; set; }
+    public TicketTypeStatus? StatusWatchDog { get; set; }
 
     [Key(21)]
     public decimal? LimitManualSingle { get; set; }
@@ -45,5 +45,5 @@ public sealed partial class BetType
     public long Timestamp { get; set; }
 
     [Key(25)]
-    public List<Odd> Odds { get; set; }
+    public List<Quote> Quotes { get; set; }
 }

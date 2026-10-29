@@ -9,28 +9,28 @@ namespace BrandReader.Services.Cache;
 
 import "prague.prague";
 
-view SlimSportGame of SportGame {
+view SlimShow of Show {
   event_id as id;
 
-  sport_type_id;
+  genre_id;
   country_id;
-  league_id;
-  home_team_id;
+  tour_id;
+  headliner_id;
 
   venue;
-  sport_type;
+  genre;
 }
 
-view SlimOdd of Odd {
+view SlimQuote of Quote {
   name;
   timestamp;
 }
 
-view SlimBetType of BetType {
+view SlimTicketType of TicketType {
   key as id;
 
   event_id;
-  id as bet_type_id;
+  id as ticket_type_id;
 
   name;
 
@@ -41,17 +41,17 @@ view SlimBetType of BetType {
   limit_manual_single;
   timestamp;
 
-  SlimOdd odds;
+  SlimQuote quotes;
 }
 ```
 
 A service may also declare tables of its own — for caches it produces and owns, which no other service reads:
 
 ```protop
-table BetTypeBrandSettings
+table TicketTypeBrandSettings
   [cs: DataCache]
 {
-  key int64 bet_type_id = 1;
+  key int64 ticket_type_id = 1;
   bool is_enabled = 2;
 }
 ```

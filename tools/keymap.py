@@ -24,14 +24,14 @@ DECL = re.compile(r'public\s+(?:sealed\s+)?(?:partial\s+)?(class|struct|record)\
 # (parent, view, kind) — kind names which of the three alignment relationships
 # this pair is, because the rules differ per kind.
 PAIRS = [
-    ('BOSportGameCacheItem', 'BPSportGameCacheItem', 'twin'),
-    ('BOBetTypeCacheItem',   'BPBetTypeCacheItem',   'twin'),
+    ('BOShowCacheItem', 'BPShowCacheItem', 'twin'),
+    ('BOTicketTypeCacheItem',   'BPTicketTypeCacheItem',   'twin'),
     ('BOSearchCacheItem',    'BPSearchCacheItem',    'twin'),
     ('BOLiveObjectCacheItem','BPLiveObjectCacheItem','twin'),
     ('BOLiveObjectCacheItem','LiveObjectCacheItem',  'twin'),
     ('BOVenue',              'Venue',                'twin'),
-    ('BOSportGameCacheItem', 'SlimSportGame',        'projection'),
-    ('BOBetTypeCacheItem',   'SlimBetType',          'projection'),
+    ('BOShowCacheItem', 'SlimShow',        'projection'),
+    ('BOTicketTypeCacheItem',   'SlimTicketType',          'projection'),
 ]
 
 

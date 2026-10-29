@@ -13,7 +13,7 @@ presence is applied to one.
 `repeated` is a label on the field. `?` binds to the type. So there is exactly
 one slot for a `?` on a repeated field and two things it could mean — a list
 that may itself be absent, and a list whose elements may be absent — and
-`repeated Odd?` has no way to say which. Presence is the whole thesis of this
+`repeated Quote?` has no way to say which. Presence is the whole thesis of this
 project; a construct that cannot express it is not a small gap.
 
 Square brackets are also already spoken for. Section 3 gives annotations one
@@ -31,9 +31,9 @@ Presence then composes with no new rule:
 
 | | |
 |---|---|
-| `list<Odd>` | the slot holds an array |
-| `list<Odd>?` | the slot may be nil |
-| `list<Odd?>` | the array may contain nils |
+| `list<Quote>` | the slot holds an array |
+| `list<Quote>?` | the slot may be nil |
+| `list<Quote?>` | the array may contain nils |
 
 Nesting follows from the same recursion: `list<list<int64>>` needs no further
 machinery.
@@ -46,8 +46,8 @@ and enums when it lands. praguec parses a `map` in full and reports
 construct the spec defines and the compiler is behind on.
 
 **`T[]` was rejected.** It would make `[]` mean two things in one line —
-`Odd[] odds = 26 [cs: X]` — which is exactly the rule the annotation design
-removed. `Odd?[]` versus `Odd[]?` is also harder to read than the generic form.
+`Quote[] quotes = 26 [cs: X]` — which is exactly the rule the annotation design
+removed. `Quote?[]` versus `Quote[]?` is also harder to read than the generic form.
 No reference language uses postfix `[]`: Protobuf prefixes `repeated`, Cap'n
 Proto writes `List(T)`, FlatBuffers writes `[T]` and consequently puts its
 attributes in parens. Each of them assigns square brackets one job. This

@@ -33,7 +33,7 @@ praguec is written in Go.
 ## Why not Rust
 
 A compiler front end is a cyclic graph of mutable nodes: parent pointers, scope
-chains, a `references(SportGame)` that resolves to a declaration which points
+chains, a `references(Show)` that resolves to a declaration which points
 back at its own file. Rust's ownership model fights that shape — `Rc<RefCell<…>>`
 or arena-plus-index throughout. It is workable (rust-analyzer, swc) and the tax
 lands on exactly the code that gets rewritten most while the language is still

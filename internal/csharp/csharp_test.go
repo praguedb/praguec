@@ -231,10 +231,10 @@ func TestSpecSection1SaysItTranscribes(t *testing.T) {
 const section1Transcribes = "**This section transcribes; it does not aspire.** " +
 	"Every annotation above is written in the form some corpus file writes it, on " +
 	"the kind of declaration that file writes it on: the two table heads follow " +
-	"`corpus/prague/payloads/BPSportGameCacheItem.cs` and `BPBetTypeCacheItem.cs` " +
+	"`corpus/prague/payloads/BPShowCacheItem.cs` and `BPTicketTypeCacheItem.cs` " +
 	"down to the qualified `nameof`, the record head follows " +
 	"`corpus/prague/deps/StaticDataRef.cs`, and the pair on `timestamp` follows " +
-	"`corpus/prague/payloads/SlimBetType.cs`. The topic is a string literal, " +
+	"`corpus/prague/payloads/SlimTicketType.cs`. The topic is a string literal, " +
 	"because all eleven `[DataCacheTopic]` sites in the pin pass one and not one " +
 	"of them names a `TopicNames` constant. Annotations no corpus file carries are " +
 	"not shown here at all: `DataCacheContract` and `DataCacheIgnoreEquality` " +
@@ -271,7 +271,7 @@ func collapseSpace(s string) string {
 }
 
 // Presence is the whole of protop's nullability axis and the reason it is a
-// property of the type rather than of the member: `list<Odd>?` and `list<Odd?>`
+// property of the type rather than of the member: `list<Quote>?` and `list<Quote?>`
 // are different C#, and a rule that hung the `?` off the member could not tell
 // them apart. Nothing in section 1 or section 2 writes either, and nothing in
 // them writes a `bool` either, so this fixture exists to carry the rows the
@@ -543,16 +543,16 @@ func keyAttributes(src string) []string {
 	return out
 }
 
-// A view member that narrows and renames at once -- section 5's `SlimOdd odds
+// A view member that narrows and renames at once -- section 5's `SlimQuote quotes
 // as o;` -- emits the narrowing view's type under the rename's name, at the
 // source's key.
 //
 // Its anchor is the corpus in two halves, because no corpus member does both:
 //
-//   - the narrowing half is corpus/prague/payloads/SlimBetType.cs key 25, where
-//     `SlimOdd` -- the narrowing view's type -- sits at BetType's tag 26;
-//   - the rename half is corpus/prague/payloads/SlimSportGame.cs key 0, where
-//     section 2's `event_id as id;` emits `Id` and keeps SportGame's tag 1.
+//   - the narrowing half is corpus/prague/payloads/SlimTicketType.cs key 25, where
+//     `SlimQuote` -- the narrowing view's type -- sits at TicketType's tag 26;
+//   - the rename half is corpus/prague/payloads/SlimShow.cs key 0, where
+//     section 2's `event_id as id;` emits `Id` and keeps Show's tag 1.
 //
 // The expectation below is those two anchored rules applied to one member,
 // written out rather than regenerated: a golden for a member the corpus does
@@ -572,10 +572,10 @@ view SlimInner of Inner {
 }
 table Outer {
   key int64 id = 1;
-  Inner odds = 7;
+  Inner quotes = 7;
 }
 view SlimOuter of Outer {
-  SlimInner odds as o;
+  SlimInner quotes as o;
 }
 `,
 	})
@@ -597,7 +597,7 @@ view SlimOuter of Outer {
 }
 
 // protop's own annotations are read by the checker and are not C# attributes.
-// `[references(SportGame)]` is a fact about the schema; emitting it would
+// `[references(Show)]` is a fact about the schema; emitting it would
 // produce an attribute no corpus file has and no C# project defines.
 func TestProtopsOwnAnnotationsEmitNothing(t *testing.T) {
 	units := emitFixtures(t, pragueFixture, consumerFixture)
@@ -632,15 +632,15 @@ view SlimInner of Inner {
 
 table Outer {
   key int64 id = 1;
-  Inner odds = 7;
+  Inner quotes = 7;
   Inner? spare = 8;
-  alias thing = odds;
+  alias thing = quotes;
   alias spare_thing = spare;
 }
 
 view RenamedOnly of Outer {
   id;
-  odds as o;
+  quotes as o;
   thing as t;
   spare as sp;
   spare_thing as st;
@@ -648,13 +648,13 @@ view RenamedOnly of Outer {
 
 view NarrowedOnly of Outer {
   id;
-  SlimInner odds;
+  SlimInner quotes;
   thing as t;
 }
 
 view RenamedAndNarrowed of Outer {
   id;
-  SlimInner odds as o;
+  SlimInner quotes as o;
   thing as t;
 }
 `
@@ -699,7 +699,7 @@ table Chained {
 // compositeKeyShapes is a composite key whose two parts are at *different*
 // types, carried through a view that renames nothing.
 //
-// The corpus's only composite key is `(event_id, bet_type_id)` and both parts
+// The corpus's only composite key is `(event_id, ticket_type_id)` and both parts
 // are `int64`, so on the fixtures alone every tuple element's declared type and
 // every named member's declared type are `long` and the second half of the
 // clause below -- element i is typed as the member read at position i -- agrees
@@ -747,12 +747,12 @@ import "a.prague";
 import "c.prague";
 table Outer {
   key int64 id = 1;
-  Inner odds = 7;
-  alias thing = odds;
+  Inner quotes = 7;
+  alias thing = quotes;
 }
 view Narrowing of Outer {
   id;
-  SlimInner odds;
+  SlimInner quotes;
   thing as t;
 }
 `,
@@ -804,18 +804,18 @@ func TestAnExpressionBodyNamesOnlyMembersItsOwnFileDeclares(t *testing.T) {
 	// are the extent this ticket owes. Named here so that a fixture losing one
 	// fails as a missing case rather than as a smaller loop.
 	for _, want := range []string{
-		"BetType.BetTypeId",    // the corpus's own alias, in the declaration that wrote it
-		"Outer.Thing",          // the same alias in the table it belongs to
-		"RenamedOnly.T",        // the target renamed, not narrowed
-		"RenamedOnly.St",       // and the same with the target optional: presence is part of the type
-		"NarrowedOnly.T",       // the target narrowed, not renamed
-		"RenamedAndNarrowed.T", // both at once
-		"Narrowing.T",          // and the same again, with the two types in different namespaces
-		"Chained.Second",       // an alias of an alias, which is a member like any other
-		"BetType.Key",          // the other body shape: a composite key where it is declared
-		"SlimBetType.Id",       // and carried through a view, which is where #68 lives
-		"Mixed.Key",            // a key whose parts are at two different types
-		"MixedView.Key",        // and the same one carried through a view
+		"TicketType.TicketTypeId", // the corpus's own alias, in the declaration that wrote it
+		"Outer.Thing",             // the same alias in the table it belongs to
+		"RenamedOnly.T",           // the target renamed, not narrowed
+		"RenamedOnly.St",          // and the same with the target optional: presence is part of the type
+		"NarrowedOnly.T",          // the target narrowed, not renamed
+		"RenamedAndNarrowed.T",    // both at once
+		"Narrowing.T",             // and the same again, with the two types in different namespaces
+		"Chained.Second",          // an alias of an alias, which is a member like any other
+		"TicketType.Key",          // the other body shape: a composite key where it is declared
+		"SlimTicketType.Id",       // and carried through a view, which is where #68 lives
+		"Mixed.Key",               // a key whose parts are at two different types
+		"MixedView.Key",           // and the same one carried through a view
 	} {
 		if !slices.Contains(checked, want) {
 			t.Errorf("no alias was checked on %s; the assertion passed by not running, and the fixtures owe this case", want)
@@ -982,11 +982,11 @@ var reAliasPassthrough = regexp.MustCompile(`^public (.+) (\w+) \{ get => (\w+);
 // to the same clause on the day it does.
 var reCompositeKeyBody = regexp.MustCompile(`^public \((.+)\) (\w+) => \((.+)\);$`)
 
-// declaredTypeAndName splits `public List<Odd?>? MaybeOdds { get; set; }` into
+// declaredTypeAndName splits `public List<Quote?>? MaybeQuotes { get; set; }` into
 // its declared type and its name, for every member shape the emitter writes:
 // the plain property, the composite key's expression body, and the alias's
 // block. The type is whatever precedes the last identifier before the body
-// starts, so a composite key's `(long EventId, long BetTypeId)` survives.
+// starts, so a composite key's `(long EventId, long TicketTypeId)` survives.
 func declaredTypeAndName(line string) (typ, name string, ok bool) {
 	rest, ok := strings.CutPrefix(line, "public ")
 	if !ok {
@@ -1058,8 +1058,8 @@ record Inner {
 }
 table Outer {
   key int64 id = 1;
-  Inner odds = 7;
-  alias thing = odds;
+  Inner quotes = 7;
+  alias thing = quotes;
 }
 view TargetNotSelected of Outer {
   id;
@@ -1079,23 +1079,23 @@ view TargetNotSelected of Outer {
 }
 
 // A backend's annotation is text and nothing else. praguec does not know what
-// `DataCache(CacheClassName = nameof(BPSportGameCache))` names, cannot know
+// `DataCache(CacheClassName = nameof(BPShowCache))` names, cannot know
 // which namespace defines it, and therefore never adds a using for one --
 // which is a real limit of section 3's passthrough rule and the reason the
 // corpus's own `using Prague.Feed.Cache.Core;` is unreachable from here.
 func TestAnnotationsNeverProduceAUsing(t *testing.T) {
 	units := emitFixtures(t, pragueFixture, consumerFixture)
 	for _, u := range units {
-		if u.TypeName != "SportGame" {
+		if u.TypeName != "Show" {
 			continue
 		}
 		head, _, _ := strings.Cut(u.Source, "namespace ")
 		if got, want := head, "using MessagePack;\n\n"; got != want {
-			t.Errorf("SportGame usings = %q, want %q; an annotation contributed one", got, want)
+			t.Errorf("Show usings = %q, want %q; an annotation contributed one", got, want)
 		}
 		return
 	}
-	t.Fatal("the fixture stopped declaring SportGame")
+	t.Fatal("the fixture stopped declaring Show")
 }
 
 func TestPascalIsOneRuleForMembersAndEnumArms(t *testing.T) {
@@ -1145,25 +1145,25 @@ func TestAScalarWithNoRowEmitsItsProtopKeyword(t *testing.T) {
 }
 
 // Section 4's emission column, pinned by name so that changing one row fails
-// one line rather than four goldens. `record Odd` emitting a C# *class* is the
+// one line rather than four goldens. `record Quote` emitting a C# *class* is the
 // row to watch: #20 forbids a C# record, and the two keywords collide in
 // spelling while meaning opposite things.
 //
-// The view rows are the correction described on modifiers: `SlimOdd` is a view
-// of a record and the corpus writes `public class SlimOdd`, where `SlimBetType`
-// and `SlimSportGame` are views of tables and the corpus writes
+// The view rows are the correction described on modifiers: `SlimQuote` is a view
+// of a record and the corpus writes `public class SlimQuote`, where `SlimTicketType`
+// and `SlimShow` are views of tables and the corpus writes
 // `public sealed partial class`.
 func TestDeclarationShapes(t *testing.T) {
 	want := map[string]string{
-		"Venue":         "public struct Venue",
-		"StaticDataRef": "public class StaticDataRef",
-		"Odd":           "public class Odd",
-		"SportGame":     "public sealed partial class SportGame",
-		"BetType":       "public sealed partial class BetType",
-		"SlimSportGame": "public sealed partial class SlimSportGame",
-		"SlimBetType":   "public sealed partial class SlimBetType",
-		"SlimOdd":       "public class SlimOdd",
-		"EventStatus":   "public enum EventStatus",
+		"Venue":          "public struct Venue",
+		"StaticDataRef":  "public class StaticDataRef",
+		"Quote":          "public class Quote",
+		"Show":           "public sealed partial class Show",
+		"TicketType":     "public sealed partial class TicketType",
+		"SlimShow":       "public sealed partial class SlimShow",
+		"SlimTicketType": "public sealed partial class SlimTicketType",
+		"SlimQuote":      "public class SlimQuote",
+		"EventStatus":    "public enum EventStatus",
 	}
 	seen := map[string]bool{}
 	for _, u := range emitFixtures(t, pragueFixture, consumerFixture) {

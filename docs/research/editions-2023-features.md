@@ -600,7 +600,7 @@ It is the project's core axis (§8.1) and the reason to be on editions at all. `
 **`enum_type` — accept and honour.**
 `OPEN` vs `CLOSED` is a real schema decision with a real C# consequence: a closed enum can reject out-of-range values at parse time, an open one stores them. It costs praguec almost nothing (the only extra rule is the zero-first check for open enums, §5.2) and it is exactly the kind of constraint a schema language should be able to express. MessagePack has no unknown-field set, so a `CLOSED` enum's "store out-of-range in unknowns" semantics have no MessagePack analogue — which means protop's `CLOSED` should be interpreted as **reject at parse**, and that difference must be documented rather than silently inherited.
 
-**`utf8_validation` — accept, low stakes.**
+**`utf8_validation` — accept, low amounts.**
 `VERIFY` (the 2023 default) versus `NONE`. MessagePack's `str` type is nominally UTF-8 and MessagePack-CSharp does not validate by default — **unverified**, worth checking before relying on it. Honouring `NONE` means "treat as bytes". The cost of accepting is one flag on the emitted property; the cost of rejecting is an author who genuinely has legacy non-UTF-8 string data and no way to say so. Mild recommendation: accept.
 
 **`repeated_field_encoding` — reject.**

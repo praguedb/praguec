@@ -91,10 +91,10 @@ const (
 	// DeclRecord is `record StaticDataRef { ... }`: no identity either, and a
 	// C# class rather than a C# struct.
 	DeclRecord
-	// DeclTable is `table SportGame { ... }`: the one declaration with a key,
+	// DeclTable is `table Show { ... }`: the one declaration with a key,
 	// and so the only one a relation can name.
 	DeclTable
-	// DeclView is `view SlimSportGame of SportGame { ... }`: a field subset of
+	// DeclView is `view SlimShow of Show { ... }`: a field subset of
 	// one source, at that source's tags.
 	DeclView
 	// DeclEnum is `enum EventStatus { ... }`.
@@ -186,10 +186,10 @@ type MemberKind int
 const (
 	// MemberField is a tagged member, `decimal(4)? live_limit_manual_single = 36;`.
 	MemberField MemberKind = iota
-	// MemberCompositeKey is `key key = 1 (event_id, bet_type_id);`: a name over
+	// MemberCompositeKey is `key key = 1 (event_id, ticket_type_id);`: a name over
 	// members that keep their own ordinals, which spends an ordinal of its own.
 	MemberCompositeKey
-	// MemberAlias is `alias bet_type_id = id;`: get and set passthrough, no
+	// MemberAlias is `alias ticket_type_id = id;`: get and set passthrough, no
 	// wire slot.
 	MemberAlias
 )
@@ -228,7 +228,7 @@ type Member struct {
 
 	// Parts are the members a composite key names, in the order it names them,
 	// and nil on every other kind. They are members rather than names because
-	// the corpus's own composite key -- `key key = 1 (event_id, bet_type_id)`
+	// the corpus's own composite key -- `key key = 1 (event_id, ticket_type_id)`
 	// -- names an alias in its second part, and a backend reading the tuple
 	// needs to arrive at the field the alias passes through to.
 	Parts []*Member
@@ -281,7 +281,7 @@ const (
 // resolved arguments.
 //
 // Presence is a property of the type rather than of the field, which is what
-// lets it compose: `list<Odd>?` is Optional on the outer type and `list<Odd?>`
+// lets it compose: `list<Quote>?` is Optional on the outer type and `list<Quote?>`
 // on the inner one.
 type Type struct {
 	Kind TypeKind
@@ -310,9 +310,9 @@ type Type struct {
 }
 
 // Element is the type a narrowing applies to: the type itself, or what a
-// collection holds. `SlimOdd odds;` narrows a `list<Odd>` because what is
+// collection holds. `SlimQuote quotes;` narrows a `list<Quote>` because what is
 // narrowed is what the collection holds -- section 5 gives that member tag 26,
-// and tag 26 in the corpus is `list<Odd> odds`.
+// and tag 26 in the corpus is `list<Quote> quotes`.
 //
 // A map's element is its value. Nothing reaches that yet: `map` is
 // PROTOP0900 at the parser, so a file containing one never gets here.

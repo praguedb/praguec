@@ -3,34 +3,34 @@ using MessagePack;
 namespace Common.EventApi.Cache.Prague.Models;
 
 [MessagePackObject]
-[DataCache(CacheClassName = nameof(Prague.Models.BPSportGameCache))]
-[DataCacheTopic("Cache.[v:brandId].SportGame")]
-public sealed partial class SportGame
+[DataCache(CacheClassName = nameof(Prague.Models.BPShowCache))]
+[DataCacheTopic("Cache.[v:brandId].Show")]
+public sealed partial class Show
 {
     [Key(0)]
     [DataCacheKey]
     public long EventId { get; set; }
 
     [Key(1)]
-    public long SportTypeId { get; set; }
+    public long GenreId { get; set; }
 
     [Key(2)]
     public long CountryId { get; set; }
 
     [Key(3)]
-    public long LeagueId { get; set; }
+    public long TourId { get; set; }
 
     [Key(4)]
-    public long? HomeTeamId { get; set; }
+    public long? HeadlinerId { get; set; }
 
     [Key(5)]
-    public long? AwayTeamId { get; set; }
+    public long? OpenerId { get; set; }
 
     [Key(6)]
     public Venue? Venue { get; set; }
 
     [Key(14)]
-    public int? FixtureId { get; set; }
+    public int? ListingId { get; set; }
 
     [Key(23)]
     public EventStatus EventStatus { get; set; }
@@ -45,20 +45,20 @@ public sealed partial class SportGame
     public decimal? LiveLimitManualSingle { get; set; }
 
     [Key(46)]
-    public List<StaticDataRef> Runners { get; set; }
+    public List<StaticDataRef> Performers { get; set; }
 
     [Key(54)]
-    public StaticDataRef SportType { get; set; }
+    public StaticDataRef Genre { get; set; }
 
     [Key(55)]
     public StaticDataRef Country { get; set; }
 
     [Key(56)]
-    public StaticDataRef League { get; set; }
+    public StaticDataRef Tour { get; set; }
 
     [Key(57)]
-    public StaticDataRef? HomeTeam { get; set; }
+    public StaticDataRef? Headliner { get; set; }
 
     [Key(58)]
-    public StaticDataRef? AwayTeam { get; set; }
+    public StaticDataRef? Opener { get; set; }
 }

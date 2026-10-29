@@ -12,10 +12,10 @@ revision 1;
 // use them carry a using.
 namespace CommonFeedModels.Enums;
 
-enum BetTypeStatus {
+enum TicketTypeStatus {
 }
 
-enum OddStatus {
+enum QuoteStatus {
 }
 
 enum WinStatus {

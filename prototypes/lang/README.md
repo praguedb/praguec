@@ -21,7 +21,7 @@ Every pass since has been a subtraction, and every subtraction has paid:
 | cardinality keywords, `ManyToMany` | derivable from the FK and the declaring type's `key` | 5b |
 
 What went *in* is one line: a view member may be narrowed to a view of its own
-type (`SlimOdd odds;`), which the corpus has been doing all along with no way to
+type (`SlimQuote quotes;`), which the corpus has been doing all along with no way to
 say so (finding 11).
 
 ---
@@ -31,13 +31,13 @@ say so (finding 11).
 It appeared on every `table` and every `view`, and it read like this:
 
 ```protop
-view SlimSportGame of SportGame "Cache.[v:brandId].SportGame" {
+view SlimShow of Show "Cache.[v:brandId].Show" {
 ```
 
 Measured across the corpus: **12 topic-carrying types, 4 distinct topics.**
 
 ```
-3 × "Cache.[v:brandId].SportGame"      3 × "Cache.[v:brandId].BetType"
+3 × "Cache.[v:brandId].Show"      3 × "Cache.[v:brandId].TicketType"
 3 × "Cache.[v:brandId].LiveObject"     2 × "Cache.[v:brandId].Search"
 ```
 
@@ -46,8 +46,8 @@ declaration line was carrying it. The fix is not a better default — it is
 noticing that a topic is **one more C# attribute** and does not need syntax:
 
 ```protop
-[DataCacheTopic("Cache.[v:brandId].SportGame")]
-view SlimSportGame of SportGame {
+[DataCacheTopic("Cache.[v:brandId].Show")]
+view SlimShow of Show {
 ```
 
 That is shorter than the keyword form was, it says where the string *goes*, and
@@ -71,11 +71,11 @@ index at all. The two axes have been independent here all along.
 
 | what is indexed | n | could a relation generate it? |
 |---|---|---|
-| FK-shaped (`SportTypeId`, `EventId`, `LeagueId`…) | 10 | yes |
+| FK-shaped (`GenreId`, `EventId`, `TourId`…) | 10 | yes |
 | enum (`EventStatus`, `WatchDogAction`, `BookingStatus`…) | 10 | no |
 | temporal, `range` (`EventDate`, `ProviderTimestamp`…) | 7 | no |
 | bool (`IsLive`) | 2 | no |
-| derived (`FixtureIdIndex`) | 1 | no |
+| derived (`ListingIdIndex`) | 1 | no |
 
 **Two-thirds of the corpus's indexes are query-shape decisions**, not structural
 ones: which enum you filter on and which timestamp you sort by is a fact about
@@ -93,10 +93,10 @@ The previous pass found computed members decompose into three classes, none of
 which needs an expression. One of the three was the **derived index**:
 
 ```protop
-index(many) int32 fixture_id_index = fixture_id else 0;   // no tag ⇒ no wire slot
+index(many) int32 listing_id_index = listing_id else 0;   // no tag ⇒ no wire slot
 ```
 
-`FixtureIdIndex => FixtureId ?? 0` is `[IgnoreMember]`. It is not on the wire.
+`ListingIdIndex => ListingId ?? 0` is `[IgnoreMember]`. It is not on the wire.
 It exists for **no reason except to be indexed** — so when the index left, the
 member left with it, and `else` left with the member.
 
@@ -104,8 +104,8 @@ Two classes remain, and they are the two that were never about indexing:
 
 | class | n | wire slot? | corpus |
 |---|---|---|---|
-| composite identity | 5 | **yes** — always `[Key(0)]` | `(long EventId, long BetTypeId) Key => (EventId, BetTypeId)` |
-| alias | 1 | no — `[IgnoreMember] [JsonIgnore]` | `long BetTypeId { get => Id; set => Id = value; }` |
+| composite identity | 5 | **yes** — always `[Key(0)]` | `(long EventId, long TicketTypeId) Key => (EventId, TicketTypeId)` |
+| alias | 1 | no — `[IgnoreMember] [JsonIgnore]` | `long TicketTypeId { get => Id; set => Id = value; }` |
 
 [Issue #6](https://github.com/praguedb/praguec/issues/6) has
 the "computed-member escape hatch" down as the hardest requirement on the board,
@@ -118,44 +118,44 @@ Grepping for every `*Id` field that has a same-named sibling found **15 pairs**,
 5 distinct relations across 3 types:
 
 ```
-SportTypeId  long   <->  SportType   StaticDataRef
+GenreId  long   <->  Genre   StaticDataRef
 CountryId    long   <->  Country     StaticDataRef
-LeagueId     long   <->  League      StaticDataRef
-HomeTeamId   long?  <->  HomeTeam    StaticDataRef?
-AwayTeamId   long?  <->  AwayTeam    StaticDataRef?
+TourId     long   <->  Tour      StaticDataRef
+HeadlinerId   long?  <->  Headliner    StaticDataRef?
+OpenerId   long?  <->  Opener    StaticDataRef?
 ```
 
 The navigation member is not a pointer — it is a **denormalized copy** of the
 target, on the wire, at its own tag. One relation, two members, two slots.
 
-**And they drift.** In `SlimSportGame`:
+**And they drift.** In `SlimShow`:
 
 ```csharp
-public long? HomeTeamId { get; set; }              // nullable
+public long? HeadlinerId { get; set; }              // nullable
 [Key(57)]
-public StaticDataRef HomeTeam { get; set; } = null!;   // NOT nullable
+public StaticDataRef Headliner { get; set; } = null!;   // NOT nullable
 ```
 
-where `BOSportGameCacheItem` has `StaticDataRef? HomeTeam`. The foreign key
+where `BOShowCacheItem` has `StaticDataRef? Headliner`. The foreign key
 admits it may be absent; its own snapshot, in the same type, does not. That is
 a nil slot waiting to become a `NullReferenceException`, and the C# compiler
 cannot see it because `= null!` is exactly the syntax for telling it not to.
 
 This is what pays for `snapshot_of`: with the pair declared as one thing,
-`home_team` does not get to have an opinion about presence separate from the id
+`headliner` does not get to have an opinion about presence separate from the id
 it accompanies.
 
 ### …and the copy exists *because the referent does not*
 
 The obvious next question is why the copy is there at all — why not point at a
-`SportType` and fetch it? Because **there is no `SportType`**. Measured across
+`Genre` and fetch it? Because **there is no `Genre`**. Measured across
 every corpus type that carries `[DataCacheKey]`:
 
 | foreign-key-shaped member | n | names a cached type? | carries a `StaticDataRef` copy? |
 |---|---|---|---|
-| `EventId`, `BetTypeId` | 11 | **yes** | **never** |
-| `SportTypeId`, `CountryId`, `LeagueId`, `HomeTeamId`, `AwayTeamId` | 25 | **no** | **always** — all 15 pairs |
-| `StatisticsCenterId`, `PlayerId` | 4 | no | no — opaque ids, nothing attached |
+| `EventId`, `TicketTypeId` | 11 | **yes** | **never** |
+| `GenreId`, `CountryId`, `TourId`, `HeadlinerId`, `OpenerId` | 25 | **no** | **always** — all 15 pairs |
+| `StatisticsCenterId`, `CustomerId` | 4 | no | no — opaque ids, nothing attached |
 
 The two sets are **exactly complementary**, and that is not a coincidence:
 
@@ -168,14 +168,14 @@ public class BaseProviderObject {
 ```
 
 `StaticDataRef` is an **empty subclass**, and it is the *identical type* for a
-sport, a country and a team. So `long SportTypeId` + `StaticDataRef SportType` is
+genre, a country and a team. So `long GenreId` + `StaticDataRef Genre` is
 not a foreign key beside a cached row that could be fetched instead. **It is the
 whole representation.** The alternative to the copy is not a join — it is nothing.
 
 Two consequences, and the first cost me four declarations:
 
-**The specimens had `table SportType`, `Country`, `League` and `Team` in them.**
-None exists in the corpus. They were invented so `references(SportType)` would
+**The specimens had `table Genre`, `Country`, `Tour` and `Act` in them.**
+None exists in the corpus. They were invented so `references(Genre)` would
 have somewhere to point — inventing corpus to fit a feature, which is the exact
 failure the "a construct the corpus never exercises is not tested" rule exists to
 catch. Deleted from both spellings.
@@ -187,17 +187,17 @@ of the same message and needs no target type to exist — which is why it surviv
 this finding intact, and why its presence check still catches the live bug.
 
 **Scope limit, stated plainly:** the corpus is the cache's payload types, not the
-whole system. A `SportType` entity may well exist upstream — in a database, in a
+whole system. A `Genre` entity may well exist upstream — in a database, in a
 service. What is measured here is that *nothing in the cache protop generates for*
 is pointable-at. Whether that holds beyond the sample is a question for someone
 who knows the wider system.
 
-**And the one real relation is ambiguous.** `BetType.EventId` does resolve — to
-**six types at once**. `BOSportGameCacheItem`, `BPSportGameCacheItem`,
+**And the one real relation is ambiguous.** `TicketType.EventId` does resolve — to
+**six types at once**. `BOShowCacheItem`, `BPShowCacheItem`,
 `BOLiveObjectCacheItem`, `BPLiveObjectCacheItem`, `LiveObjectCacheItem` and
-`SlimSportGame` all declare `EventId` as their identity, because they are twins
+`SlimShow` all declare `EventId` as their identity, because they are twins
 and projections of one another sharing an identity *and* a key space. So
-`references(SportGame)` does not pick one out, in either spelling. Unanswered.
+`references(Show)` does not pick one out, in either spelling. Unanswered.
 
 ## 5. An annotation absorbs a unary fact for free; a binary one costs a name
 
@@ -206,8 +206,8 @@ pure — type, name, tag, presence, the wire contract and nothing else:
 
 ```protop
 relations {
-  sport_type_id -> SportType inline sport_type;
-  home_team_id  -> Team      inline home_team;
+  genre_id -> Genre inline genre;
+  headliner_id  -> Act      inline headliner;
 }
 ```
 
@@ -218,18 +218,18 @@ Measured, in `prague.proto`:
 
 | | member-naming strings |
 |---|---|
-| relations as a block | **11** — `field: "sport_type_id"`, `inline: "sport_type"` |
+| relations as a block | **11** — `field: "genre_id"`, `inline: "genre"` |
 | relations on the member | **6** |
 
 Every one of the 11 is a string naming a member of the same message, and protoc
 checks **none** of them (measured — see the scoreboard). Halving them is not the
 finding, though. The finding is *which five went*, because the split is exact:
 
-**`references` is unary** — "this member holds `Team`'s identity" is a fact about
+**`references` is unary** — "this member holds `Act`'s identity" is a fact about
 one member. Written on that member, it has no field name left to get wrong:
 
 ```protop
-int64? home_team_id = 5 [references(Team)];
+int64? headliner_id = 5 [references(Act)];
 ```
 
 An orphaned `references` is now **unrepresentable**, not merely unchecked. That
@@ -242,7 +242,7 @@ which are two different members at two different tags. One of the two must name
 the other, and no choice of where to write the annotation changes that:
 
 ```protop
-StaticDataRef? home_team = 58 [snapshot_of(home_team_id)];
+StaticDataRef? headliner = 58 [snapshot_of(headliner_id)];
 ```
 
 It is **deferred out of phase 1** (see finding 5a), but it is the cleanest
@@ -255,12 +255,12 @@ members always costs a name; a property of one member never does.**
 
 Three things survive unchanged from the block form:
 
-**`references(SportType)` names a table, not a field.** It resolves to that
+**`references(Genre)` names a table, not a field.** It resolves to that
 table's *declared key*, so arity and type are checked, and a composite-key target
 needs no new syntax at all.
 
-**`repeated` vs a relation is a real line, drawn by the data.** `Runner`, `Odd`
-and `SlimOdd` declare no `[DataCacheKey]`, so nothing can point at them and they
+**`repeated` vs a relation is a real line, drawn by the data.** `Performer`, `Quote`
+and `SlimQuote` declare no `[DataCacheKey]`, so nothing can point at them and they
 cannot exist apart from their row. `repeated` is composition; a relation is
 reference; the test is whether the child type declares a key.
 
@@ -284,11 +284,11 @@ nothing tests.
 
 What deferring costs, stated precisely rather than waved at: the one check it
 bought was **that the two halves agree about presence**, and **3 of the 15 pairs
-do not**. `SlimSportGame` carries
+do not**. `SlimShow` carries
 
 ```csharp
-public long? HomeTeamId { get; set; }
-public StaticDataRef HomeTeam { get; set; } = null!;   // not nullable
+public long? HeadlinerId { get; set; }
+public StaticDataRef Headliner { get; set; } = null!;   // not nullable
 ```
 
 protop phase 1 emits that as written and says nothing. Known, accepted gap.
@@ -303,8 +303,8 @@ true.
 
 ## 5b. Cardinality is derivable, so it is not declared
 
-The question that prompted it: `SportGame` has `league_id`; how does anyone know
-one League is in many Games?
+The question that prompted it: `Show` has `tour_id`; how does anyone know
+one Tour is in many Shows?
 
 Compare the foreign key against **the declaring type's own `key`**:
 
@@ -321,10 +321,10 @@ Checked against the corpus:
 
 | type | key | `event_id` | derived | right? |
 |---|---|---|---|---|
-| `BOBetTypeCacheItem` | `(EventId, BetTypeId)` | part of it | many BetTypes per game | ✅ |
-| `LiveObjectCacheItem` | `EventId` | **is** it | exactly one per game | ✅ |
-| `BOSearchCacheItem` | `(EventId, ChannelId)` | part of it | many per game | ✅ |
-| `SportGame.league_id` | `EventId` | not in it | many games per league | ✅ |
+| `BOTicketTypeCacheItem` | `(EventId, TicketTypeId)` | part of it | many TicketTypes per show | ✅ |
+| `LiveObjectCacheItem` | `EventId` | **is** it | exactly one per show | ✅ |
+| `BOSearchCacheItem` | `(EventId, ChannelId)` | part of it | many per show | ✅ |
+| `Show.tour_id` | `EventId` | not in it | many shows per tour | ✅ |
 
 **The rule is sound, not complete**, and the two are different promises. Every
 one-to-one it derives is enforced by a key and cannot be wrong. A many-to-one it
@@ -338,7 +338,7 @@ is the same failure that took `topic` out of the language: unchecked restatement
 of something the file already carries.
 
 The **extension table** is the case that looks like a counterexample and is not.
-A type existing only to carry more columns for one `SportGame` declares
+A type existing only to carry more columns for one `Show` declares
 `key event_id`, case one fires, and one-to-one is derived correctly with no
 keyword at all.
 
@@ -360,9 +360,9 @@ mistyped annotation must be an error.
 Position is free, structural, and cannot be mistyped into the other meaning:
 
 ```protop
-[DataCacheTopic("Cache.[v:brandId].SportGame")]     // C#'s slot    → copied
-table SportGame {
-  int64 sport_type_id = 2 [references(SportType)];  // Protobuf's slot → checked
+[DataCacheTopic("Cache.[v:brandId].Show")]     // C#'s slot    → copied
+table Show {
+  int64 genre_id = 2 [references(Genre)];  // Protobuf's slot → checked
 
   [DataCacheFromTimestamp]                          // both on one member,
   int64 timestamp = 25;                             // no collision
@@ -379,13 +379,13 @@ paste the text out of the C# into protop, and back out again, byte for byte. Two
 measurements say a bracket cannot host it.
 
 *The text contains brackets and quotes.* The corpus's topic attribute is
-`[DataCacheTopic("Cache.[v:brandId].SportGame")]` — a `[`, a `]` and two `"`
+`[DataCacheTopic("Cache.[v:brandId].Show")]` — a `[`, a `]` and two `"`
 inside the thing that would go inside a `[…]`. Inside a bracket that already
 means something it must become a **string**, and a string must be escaped.
 Spelling A is the proof:
 
 ```proto
-option (protop.type_attribute) = "[DataCacheTopic(\"Cache.[v:brandId].SportGame\")]";
+option (protop.type_attribute) = "[DataCacheTopic(\"Cache.[v:brandId].Show\")]";
 ```
 
 *Attributes stack.* **55 of the corpus's 356 attribute-carrying sites carry two
@@ -504,8 +504,8 @@ Eleven `[DataCacheKey]` members, splitting cleanly:
 
 | form | count | example |
 |---|---|---|
-| identity **is** a stored field | 6 | `BOSportGameCacheItem.EventId` — `[Key(0)] long` |
-| identity is a **tuple over** stored fields | 5 | `BOBetTypeCacheItem.Key => (EventId, BetTypeId)` |
+| identity **is** a stored field | 6 | `BOShowCacheItem.EventId` — `[Key(0)] long` |
+| identity is a **tuple over** stored fields | 5 | `BOTicketTypeCacheItem.Key => (EventId, TicketTypeId)` |
 
 In the second, **tag 1 holds a duplicate**: the tuple is `[Key(0)]`, written to
 the wire, carrying a copy of what tags 2 and 3 already carry. Every composite
@@ -513,7 +513,7 @@ key in the corpus is at tag 1, without exception.
 
 ```protop
 key int64 event_id = 1;                    // identity is the field
-key key = 1 (event_id, bet_type_id);       // identity is a tuple, and owns tag 1
+key key = 1 (event_id, ticket_type_id);       // identity is a tuple, and owns tag 1
 ```
 
 The `= 1` says which slot the duplicate occupies, which makes the collision
@@ -535,15 +535,15 @@ have exactly that, and it is their identity.
 
 ## 11. Views rename, and view padding is structural
 
-`BOSportGameCacheItem.EventId` at `[Key(0)]` is `SlimSportGame.Id` at `[Key(0)]`.
+`BOShowCacheItem.EventId` at `[Key(0)]` is `SlimShow.Id` at `[Key(0)]`.
 Under int-key MessagePack **names are not on the wire**, so a rename is free —
-which is also why `Key` / `Id` / `BetTypeId` drift across the corpus pairs with
+which is also why `Key` / `Id` / `TicketTypeId` drift across the corpus pairs with
 nobody noticing. A view syntax therefore needs `as`.
 
 ```
-SlimOdd        14 members → 28 slots   (50% nil)
-SlimBetType    14 members → 26 slots   (46% nil)
-SlimSportGame  41 members → 59 slots   (30% nil)
+SlimQuote        14 members → 28 slots   (50% nil)
+SlimTicketType    14 members → 26 slots   (46% nil)
+SlimShow  41 members → 59 slots   (30% nil)
 ```
 
 A view keeps the parent's tags, so it inherits the parent's *maximum* tag, so it
@@ -551,8 +551,8 @@ pays padding proportional to what it dropped. A MessagePack dense-array fact,
 not a language fact, and neither spelling fixes it.
 
 One thing this pass changed: with the topic and the index set both gone from the
-declaration, a view is no longer a second copy of its source. `SlimSportGame`
-indexed `SportTypeId`, `CountryId` and `LeagueId` where `BOSportGameCacheItem`
+declaration, a view is no longer a second copy of its source. `SlimShow`
+indexed `GenreId`, `CountryId` and `TourId` where `BOShowCacheItem`
 indexed none of them — that divergence was the loudest thing in the old view
 syntax, and it was never schema in the first place.
 
@@ -561,8 +561,8 @@ syntax, and it was never schema in the first place.
 Measured, at the same tag:
 
 ```csharp
-BOBetTypeCacheItem.Odds   is   List<Odd>
-SlimBetType.Odds          is   SlimOdd[]
+BOTicketTypeCacheItem.Quotes   is   List<Quote>
+SlimTicketType.Quotes          is   SlimQuote[]
 ```
 
 A view of a view, and no version of the syntax could say so until now. The
@@ -571,22 +571,22 @@ source's type unchanged, so writing a **type before the name** is what asks for
 the narrowing:
 
 ```protop
-view SlimBetType of BetType {
-  name;              // tag 4, BetType's type
-  SlimOdd odds;      // tag 26, narrowed — and SlimOdd must be a view of Odd
+view SlimTicketType of TicketType {
+  name;              // tag 4, TicketType's type
+  SlimQuote quotes;      // tag 26, narrowed — and SlimQuote must be a view of Quote
 }
 ```
 
 That last clause is the whole check, and it is worth naming what it buys: the
 view stays pinned to the *source's* tags however deep the nesting goes, so
-`SlimOdd` cannot quietly renumber and desync tag 26.
+`SlimQuote` cannot quietly renumber and desync tag 26.
 
-`SlimOdd` also settles a smaller question by existing: **a view's source need not
-be a table.** `Odd` is a record — no key, nothing points at it — and it has a
+`SlimQuote` also settles a smaller question by existing: **a view's source need not
+be a table.** `Quote` is a record — no key, nothing points at it — and it has a
 view all the same, because a view is about tags and members, not identity.
 
 **Spelling A cannot express the narrowing at all.** It writes
-`repeated SlimOdd odds = 26;`, which is indistinguishable from a *type
+`repeated SlimQuote quotes = 26;`, which is indistinguishable from a *type
 disagreement at a shared tag* — which is drift, the exact thing views exist to
 prevent. protoc reads an unrelated message with an unrelated field at tag 26 and
 says nothing.
@@ -644,13 +644,13 @@ own parser. Spelling A's problem is not that it cannot carry the information:
 | alias | ✅ option | ❌ field name | ✅ |
 | view source | ✅ option | ❌ existence, shape | ✅ |
 | view field/tag/type/presence | ✅ option | ❌ all four | ✅ |
-| view member narrowed to a view | ❌ **inexpressible** — reads as drift | ❌ | ✅ `SlimOdd odds;` |
+| view member narrowed to a view | ❌ **inexpressible** — reads as drift | ❌ | ✅ `SlimQuote quotes;` |
 | decimal scale | ✅ option | ❌ applicability | ✅ |
 | attribute placement | ⚠️ two option names | ❌ | ✅ one slot each |
 | checked vs verbatim | ⚠️ one shared bracket | ❌ | ✅ by position |
 | type-level annotation slot | ✅ `option` in the body | n/a | ✅ `table Foo [x]` — defined, empty |
 
-Every ❌ is a diagnostic praguec has to implement itself. The strict-profile bet
+Every ❌ is a diagnostic praguec has to implement itself. The strict-profile purchase
 — *"lean on protoc so praguec does less"* — pays off for the Protobuf core and
 **not at all** for anything protop adds. praguec writes those checks either way;
 A only decides whether they run against a descriptor set or against its own AST.

@@ -1,6 +1,6 @@
 namespace BO.Services.Prague.Models;
 
-public sealed partial class BOBetTypeCache
+public sealed partial class BOTicketTypeCache
 {
     public void Clear()
     {

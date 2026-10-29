@@ -43,13 +43,13 @@
 // BYTE FOR BYTE. Two measurements say the bracket cannot host it.
 //
 //   The text contains brackets and quotes. The corpus's own topic attribute is
-//   [DataCacheTopic("Cache.[v:brandId].SportGame")] — a `[`, a `]` and two `"`
+//   [DataCacheTopic("Cache.[v:brandId].Show")] — a `[`, a `]` and two `"`
 //   inside the thing that would be going inside a `[ ]`. Put that in a bracket
 //   that already means something and it must become a STRING, and a string must
 //   be escaped. Spelling A is the proof:
 //
 //       option (protop.type_attribute) =
-//           "[DataCacheTopic(\"Cache.[v:brandId].SportGame\")]";
+//           "[DataCacheTopic(\"Cache.[v:brandId].Show\")]";
 //
 //   Attributes stack. 55 of the corpus's 356 attribute-carrying sites carry two
 //   or more, up to four. C# stacks them one per line and so does this; a
@@ -80,7 +80,7 @@
 //
 // The type-level slot is DEFINED AND EMPTY. protop has no type-level annotation
 // of its own today — the topic went to C# passthrough, the shape is a keyword,
-// and cardinality turned out to be derivable (see BetType). Defining the slot
+// and cardinality turned out to be derivable (see TicketType). Defining the slot
 // anyway is deliberate: it is where the next one goes, and settling that now
 // costs nothing, whereas discovering it later invites a third syntax.
 //
@@ -95,7 +95,7 @@
 //
 //   Syntax carries the wire and identity contract — type, tag, presence, `key`.
 //   `key` stays a keyword because relations RESOLVE AGAINST it:
-//   `references(SportType)` means "SportType's declared key", so identity is
+//   `references(Genre)` means "Genre's declared key", so identity is
 //   structure other declarations depend on, not decoration.
 //   Everything else that is a fact ABOUT a member is an annotation on it.
 //
@@ -139,7 +139,7 @@ enum EventStatus {
   FINISHED    = 3;
 }
 
-enum BetTypeStatus {
+enum TicketTypeStatus {
   UNKNOWN   = 0;
   OPEN      = 1;
   SUSPENDED = 2;
@@ -154,9 +154,9 @@ record StaticDataRef {
   string name = 2;
 }
 
-record Odd {
+record Quote {
   string name        = 1;
-  double odds_actual = 9;
+  double quotes_actual = 9;
   int64  timestamp   = 5;
 }
 
@@ -168,36 +168,36 @@ record Odd {
 // become: praguec copies the text out and does not read it. Everything that was
 // a keyword and did not earn it now lives here — and the list is honest about
 // how much of the old syntax was decoration.
-[DataCacheTopic("Cache.[v:brandId].SportGame")]
-table SportGame {
+[DataCacheTopic("Cache.[v:brandId].Show")]
+table Show {
   key int64 event_id = 1;
 
   // THESE ARE NOT FOREIGN KEYS, and they used to be annotated as if they were.
   //
-  // `[references(SportType)]` sat here until SportType was looked for and found
-  // not to exist. Measured: SportTypeId, CountryId, LeagueId, HomeTeamId and
-  // AwayTeamId — 25 members across the corpus — name no cached type, and every
+  // `[references(Genre)]` sat here until Genre was looked for and found
+  // not to exist. Measured: GenreId, CountryId, TourId, HeadlinerId and
+  // OpenerId — 25 members across the corpus — name no cached type, and every
   // one of the 15 pairs among them carries a StaticDataRef copy. EventId and
-  // BetTypeId (11 members) DO name a cached type, and carry no copy.
+  // TicketTypeId (11 members) DO name a cached type, and carry no copy.
   //
   // Exactly complementary: the copy exists because the referent does not. So
   // each of these is the id half of an embedded pair whose other half is the
   // StaticDataRef below. Binding the two was `snapshot_of`, now deferred. The
-  // one real relation in this file is `event_id [references(SportGame)]` in
-  // BetType.
-  int64 sport_type_id = 2;
+  // one real relation in this file is `event_id [references(Show)]` in
+  // TicketType.
+  int64 genre_id = 2;
   int64 country_id    = 3;
-  int64 league_id     = 4;
+  int64 tour_id     = 4;
 
-  int64? home_team_id = 5;
-  int64? away_team_id = 6;
+  int64? headliner_id = 5;
+  int64? opener_id = 6;
 
   // A struct field is nullable because the wire slot can be nil. protop can
   // enforce that directly here; in spelling A it is a rule protop has to
   // invent, because protoc will not let the file say it.
   Venue? venue = 7;
 
-  int32? fixture_id = 15;
+  int32? listing_id = 15;
 
   // Was `index EventStatus event_status = 24;`. The index was never a property
   // of the field — three sibling types index this and two do not.
@@ -208,10 +208,10 @@ table SportGame {
 
   decimal(4)? live_limit_manual_single = 36;
 
-  // OWNED, not related: Runner has no key, so nothing can point at it and it
+  // OWNED, not related: Performer has no key, so nothing can point at it and it
   // cannot exist apart from this row. `repeated` is composition; `relations` is
   // reference. That line is drawn by whether the child type declares a key.
-  repeated StaticDataRef runners = 47;
+  repeated StaticDataRef performers = 47;
 
   // THE EMBEDDED PAIRS, now written as plain fields. `snapshot_of` bound each
   // of these to the id above that it is the inline copy of, and it is DEFERRED
@@ -219,20 +219,20 @@ table SportGame {
   //
   // The cost is exact and should not be soft-pedalled: the one check it bought
   // was that the two halves agree about presence, and THREE of the corpus's 15
-  // pairs do not. SlimSportGame has `long? HomeTeamId` beside a non-nullable
-  // `StaticDataRef HomeTeam = null!`. Deferring `snapshot_of` means protop
+  // pairs do not. SlimShow has `long? HeadlinerId` beside a non-nullable
+  // `StaticDataRef Headliner = null!`. Deferring `snapshot_of` means protop
   // emits that as written and says nothing. That is a known, accepted gap, not
   // an oversight.
-  StaticDataRef  sport_type = 55;
+  StaticDataRef  genre = 55;
   StaticDataRef  country    = 56;
-  StaticDataRef  league     = 57;
-  StaticDataRef? home_team  = 58;
-  StaticDataRef? away_team  = 59;
+  StaticDataRef  tour     = 57;
+  StaticDataRef? headliner  = 58;
+  StaticDataRef? opener  = 59;
 }
 
 // --- TABLE, COMPOSITE KEY ---------------------------------------------------
-[DataCacheTopic("Cache.[v:brandId].BetType")]
-table BetType {
+[DataCacheTopic("Cache.[v:brandId].TicketType")]
+table TicketType {
   // COMPUTED MEMBER, class 1 — composite identity.
   //
   // Borrowed from Cap'n Proto's `group`: a name over fields that keep their own
@@ -243,12 +243,12 @@ table BetType {
   // Writing the tag makes the duplication visible and the collision checkable.
   // In spelling A both are invisible: the option claims tag 1, a field may claim
   // it too, and protoc compiles that without a word (measured).
-  key key = 1 (event_id, bet_type_id);
+  key key = 1 (event_id, ticket_type_id);
 
   // CARDINALITY IS NOT DECLARED, BECAUSE IT IS ALREADY WRITTEN DOWN.
   //
-  // The question this answers: SportGame has `league_id`, so how does anyone
-  // know one League is in many Games? Compare the foreign key to the DECLARING
+  // The question this answers: Show has `tour_id`, so how does anyone
+  // know one Tour is in many Shows? Compare the foreign key to the DECLARING
   // TYPE'S OWN KEY, and there are only three cases:
   //
   //   FK *is* the whole key        -> one-to-one. At most one row of this type
@@ -261,14 +261,14 @@ table BetType {
   // no declaration because it adds nothing.
   //
   // Checked against every cached corpus type, three for three:
-  //   BetType      key (event_id, bet_type_id), event_id is FK, PART of it
-  //                -> many BetTypes per SportGame.               correct
+  //   TicketType      key (event_id, ticket_type_id), event_id is FK, PART of it
+  //                -> many TicketTypes per Show.               correct
   //   LiveObject   key event_id, which IS the FK
-  //                -> exactly one LiveObject per SportGame.      correct
+  //                -> exactly one LiveObject per Show.      correct
   //   Search       key (event_id, channel_id), FK is part
-  //                -> many Searches per SportGame.               correct
-  //   SportGame.league_id  not in SportGame's key at all
-  //                -> many SportGames per League.                correct
+  //                -> many Searches per Show.               correct
+  //   Show.tour_id  not in Show's key at all
+  //                -> many Shows per Tour.                correct
   //
   // WHAT THE RULE ACTUALLY GUARANTEES — it is SOUND, NOT COMPLETE, and the two
   // are not the same promise. Every one-to-one it reports is real, because the
@@ -276,7 +276,7 @@ table BetType {
   // reports may be one-to-one in truth, with nothing in the schema saying so.
   //
   // The extension table is the case that tests this and PASSES: a type that
-  // exists only to carry more columns for one SportGame declares `key event_id`
+  // exists only to carry more columns for one Show declares `key event_id`
   // and case one fires — one-to-one, derived, correct, no keyword needed. It
   // looks like a counterexample and is not.
   //
@@ -292,37 +292,37 @@ table BetType {
   // one. It has no instance of the escaping case.
   //
   // MANY-TO-MANY falls out of the same rule and needs no syntax either: a type
-  // whose key is exactly two foreign keys IS a join table. BetType is not one,
-  // because bet_type_id references nothing. The corpus has no join table.
+  // whose key is exactly two foreign keys IS a join table. TicketType is not one,
+  // because ticket_type_id references nothing. The corpus has no join table.
   // THE ONLY REAL RELATION IN THIS FILE — and its target is ambiguous. SIX
   // corpus types declare EventId as their identity. They are twins and
   // projections of each other, sharing an identity AND a key space, so naming
-  // SportGame does not pick one out. Unanswered, in both spellings.
-  int64 event_id = 2 [references(SportGame)];
+  // Show does not pick one out. Unanswered, in both spellings.
+  int64 event_id = 2 [references(Show)];
   int64 id = 3;
 
   // COMPUTED MEMBER, class 2 — alias. No tag, no wire slot, get AND set.
-  // It exists so this type's API matches its view, SlimBetType, which names the
-  // tag-3 field `bet_type_id` directly.
+  // It exists so this type's API matches its view, SlimTicketType, which names the
+  // tag-3 field `ticket_type_id` directly.
   //
   // There used to be a third class of computed member here, the derived index
-  // (`fixture_id_index = fixture_id else 0`). It was a member that existed for
+  // (`listing_id_index = listing_id else 0`). It was a member that existed for
   // no reason except to be indexed, so dropping `index` deleted it outright.
   // Two classes left, and neither is an expression.
-  alias bet_type_id = id;
+  alias ticket_type_id = id;
 
   string name = 4;
 
-  BetTypeStatus  status           = 7;
-  BetTypeStatus? status_manual    = 8;
-  BetTypeStatus? status_watch_dog = 9;
+  TicketTypeStatus  status           = 7;
+  TicketTypeStatus? status_manual    = 8;
+  TicketTypeStatus? status_watch_dog = 9;
 
   decimal(4)? limit_manual_single = 22;
 
   [DataCacheFromTimestamp]
   int64 timestamp = 25;
 
-  repeated Odd odds = 26;
+  repeated Quote quotes = 26;
 }
 
 // --- VIEWS ------------------------------------------------------------------
@@ -340,20 +340,20 @@ table BetType {
 // This declaration used to have to restate the cache topic. It no longer does,
 // and it no longer restates the index set either — which was the other half of
 // what made a view read like a second copy of its source.
-[DataCacheTopic("Cache.[v:brandId].SportGame")]
-view SlimSportGame of SportGame {
+[DataCacheTopic("Cache.[v:brandId].Show")]
+view SlimShow of Show {
   // Only the name changes — and under int-key MessagePack names are not on the
   // wire, so a rename is free. That freeness is why EventId/Id and Key/Id drift
   // across the corpus pairs with nobody noticing.
   event_id as id;
 
-  sport_type_id;
+  genre_id;
   country_id;
-  league_id;
-  home_team_id;
+  tour_id;
+  headliner_id;
 
   venue;
-  sport_type;
+  genre;
 
   // Relations need no mention at all. They are annotations ON the members, so
   // they travel with the members a view lists. With a separate relations block
@@ -361,20 +361,20 @@ view SlimSportGame of SportGame {
   // the member it is just what happens.
 }
 
-// A VIEW OF A NON-CACHED TYPE. `Odd` is a record — no key, nothing points at
+// A VIEW OF A NON-CACHED TYPE. `Quote` is a record — no key, nothing points at
 // it — and it still has a view, because a view is about tags and members, not
-// about identity. SlimOdd is what SlimBetType carries in place of Odd.
-view SlimOdd of Odd {
+// about identity. SlimQuote is what SlimTicketType carries in place of Quote.
+view SlimQuote of Quote {
   name;
   timestamp;
 }
 
-[DataCacheTopic("Cache.[v:brandId].BetType")]
-view SlimBetType of BetType {
+[DataCacheTopic("Cache.[v:brandId].TicketType")]
+view SlimTicketType of TicketType {
   key as id;
 
   event_id;
-  id as bet_type_id;
+  id as ticket_type_id;
 
   name;
 
@@ -385,17 +385,17 @@ view SlimBetType of BetType {
   limit_manual_single;
   timestamp;
 
-  // A MEMBER NARROWED TO A VIEW. Tag 26 in BetType holds `repeated Odd`; here
-  // it holds `repeated SlimOdd`, and SlimOdd must be a view OF Odd — which is
+  // A MEMBER NARROWED TO A VIEW. Tag 26 in TicketType holds `repeated Quote`; here
+  // it holds `repeated SlimQuote`, and SlimQuote must be a view OF Quote — which is
   // the whole check. Writing a type before the member name is what asks for the
   // narrowing; a bare member name takes the source's type unchanged.
   //
   // This is not a hypothetical. The corpus does exactly this and nothing in the
   // language could say so until now:
-  //     BOBetTypeCacheItem.Odds  is  List<Odd>
-  //     SlimBetType.Odds         is  SlimOdd[]     <- same tag, narrower type
+  //     BOTicketTypeCacheItem.Quotes  is  List<Quote>
+  //     SlimTicketType.Quotes         is  SlimQuote[]     <- same tag, narrower type
   //
   // Note what it makes checkable: a view of a view is still pinned to the
-  // original tags, so SlimOdd cannot quietly renumber and desync tag 26.
-  SlimOdd odds;
+  // original tags, so SlimQuote cannot quietly renumber and desync tag 26.
+  SlimQuote quotes;
 }

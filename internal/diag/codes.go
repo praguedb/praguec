@@ -165,7 +165,7 @@ const (
 	// forever while squatting a slot the source might later claim.
 	TagInViewMember Code = 308
 	// ScalarInViewMember is a scalar in the narrowing position of a view
-	// member. The leading name of `SlimOdd odds;` asks for the member's type to
+	// member. The leading name of `SlimQuote quotes;` asks for the member's type to
 	// be narrowed to another view, and a scalar is not one -- a member that
 	// keeps its source's type is written with no leading name at all.
 	ScalarInViewMember Code = 309
@@ -187,7 +187,7 @@ const (
 	// runtime.
 	NoSuchMember Code = 312
 	// NarrowingNotAView is a view member narrowed to a declaration that is not
-	// a view. The leading name of `SlimOdd odds;` asks for the member's type to
+	// a view. The leading name of `SlimQuote quotes;` asks for the member's type to
 	// be narrowed, and only a view narrows one; a member that keeps its
 	// source's type is written as its name alone.
 	NarrowingNotAView Code = 313

@@ -1,16 +1,16 @@
 using Prague.Feed.Cache.Core;
 using Common.EventApi.Models.Branded;
 using Common.EventApi.Models.Enums;
-using Common.EventApi.Models.VirtualGameEntity;
+using Common.EventApi.Models.VirtualShowEntity;
 using CommonFeedModels.Enums;
 using MessagePack;
 
 namespace Common.EventApi.Cache.Prague.Models;
 
 [MessagePackObject]
-[DataCache(CacheClassName = nameof(Prague.Models.BPSportGameCache))]
-[DataCacheTopic("Cache.[v:brandId].SportGame")]
-public sealed partial class BPSportGameCacheItem
+[DataCache(CacheClassName = nameof(Prague.Models.BPShowCache))]
+[DataCacheTopic("Cache.[v:brandId].Show")]
+public sealed partial class BPShowCacheItem
 {
     [Key(0)]
     [DataCacheKey]
@@ -18,19 +18,19 @@ public sealed partial class BPSportGameCacheItem
 
     // Identifiers
     [Key(1)]
-    public long SportTypeId { get; set; }
+    public long GenreId { get; set; }
 
     [Key(2)]
     public long CountryId { get; set; }
 
     [Key(3)]
-    public long LeagueId { get; set; }
+    public long TourId { get; set; }
 
     [Key(4)]
-    public long? HomeTeamId { get; set; }
+    public long? HeadlinerId { get; set; }
 
     [Key(5)]
-    public long? AwayTeamId { get; set; }
+    public long? OpenerId { get; set; }
 
     [Key(6)]
     public Venue? Venue { get; set; }
@@ -55,7 +55,7 @@ public sealed partial class BPSportGameCacheItem
     public int EventTypeId { get; set; }
 
     [Key(14)]
-    public int? FixtureId { get; set; }
+    public int? ListingId { get; set; }
 
     [Key(15)]
     public bool IsLive { get; set; }
@@ -73,14 +73,14 @@ public sealed partial class BPSportGameCacheItem
     public bool? IsPinned { get; set; }
 
     [Key(20)]
-    public bool IsContainsPendingOddsWithBets { get; set; }
+    public bool IsContainsPendingQuotesWithPurchases { get; set; }
 
     [Key(21)]
     [DataCacheIndex]
     public WatchDogAction WatchDogAction { get; set; }
 
     [Key(22)]
-    public string? BetRadarEventStatus { get; set; }
+    public string? FeedProviderEventStatus { get; set; }
 
     [Key(23)]
     [DataCacheIndex]
@@ -126,29 +126,29 @@ public sealed partial class BPSportGameCacheItem
     public decimal? LiveLimitManualSingle { get; set; }
 
     [Key(36)]
-    public decimal? PrematchLimitManualSingle { get; set; }
+    public decimal? PresaleLimitManualSingle { get; set; }
 
     [Key(37)]
-    public decimal? LiveLimitManualCombo { get; set; }
+    public decimal? LiveLimitManualBundle { get; set; }
 
     [Key(38)]
-    public decimal? PrematchLimitManualCombo { get; set; }
+    public decimal? PresaleLimitManualBundle { get; set; }
 
     [Key(39)]
-    public decimal? LiveBetBuilderManualLimit { get; set; }
+    public decimal? LivePurchaseBuilderManualLimit { get; set; }
 
     [Key(40)]
-    public decimal? PrematchBetBuilderManualLimit { get; set; }
+    public decimal? PresalePurchaseBuilderManualLimit { get; set; }
 
     // Counters and flags
     [Key(44)]
-    public bool HasBetTypes { get; set; }
+    public bool HasTicketTypes { get; set; }
 
     [Key(45)]
     public bool IsSettlementBlocked { get; set; }
 
     [Key(46)]
-    public List<Runner> Runners { get; set; } = [];
+    public List<Performer> Performers { get; set; } = [];
 
     // Coverage
     [Key(47)]
@@ -158,10 +158,10 @@ public sealed partial class BPSportGameCacheItem
     public string? CoverageLevel { get; set; }
 
     [Key(49)]
-    public int? PeriodLength { get; set; }
+    public int? SegmentLength { get; set; }
 
     [Key(50)]
-    public DateTime? BetDataLastUpdateAt { get; set; }
+    public DateTime? PurchaseDataLastUpdateAt { get; set; }
 
     [Key(51)]
     public long EventsHubReceivedTimestampMs { get; set; }
@@ -173,17 +173,17 @@ public sealed partial class BPSportGameCacheItem
     public int? EventSource { get; set; }
     
     [Key(54)]
-    public StaticDataRef SportType { get; set; } = null!;
+    public StaticDataRef Genre { get; set; } = null!;
     
     [Key(55)]
     public StaticDataRef Country { get; set; } = null!;
     
     [Key(56)]
-    public StaticDataRef League { get; set; } = null!;
+    public StaticDataRef Tour { get; set; } = null!;
     
     [Key(57)]
-    public StaticDataRef? HomeTeam { get; set; } = null!;
+    public StaticDataRef? Headliner { get; set; } = null!;
     
     [Key(58)]
-    public StaticDataRef? AwayTeam { get; set; } = null!;
+    public StaticDataRef? Opener { get; set; } = null!;
 }

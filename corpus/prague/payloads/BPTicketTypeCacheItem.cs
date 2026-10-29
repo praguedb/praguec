@@ -4,16 +4,16 @@ using Common.EventApi.Models.Branded;
 using CommonFeedModels.Enums;
 using MessagePack;
 
-namespace BO.Services.Prague.Models;
+namespace Common.EventApi.Cache.Prague.Models;
 
 [MessagePackObject]
-[DataCache(CacheClassName = nameof(BOBetTypeCache))]
-[DataCacheTopic("Cache.[v:brandId].BetType")]
-public sealed partial class BOBetTypeCacheItem
+[DataCache(CacheClassName = nameof(Prague.Models.BPTicketTypeCache))]
+[DataCacheTopic("Cache.[v:brandId].TicketType")]
+public sealed partial class BPTicketTypeCacheItem
 {
     [IgnoreMember]
     [JsonIgnore]
-    public long BetTypeId
+    public long TicketTypeId
     {
         get => Id;
         set => Id = value;
@@ -21,7 +21,7 @@ public sealed partial class BOBetTypeCacheItem
 
     [Key(0)]
     [DataCacheKey]
-    public (long EventId, long BetTypeId) Key => (EventId, BetTypeId);
+    public (long EventId, long TicketTypeId) Key => (EventId, TicketTypeId);
 
     [Key(1)]
     [DataCacheIndex]
@@ -40,19 +40,19 @@ public sealed partial class BOBetTypeCacheItem
     public long ProviderKey { get; set; }
 
     [Key(6)]
-    public BetTypeStatus Status { get; set; }
+    public TicketTypeStatus Status { get; set; }
 
     [Key(7)]
-    public BetTypeStatus? StatusManual { get; set; }
+    public TicketTypeStatus? StatusManual { get; set; }
 
     [Key(8)]
-    public BetTypeStatus? StatusWatchDog { get; set; }
+    public TicketTypeStatus? StatusWatchDog { get; set; }
 
     [Key(9)]
     public bool IsLive { get; set; }
 
     [Key(10)]
-    public bool IsLineable { get; set; }
+    public bool IsListable { get; set; }
 
     [Key(11)]
     public bool IsResulted { get; set; }
@@ -64,7 +64,7 @@ public sealed partial class BOBetTypeCacheItem
     public bool IsManualChanged { get; set; }
 
     [Key(14)]
-    public string WinningSelectionId { get; set; } = string.Empty;
+    public string AssignedSeatId { get; set; } = string.Empty;
 
     [Key(15)]
     public DateTime? ClosedTime { get; set; }
@@ -88,20 +88,20 @@ public sealed partial class BOBetTypeCacheItem
     public decimal? LimitManualSingle { get; set; }
 
     [Key(22)]
-    public decimal? LimitManualCombo { get; set; }
+    public decimal? LimitManualBundle { get; set; }
 
     [Key(23)]
-    public decimal? LimitManualBetBuilder { get; set; }
+    public decimal? LimitManualPurchaseBuilder { get; set; }
 
     [Key(24)]
     public long Timestamp { get; set; }
 
     [Key(25)]
-    public List<Odd> Odds { get; set; } = [];
+    public List<Quote> Quotes { get; set; } = [];
 
     [Key(26)]
     public List<string> Groups { get; set; } = [];
 
     [Key(27)]
-    public Odd? T { get; set; }
+    public Quote? T { get; set; }
 }

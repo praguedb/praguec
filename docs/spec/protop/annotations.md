@@ -3,22 +3,22 @@
 An annotation follows what it describes. There is no second position and no before-slot.
 
 ```protop
-table SportGame [cs: DataCacheTopic("...")] { }      // after the declaration head
+table Show [cs: DataCacheTopic("...")] { }      // after the declaration head
 int64 timestamp = 25 [cs: DataCacheFromTimestamp];   // after the tag
-alias bet_type_id = id [cs: JsonIgnore];             // after the alias
+alias ticket_type_id = id [cs: JsonIgnore];             // after the alias
 ```
 
 Legal on a table, record, struct, view, field, view member, or alias. Same rule everywhere.
 
-**One bracket, one annotation. Stack by juxtaposition.** No commas between annotations, because annotation contents already contain commas — `DataCacheIndex(nameof(FixtureIdIndex), nameof(FixtureId), DataCacheIndexType.Many)`, which the pin carries — and a separator that competes with them buys nothing. Whitespace between brackets is insignificant, so a head carrying four annotations wraps freely across lines. praguec emits them in source order and never sorts or deduplicates.
+**One bracket, one annotation. Stack by juxtaposition.** No commas between annotations, because annotation contents already contain commas — `DataCacheIndex(nameof(ListingIdIndex), nameof(ListingId), DataCacheIndexType.Many)`, which the pin carries — and a separator that competes with them buys nothing. Whitespace between brackets is insignificant, so a head carrying four annotations wraps freely across lines. praguec emits them in source order and never sorts or deduplicates.
 
 **A prefix names the target language. No prefix means protop's own.**
 
 | Form | Meaning |
 |---|---|
-| `[references(SportGame)]` | protop's own closed set. Read, checked, unknown is an error. |
+| `[references(Show)]` | protop's own closed set. Read, checked, unknown is an error. |
 | `[cs: DataCacheTopic("...")]` | Verbatim C# attribute text. Copied out, never inspected. |
-| `[go: json:"sportGame"]` | On a member: verbatim Go struct-tag text. On a declaration: a doc-comment line. |
+| `[go: json:"show"]` | On a member: verbatim Go struct-tag text. On a declaration: a doc-comment line. |
 
 The legal prefix set is exactly the backends praguec has. An unknown prefix is an error rather than a silent drop, because a typo that vanishes from the output is worse than the lexical rule this replaced. The set is `cs` and `go`; each backend copies only its own prefix.
 

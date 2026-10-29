@@ -44,7 +44,7 @@ message CompositeKey {
 // CARDINALITY HAS NO VOCABULARY HERE. The enum that used to sit at this spot
 // is gone, and so is the message-level ManyToMany beside it — both derivable
 // from `references` plus the declaring message's own key. See the note on
-// `references` below, and BetType in prague.proto for the derivation checked
+// `references` below, and TicketType in prague.proto for the derivation checked
 // against the corpus.
 //
 // Many-to-many in particular: a join needs two keyed ends, and 25 of the
@@ -95,7 +95,7 @@ extend google.protobuf.FieldOptions {
   // RELATIONS, on the field rather than on the message.
   //
   // Better than the message-level form it replaces, for a reason worth stating
-  // precisely: that form carried `field: "sport_type_id"`, a STRING naming a
+  // precisely: that form carried `field: "genre_id"`, a STRING naming a
   // member of the same message, and protoc checked no part of it. On the field
   // there is no `field:` to get wrong. That is the general rule:
   //
@@ -112,7 +112,7 @@ extend google.protobuf.FieldOptions {
   // part of a composite key -> many-to-one; the FK is in no key -> many-to-one
   // unconstrained. One-to-many is the same fact backwards, and a key that is
   // exactly two FKs is a join table. Three for three against the corpus (see
-  // prague.proto, BetType). Four keywords would restate, unchecked, what the
+  // prague.proto, TicketType). Four keywords would restate, unchecked, what the
   // file already carries — which is what took `topic` out of the language.
   //
   // Sound, not complete: every one-to-one derived is key-enforced and cannot be
@@ -127,7 +127,7 @@ extend google.protobuf.FieldOptions {
   //
   // HOW LITTLE THIS IS USED, measured. Of the corpus's 36 foreign-key-shaped
   // members, 25 name no cached type at all and 4 more are opaque ids; only
-  // EventId and BetTypeId resolve. And EventId resolves to SIX types at once —
+  // EventId and TicketTypeId resolve. And EventId resolves to SIX types at once —
   // twins and projections sharing an identity and a key space — so even the
   // grounded case does not pick a target out. protop has no answer for that.
   string references = 50040;
@@ -141,7 +141,7 @@ extend google.protobuf.FieldOptions {
   //
   // What deferring costs, exactly: the one check it bought was that the two
   // halves agree about presence, and three of the 15 pairs do not, including
-  // SlimSportGame's `long? HomeTeamId` beside `StaticDataRef HomeTeam = null!`.
+  // SlimShow's `long? HeadlinerId` beside `StaticDataRef Headliner = null!`.
   // Phase 1 emits that as written and says nothing.
   //
   // reserved 50041;  // snapshot_of — deferred, not retired

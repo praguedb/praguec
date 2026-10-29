@@ -1,6 +1,6 @@
 namespace Common.EventApi.Cache.Prague.Models;
 
-public sealed partial class BPBetTypeCache
+public sealed partial class BPTicketTypeCache
 {
     public void Clear()
     {

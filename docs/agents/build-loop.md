@@ -81,8 +81,8 @@ The dependency takes the blocker's **database id**, not its number.
 Breaking one of these is a regression even when the tests pass:
 
 - **No keyword token kinds.** Every word lexes as `KindIdent` and the parser
-  decides by position — `key key = 1 (event_id, bet_type_id);` and `alias
-  bet_type_id = id;` are unparseable otherwise. Token kinds are prefixed `Kind*`
+  decides by position — `key key = 1 (event_id, ticket_type_id);` and `alias
+  ticket_type_id = id;` are unparseable otherwise. Token kinds are prefixed `Kind*`
   because the AST owns names like `Ident` in the same package.
 - **The lexer is already complete.** It covers punctuation the parser cannot yet
   read, so growing the language is a parser change alone. Adding a token kind

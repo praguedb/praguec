@@ -8,7 +8,7 @@ A hash says two schemas differ. It cannot say which is newer, or whether the dif
 
 ### Versioned per table
 
-A table is a topic is a wire contract. A consumer of `SportGame` should not see a bump because `BetType` changed.
+A table is a topic is a wire contract. A consumer of `Show` should not see a bump because `TicketType` changed.
 
 | Change | Verdict |
 |---|---|

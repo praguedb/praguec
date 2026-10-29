@@ -31,7 +31,7 @@ be re-taken. Worth confirming this is the intended target and not an abandoned s
   someone asks how big the corpus is.
 - `shells/` — the 11 hand-written halves of the cache classes, each a
   `public sealed partial class XCache`. **Only three of them are empty** —
-  `LiveObjectCache`, `SlimBetTypeCache` and `SlimSportGameCache`. The other
+  `LiveObjectCache`, `SlimTicketTypeCache` and `SlimShowCache`. The other
   eight carry a `public void Clear()` written against members
   `Prague.Feed.Cache` generates: `Query()`, `Execute()`, `Remove()`. So the
   shell is not a formality a generator could emit blind and be done with. It is
@@ -40,7 +40,7 @@ be re-taken. Worth confirming this is the intended target and not an abandoned s
   #25 owns whether `praguec` should emit a shell at all.
 - `deps/` — types the payloads reference that are not themselves Prague types:
   `BaseProviderObject`, `StaticDataRef`, `IBaseLiveData`, and the
-  `SportGameSlimExtensions` projection helper.
+  `ShowSlimExtensions` projection helper.
 
 ## Upstream paths
 
@@ -60,18 +60,18 @@ That second half is longer than it reads, so here it is in full. Fourteen type
 names appear in member positions in the copied files and are declared nowhere in
 this corpus:
 
-`BetTypeStatus`, `BookingStatus`, `Channel`, `EventPhase`, `EventScore`,
-`EventSource`, `EventStatus`, `LivePeriodScore`, `Odd`, `OddStatus`, `Runner`,
-`SportTypeList`, `WatchDogAction`, `WinStatus`.
+`TicketTypeStatus`, `BookingStatus`, `Channel`, `EventPhase`, `EventRating`,
+`EventSource`, `EventStatus`, `LiveSegmentRating`, `Quote`, `QuoteStatus`, `Performer`,
+`GenreList`, `WatchDogAction`, `WinStatus`.
 
 Take that list as exhaustive and nothing else as resolvable: a reader working
-from the shorter sentence this replaces would have concluded that `Runner` and
+from the shorter sentence this replaces would have concluded that `Performer` and
 the six status enums could be looked up in the corpus. They cannot.
 
-`Runner` is the one that bites. `List<Runner>` is `SportGameCacheItem` key 46,
-and the spec's `SportGame` transcription writes that member as
-`list<StaticDataRef> runners`. The tag is right — key 46 → tag 47 under
-`Key = tag - 1` — but because `Runner` was never copied, **the pin cannot settle
+`Performer` is the one that bites. `List<Performer>` is `ShowCacheItem` key 46,
+and the spec's `Show` transcription writes that member as
+`list<StaticDataRef> performers`. The tag is right — key 46 → tag 47 under
+`Key = tag - 1` — but because `Performer` was never copied, **the pin cannot settle
 whether `StaticDataRef` there is a faithful transcription, a substitution, or an
-error.** Either `Runner` gets copied on the next pin or that transcription stays
+error.** Either `Performer` gets copied on the next pin or that transcription stays
 unverifiable; what is no longer acceptable is the gap being silent.

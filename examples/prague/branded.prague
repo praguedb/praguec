@@ -36,24 +36,24 @@ record StaticDataRef
   int64  provider_key        = 4;
 }
 
-// Odd is not in the corpus either -- SOURCE.md does not copy it -- but unlike
-// Runner its tag space is fully recoverable, because corpus/prague/payloads/
-// SlimOdd.cs is a view of it and a view carries its source's tags. Every member
-// below is one of SlimOdd's keys, at that key plus one, with the type SlimOdd's
+// Quote is not in the corpus either -- SOURCE.md does not copy it -- but unlike
+// Performer its tag space is fully recoverable, because corpus/prague/payloads/
+// SlimQuote.cs is a view of it and a view carries its source's tags. Every member
+// below is one of SlimQuote's keys, at that key plus one, with the type SlimQuote's
 // own constructor parameter gives it.
-record Odd {
+record Quote {
   string     name                  = 1;
   bool       is_dynamic            = 4;
   int64      timestamp             = 5;
   string?    line                  = 7;
-  double     odds_actual           = 9;
-  double     odds_fair             = 10;
-  double?    odds_manual           = 11;
-  OddStatus  status                = 13;
-  OddStatus? status_manual         = 14;
+  double     quotes_actual           = 9;
+  double     quotes_fair             = 10;
+  double?    quotes_manual           = 11;
+  QuoteStatus  status                = 13;
+  QuoteStatus? status_manual         = 14;
   WinStatus  win_status_id         = 20;
   WinStatus? win_status_id_manual  = 21;
-  bool?      is_boosted            = 24;
+  bool?      is_featured            = 24;
   bool?      is_balanced_line      = 27;
-  int64?     player_id             = 28;
+  int64?     customer_id             = 28;
 }

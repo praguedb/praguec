@@ -1,5 +1,5 @@
 namespace Common.EventApi.Cache.Prague.Models;
 
-public sealed partial class SlimBetTypeCache
+public sealed partial class SlimTicketTypeCache
 {
 }

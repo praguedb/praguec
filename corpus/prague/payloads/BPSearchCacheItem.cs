@@ -26,16 +26,16 @@ public sealed partial class BPSearchCacheItem
     public Channel ChannelId { get; set; }
 
     [Key(3)]
-    public string? HomeTeamDisplayName { get; set; }
+    public string? HeadlinerDisplayName { get; set; }
 
     [Key(4)]
-    public long? AwayTeamId { get; set; }
+    public long? OpenerId { get; set; }
 
     [Key(5)]
-    public string? AwayTeamName { get; set; }
+    public string? OpenerName { get; set; }
 
     [Key(6)]
-    public string? AwayTeamDisplayName { get; set; }
+    public string? OpenerDisplayName { get; set; }
 
     [Key(7)]
     public EventStatus EventStatus { get; set; }
@@ -59,16 +59,16 @@ public sealed partial class BPSearchCacheItem
     public int TopEventOrder { get; set; }
 
     [Key(14)]
-    public int ActiveBetTypesCount { get; set; }
+    public int ActiveTicketTypesCount { get; set; }
 
     [Key(15)]
-    public int TotalBetTypesCount { get; set; }
+    public int TotalTicketTypesCount { get; set; }
 
     [Key(17)]
     public int EventTypeId { get; set; }
 
     [Key(18)]
-    public int? FixtureId { get; set; }
+    public int? ListingId { get; set; }
 
     [Key(19)]
     public bool IsLive { get; set; }
@@ -80,22 +80,22 @@ public sealed partial class BPSearchCacheItem
     public bool? IsPinned { get; set; }
 
     [Key(22)]
-    public bool IsContainsPendingOddsWithBets { get; set; }
+    public bool IsContainsPendingQuotesWithPurchases { get; set; }
 
     [Key(23)]
     public bool IsManualChanged { get; set; }
 
     [Key(24)]
-    public string? HomeTeamName { get; set; }
+    public string? HeadlinerName { get; set; }
 
     [Key(25)]
-    public bool HasIsBoostedOdds { get; set; }
+    public bool HasIsFeaturedQuotes { get; set; }
 
     [Key(26)]
-    public long? HomeTeamId { get; set; }
+    public long? HeadlinerId { get; set; }
 
     [Key(27)]
-    public int? LeagueDisplayOrder { get; set; }
+    public int? TourDisplayOrder { get; set; }
 
     [Key(30)]
     public string EventName { get; set; }
@@ -107,19 +107,19 @@ public sealed partial class BPSearchCacheItem
     public long? Timestamp { get; set; }
 
     [Key(33)]
-    public long SportTypeId { get; set; }
+    public long GenreId { get; set; }
 
     [Key(34)]
-    public string SportTypeName { get; set; }
+    public string GenreName { get; set; }
 
     [Key(35)]
-    public string? SportTypeDisplayName { get; set; }
+    public string? GenreDisplayName { get; set; }
 
     [Key(36)]
-    public int? SportTypeDisplayOrder { get; set; }
+    public int? GenreDisplayOrder { get; set; }
 
     [Key(37)]
-    public bool SportTypeDisabled { get; set; }
+    public bool GenreDisabled { get; set; }
 
     [Key(38)]
     public long CountryId { get; set; }
@@ -137,17 +137,17 @@ public sealed partial class BPSearchCacheItem
     public bool CountryDisabled { get; set; }
 
     [Key(43)]
-    public long LeagueId { get; set; }
+    public long TourId { get; set; }
 
     [Key(44)]
-    public string LeagueName { get; set; }
+    public string TourName { get; set; }
 
     [Key(45)]
-    public string? LeagueDisplayName { get; set; }
+    public string? TourDisplayName { get; set; }
 
     [Key(46)]
-    public bool LeagueDisabled { get; set; }
+    public bool TourDisabled { get; set; }
 
     [Key(47)]
-    public bool HasBetTypes { get; set; }
+    public bool HasTicketTypes { get; set; }
 }

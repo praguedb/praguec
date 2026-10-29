@@ -22,7 +22,7 @@ import (
 //
 //		{
 //		  "version": 1,
-//		  "files": ["Odd.cs", "SportGame.cs"]
+//		  "files": ["Quote.cs", "Show.cs"]
 //		}
 //
 //	  - version is 1 and is bumped when the shape changes, so a reader can

@@ -237,8 +237,8 @@ func memberString(d *Decl, m *Member) string {
 }
 
 // typeString writes a resolved type the way the source spelled it, with what it
-// resolved to in front of the name: `Odd` that resolved to a record reads
-// differently from `Odd` that resolved to nothing.
+// resolved to in front of the name: `Quote` that resolved to a record reads
+// differently from `Quote` that resolved to nothing.
 func typeString(t Type) string {
 	var s string
 	switch t.Kind {
@@ -279,28 +279,28 @@ func TestCheckSpecSections(t *testing.T) {
 	assertDump(t, schema, `file consumer.prague
   namespace BrandReader.Services.Cache
   import prague.prague
-  view SlimSportGame of SportGame
-    key field id = 1 int64 from SportGame.event_id
-    field sport_type_id = 2 int64 from SportGame.sport_type_id
-    field country_id = 3 int64 from SportGame.country_id
-    field league_id = 4 int64 from SportGame.league_id
-    field home_team_id = 5 int64? from SportGame.home_team_id
-    field venue = 7 struct:Venue? from SportGame.venue
-    field sport_type = 55 record:StaticDataRef from SportGame.sport_type
-  view SlimOdd of Odd
-    field name = 1 string from Odd.name
-    field timestamp = 5 int64 from Odd.timestamp
-  view SlimBetType of BetType
-    key key id = 1 (event_id, bet_type_id) from BetType.key
-    field event_id = 2 int64 from BetType.event_id
-    field bet_type_id = 3 int64 from BetType.id
-    field name = 4 string from BetType.name
-    field status = 7 enum:BetTypeStatus from BetType.status
-    field status_manual = 8 enum:BetTypeStatus? from BetType.status_manual
-    field status_watch_dog = 9 enum:BetTypeStatus? from BetType.status_watch_dog
-    field limit_manual_single = 22 decimal(4)? from BetType.limit_manual_single
-    field timestamp = 25 int64 from BetType.timestamp
-    field odds = 26 list<view:SlimOdd> from BetType.odds
+  view SlimShow of Show
+    key field id = 1 int64 from Show.event_id
+    field genre_id = 2 int64 from Show.genre_id
+    field country_id = 3 int64 from Show.country_id
+    field tour_id = 4 int64 from Show.tour_id
+    field headliner_id = 5 int64? from Show.headliner_id
+    field venue = 7 struct:Venue? from Show.venue
+    field genre = 55 record:StaticDataRef from Show.genre
+  view SlimQuote of Quote
+    field name = 1 string from Quote.name
+    field timestamp = 5 int64 from Quote.timestamp
+  view SlimTicketType of TicketType
+    key key id = 1 (event_id, ticket_type_id) from TicketType.key
+    field event_id = 2 int64 from TicketType.event_id
+    field ticket_type_id = 3 int64 from TicketType.id
+    field name = 4 string from TicketType.name
+    field status = 7 enum:TicketTypeStatus from TicketType.status
+    field status_manual = 8 enum:TicketTypeStatus? from TicketType.status_manual
+    field status_watch_dog = 9 enum:TicketTypeStatus? from TicketType.status_watch_dog
+    field limit_manual_single = 22 decimal(4)? from TicketType.limit_manual_single
+    field timestamp = 25 int64 from TicketType.timestamp
+    field quotes = 26 list<view:SlimQuote> from TicketType.quotes
 file prague.prague
   namespace Common.EventApi.Cache.Prague.Models
   struct Venue
@@ -311,7 +311,7 @@ file prague.prague
     NOT_STARTED = 1
     IN_PROGRESS = 2
     FINISHED = 3
-  enum BetTypeStatus
+  enum TicketTypeStatus
     UNKNOWN = 0
     OPEN = 1
     SUSPENDED = 2
@@ -321,41 +321,41 @@ file prague.prague
     field name = 2 string
     field provider_source_key = 3 string?
     field provider_key = 4 int64
-  record Odd
+  record Quote
     field name = 1 string
-    field odds_actual = 9 double
+    field quotes_actual = 9 double
     field timestamp = 5 int64
-  table SportGame
+  table Show
     key field event_id = 1 int64
-    field sport_type_id = 2 int64
+    field genre_id = 2 int64
     field country_id = 3 int64
-    field league_id = 4 int64
-    field home_team_id = 5 int64?
-    field away_team_id = 6 int64?
+    field tour_id = 4 int64
+    field headliner_id = 5 int64?
+    field opener_id = 6 int64?
     field venue = 7 struct:Venue?
-    field fixture_id = 15 int32?
+    field listing_id = 15 int32?
     field event_status = 24 enum:EventStatus
     field event_date = 28 int64
     field provider_timestamp = 35 int64
     field live_limit_manual_single = 36 decimal(4)?
-    field runners = 47 list<record:StaticDataRef>
-    field sport_type = 55 record:StaticDataRef
+    field performers = 47 list<record:StaticDataRef>
+    field genre = 55 record:StaticDataRef
     field country = 56 record:StaticDataRef
-    field league = 57 record:StaticDataRef
-    field home_team = 58 record:StaticDataRef?
-    field away_team = 59 record:StaticDataRef?
-  table BetType
-    key key key = 1 (event_id, bet_type_id)
-    field event_id = 2 int64 [references(SportGame) many-to-one]
+    field tour = 57 record:StaticDataRef
+    field headliner = 58 record:StaticDataRef?
+    field opener = 59 record:StaticDataRef?
+  table TicketType
+    key key key = 1 (event_id, ticket_type_id)
+    field event_id = 2 int64 [references(Show) many-to-one]
     field id = 3 int64
-    alias bet_type_id int64 -> id
+    alias ticket_type_id int64 -> id
     field name = 4 string
-    field status = 7 enum:BetTypeStatus
-    field status_manual = 8 enum:BetTypeStatus?
-    field status_watch_dog = 9 enum:BetTypeStatus?
+    field status = 7 enum:TicketTypeStatus
+    field status_manual = 8 enum:TicketTypeStatus?
+    field status_watch_dog = 9 enum:TicketTypeStatus?
     field limit_manual_single = 22 decimal(4)?
     field timestamp = 25 int64
-    field odds = 26 list<record:Odd>
+    field quotes = 26 list<record:Quote>
 `)
 }
 
@@ -403,7 +403,7 @@ func collapseSpace(s string) string {
 // purpose -- `26` changed to `1` reads as a spec that lets the member invent a
 // number after all, and nothing else in this suite would notice.
 const section5NarrowAndRename = "**A view may narrow and rename in one member.** " +
-	"`SlimOdd odds as o;` is still tag 26: the leading type says what the member holds, " +
+	"`SlimQuote quotes as o;` is still tag 26: the leading type says what the member holds, " +
 	"`as o` says what the consumer calls it, and the tag is the source's as it is on " +
 	"every other view line — neither half is about the tag."
 
@@ -1151,13 +1151,13 @@ view OfR of R {
 // drifted, instead of decoding to nil at runtime.
 func TestAViewMemberMustNameAMemberOfItsSource(t *testing.T) {
 	set, _, bag := checkSet(t, map[string]string{
-		"consumer.prague": "revision 1;\nnamespace A;\nimport \"prague.prague\";\nview V of SportGame {\n  odds;\n}\n",
+		"consumer.prague": "revision 1;\nnamespace A;\nimport \"prague.prague\";\nview V of Show {\n  quotes;\n}\n",
 		pragueFixture:     readFixture(t, pragueFixture),
 	})
 	assertCodes(t, set, bag, diag.NoSuchMember)
-	assertAt(t, set, bag, 0, "consumer.prague:5:3", "odds")
+	assertAt(t, set, bag, 0, "consumer.prague:5:3", "quotes")
 	if msg := bag.All()[0].Message; !strings.Contains(msg, "prague.prague:") {
-		t.Errorf("message does not say where `SportGame` is declared: %s", msg)
+		t.Errorf("message does not say where `Show` is declared: %s", msg)
 	}
 }
 
@@ -1278,8 +1278,8 @@ func TestARenameIsTheViewsAlone(t *testing.T) {
 		pragueFixture:   readFixture(t, pragueFixture),
 		consumerFixture: readFixture(t, consumerFixture),
 	})
-	view := schema.File(consumerFixture).Decl("SlimSportGame")
-	table := schema.File(pragueFixture).Decl("SportGame")
+	view := schema.File(consumerFixture).Decl("SlimShow")
+	table := schema.File(pragueFixture).Decl("Show")
 
 	if view.Member("id") == nil || view.Member("event_id") != nil {
 		t.Error("the view knows the member by its new name and not by its old one")
@@ -1287,12 +1287,12 @@ func TestARenameIsTheViewsAlone(t *testing.T) {
 	if table.Member("event_id") == nil || table.Member("id") != nil {
 		t.Error("the rename reached the source table; a view renames in the view and nowhere else")
 	}
-	// BetType's alias is written in section 1, by hand, and there is exactly
+	// TicketType's alias is written in section 1, by hand, and there is exactly
 	// one of it. A rename that synthesized an alias would put a second member
 	// on the table nobody wrote.
-	bet := schema.File(pragueFixture).Decl("BetType")
-	if got := len(bet.Members); got != 11 {
-		t.Errorf("BetType has %d members, want the 11 section 1 writes", got)
+	purchase := schema.File(pragueFixture).Decl("TicketType")
+	if got := len(purchase.Members); got != 11 {
+		t.Errorf("TicketType has %d members, want the 11 section 1 writes", got)
 	}
 }
 
@@ -1354,37 +1354,37 @@ view V of T {
 }
 
 // A narrowing reaches through a collection to what it holds: section 5 gives
-// `SlimOdd odds;` tag 26, and tag 26 in section 1 is `list<Odd> odds`.
+// `SlimQuote quotes;` tag 26, and tag 26 in section 1 is `list<Quote> quotes`.
 func TestANarrowingReachesThroughACollection(t *testing.T) {
 	schema := checkClean(t, map[string]string{
 		pragueFixture:   readFixture(t, pragueFixture),
 		consumerFixture: readFixture(t, consumerFixture),
 	})
-	m := schema.File(consumerFixture).Decl("SlimBetType").Member("odds")
-	if got := typeString(m.Type); got != "list<view:SlimOdd>" {
-		t.Errorf("narrowed type is %s, want list<view:SlimOdd>", got)
+	m := schema.File(consumerFixture).Decl("SlimTicketType").Member("quotes")
+	if got := typeString(m.Type); got != "list<view:SlimQuote>" {
+		t.Errorf("narrowed type is %s, want list<view:SlimQuote>", got)
 	}
 }
 
 // A view of a view is not written -- PROTOP0206 says so -- but a narrowing to a
-// view of a view is, and the tags stay the original's either way. `SlimBetType`
-// holds `SlimOdd` at BetType's tag 26, and `SlimOdd`'s own members are at
-// `Odd`'s tags 1 and 5. Neither view invented a number.
+// view of a view is, and the tags stay the original's either way. `SlimTicketType`
+// holds `SlimQuote` at TicketType's tag 26, and `SlimQuote`'s own members are at
+// `Quote`'s tags 1 and 5. Neither view invented a number.
 func TestANarrowingToAViewKeepsTheOriginalsTags(t *testing.T) {
 	schema := checkClean(t, map[string]string{
 		pragueFixture:   readFixture(t, pragueFixture),
 		consumerFixture: readFixture(t, consumerFixture),
 	})
 	consumer := schema.File(consumerFixture)
-	if got := consumer.Decl("SlimBetType").Member("odds").Tag; got != 26 {
-		t.Errorf("`SlimOdd odds;` is tag %d, want BetType's 26", got)
+	if got := consumer.Decl("SlimTicketType").Member("quotes").Tag; got != 26 {
+		t.Errorf("`SlimQuote quotes;` is tag %d, want TicketType's 26", got)
 	}
-	slim := consumer.Decl("SlimOdd")
+	slim := consumer.Decl("SlimQuote")
 	if got, want := slim.Member("name").Tag, uint64(1); got != want {
-		t.Errorf("SlimOdd.name is tag %d, want Odd's %d", got, want)
+		t.Errorf("SlimQuote.name is tag %d, want Quote's %d", got, want)
 	}
 	if got, want := slim.Member("timestamp").Tag, uint64(5); got != want {
-		t.Errorf("SlimOdd.timestamp is tag %d, want Odd's %d", got, want)
+		t.Errorf("SlimQuote.timestamp is tag %d, want Quote's %d", got, want)
 	}
 }
 
@@ -1414,37 +1414,37 @@ func TestAViewInheritsItsSourcesIdentity(t *testing.T) {
 		pragueFixture:   readFixture(t, pragueFixture),
 		consumerFixture: readFixture(t, consumerFixture),
 	})
-	view := schema.File(consumerFixture).Decl("SlimSportGame")
+	view := schema.File(consumerFixture).Decl("SlimShow")
 	if view.Key == nil || view.Key.Name != "id" {
-		t.Errorf("view key is %v, want the member `id` that selects SportGame's key", view.Key)
+		t.Errorf("view key is %v, want the member `id` that selects Show's key", view.Key)
 	}
 }
 
 // A narrowing narrows the type and leaves the presence alone: an optional
-// member stays optional, and `Odd? odd;` narrowed to `SlimOdd` is a `SlimOdd?`.
+// member stays optional, and `Quote? quote;` narrowed to `SlimQuote` is a `SlimQuote?`.
 // Presence is a promise about whether the slot can be absent on the wire, and a
 // view is not entitled to make that promise stronger than the source's.
 func TestANarrowingKeepsTheMembersPresence(t *testing.T) {
 	schema := checkClean(t, map[string]string{
 		"a.prague": `revision 1;
 namespace A;
-record Odd {
+record Quote {
   int64 id = 1;
 }
-view SlimOdd of Odd {
+view SlimQuote of Quote {
   id;
 }
 table T {
   key int64 id = 1;
-  Odd? odd = 2;
+  Quote? quote = 2;
 }
 view V of T {
-  SlimOdd odd;
+  SlimQuote quote;
 }
 `,
 	})
-	if got := typeString(schema.File("a.prague").Decl("V").Member("odd").Type); got != "view:SlimOdd?" {
-		t.Errorf("narrowed type is %s, want view:SlimOdd?: the source member is optional and a narrowing does not make it required", got)
+	if got := typeString(schema.File("a.prague").Decl("V").Member("quote").Type); got != "view:SlimQuote?" {
+		t.Errorf("narrowed type is %s, want view:SlimQuote?: the source member is optional and a narrowing does not make it required", got)
 	}
 }
 
@@ -1457,28 +1457,28 @@ func TestANarrowingReachesThroughNestedCollections(t *testing.T) {
 	schema := checkClean(t, map[string]string{
 		"a.prague": `revision 1;
 namespace A;
-record Odd {
+record Quote {
   int64 id = 1;
 }
-view SlimOdd of Odd {
+view SlimQuote of Quote {
   id;
 }
 table T {
   key int64 id = 1;
-  list<list<Odd>> odds = 2;
+  list<list<Quote>> quotes = 2;
 }
 view V of T {
-  SlimOdd odds;
+  SlimQuote quotes;
 }
 `,
 	})
-	if got := typeString(schema.File("a.prague").Decl("V").Member("odds").Type); got != "list<list<view:SlimOdd>>" {
-		t.Errorf("narrowed type is %s, want list<list<view:SlimOdd>>", got)
+	if got := typeString(schema.File("a.prague").Decl("V").Member("quotes").Type); got != "list<list<view:SlimQuote>>" {
+		t.Errorf("narrowed type is %s, want list<list<view:SlimQuote>>", got)
 	}
 }
 
-// Narrowing and renaming in one member, which section 5 writes as `SlimOdd
-// odds as o;`. The three facts are asserted apart because they come from three
+// Narrowing and renaming in one member, which section 5 writes as `SlimQuote
+// quotes as o;`. The three facts are asserted apart because they come from three
 // different places -- the name from the view line's rename, the type from the
 // narrowing, the tag from the source and from neither half -- and a test that
 // compared one rendered member would pass on any two of the three.
@@ -1498,10 +1498,10 @@ view SlimInner of Inner {
 }
 table Outer {
   key int64 id = 1;
-  Inner odds = 7;
+  Inner quotes = 7;
 }
 view SlimOuter of Outer {
-  SlimInner odds as o;
+  SlimInner quotes as o;
 }
 `,
 	})
@@ -1509,35 +1509,35 @@ view SlimOuter of Outer {
 	view := file.Decl("SlimOuter")
 
 	// The name is the rename's, and it is the member's only name: a view that
-	// still answered to `odds` would have renamed nothing, it would have
+	// still answered to `quotes` would have renamed nothing, it would have
 	// aliased.
 	m := view.Member("o")
 	if m == nil {
 		t.Fatalf("the view has no member `o`:\n%s", dump(schema))
 	}
-	if view.Member("odds") != nil {
-		t.Error("the view still knows the member by its source's name `odds`; a rename replaces the name rather than adding one")
+	if view.Member("quotes") != nil {
+		t.Error("the view still knows the member by its source's name `quotes`; a rename replaces the name rather than adding one")
 	}
 
 	// The type is the narrowing's. `Inner` is what the source lends and
 	// `SlimInner` is what the leading type asks for.
 	if got := typeString(m.Type); got != "view:SlimInner" {
-		t.Errorf("`SlimInner odds as o;` is %s, want view:SlimInner -- the leading type is what the member holds", got)
+		t.Errorf("`SlimInner quotes as o;` is %s, want view:SlimInner -- the leading type is what the member holds", got)
 	}
 
 	// And the tag is the source's, untouched by either half. 7 is neither the
 	// member's position in the view nor a tag of `SlimInner`, so a tag read off
 	// the wrong thing does not land on it by luck.
 	if m.Tag != 7 {
-		t.Errorf("`SlimInner odds as o;` is tag %d, want Outer's 7: a view invents no tags, and narrowing and renaming are not tags", m.Tag)
+		t.Errorf("`SlimInner quotes as o;` is tag %d, want Outer's 7: a view invents no tags, and narrowing and renaming are not tags", m.Tag)
 	}
-	if m.From != file.Decl("Outer").Member("odds") {
-		t.Error("the member does not point at the source member `odds` it took its tag from")
+	if m.From != file.Decl("Outer").Member("quotes") {
+		t.Error("the member does not point at the source member `quotes` it took its tag from")
 	}
 }
 
 // Every diagnostic about a view member, with a rename on the member that
-// earns it. Section 5 rules `SlimOdd odds as o;` in, and the risk a new
+// earns it. Section 5 rules `SlimQuote quotes as o;` in, and the risk a new
 // spelling brings is not that it fails -- it is that the checks the old
 // spellings answer to stop being asked when the new one is present. A rename
 // is a branch above all five of these, and each one of them would go silent
@@ -1566,7 +1566,7 @@ record Plain {
 }
 table Outer {
   key int64 id = 1;
-  Inner odds = 7;
+  Inner quotes = 7;
   int64 other = 8;
   Plain p = 9;
 }
@@ -1579,9 +1579,9 @@ view V of Outer {
 	}{
 		// Two members under one name, one of them arriving at that name by
 		// narrowing and renaming at once.
-		{"a duplicate name", "  SlimInner odds as o;\n  other as o;\n", diag.DuplicateMember},
+		{"a duplicate name", "  SlimInner quotes as o;\n  other as o;\n", diag.DuplicateMember},
 		// A narrowing to a name that is nothing at all.
-		{"a narrowing to nothing", "  Nope odds as o;\n", diag.UnknownType},
+		{"a narrowing to nothing", "  Nope quotes as o;\n", diag.UnknownType},
 		// The diagnostic the design exists to produce, on a renamed member:
 		// the rename is what the consumer calls it, and calling it something
 		// does not make the source declare it.
@@ -1590,7 +1590,7 @@ view V of Outer {
 		{"a narrowing to a record", "  Plain p as x;\n", diag.NarrowingNotAView},
 		// A narrowing to a view of something else entirely, which is the
 		// mistake the construct exists to catch.
-		{"a narrowing to a view of another type", "  SlimOther odds as o;\n", diag.NarrowingSourceMismatch},
+		{"a narrowing to a view of another type", "  SlimOther quotes as o;\n", diag.NarrowingSourceMismatch},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			// The case is only the case its name claims while the rename is
@@ -1631,10 +1631,10 @@ view SlimOther of Other {
 }
 table Outer {
   key int64 id = 1;
-  Inner odds = 7;
+  Inner quotes = 7;
 }
 view V of Outer {
-  SlimOther odds as o;
+  SlimOther quotes as o;
 }
 `,
 	})
@@ -1700,10 +1700,10 @@ view V of T {
 
 // An alias takes its target's type by value, so the order the two are written
 // in must not matter. Section 1 writes the alias below its target and the
-// corpus writes it above -- corpus/prague/payloads/BPBetTypeCacheItem.cs opens
-// with `[IgnoreMember] public long BetTypeId` and declares `Id` twenty lines
+// corpus writes it above -- corpus/prague/payloads/BPTicketTypeCacheItem.cs opens
+// with `[IgnoreMember] public long TicketTypeId` and declares `Id` twenty lines
 // later -- and a single source-order resolution pass gives the second of those
-// the zero Type, which reaches the backend as `public  BetTypeId` with no type
+// the zero Type, which reaches the backend as `public  TicketTypeId` with no type
 // at all. That compiles nowhere and is diagnosed nothing, which is the worst
 // kind of bug for a compiler to have.
 func TestAnAliasResolvesItsTypeWhereverItsTargetIsWritten(t *testing.T) {
@@ -1762,8 +1762,8 @@ func TestAnAliasNamesAMemberOfItsOwnDeclaration(t *testing.T) {
 }
 
 // A composite key's parts name members of the same declaration. One of them may
-// be an alias: section 1's own key is `(event_id, bet_type_id)` over a table
-// where `bet_type_id` is the alias of `id`, so a check that demanded fields
+// be an alias: section 1's own key is `(event_id, ticket_type_id)` over a table
+// where `ticket_type_id` is the alias of `id`, so a check that demanded fields
 // would reject the spec.
 func TestACompositeKeysPartsNameMembersOfItsDeclaration(t *testing.T) {
 	set, _, bag := checkSet(t, map[string]string{
@@ -1775,9 +1775,9 @@ func TestACompositeKeysPartsNameMembersOfItsDeclaration(t *testing.T) {
 	schema := checkClean(t, map[string]string{
 		pragueFixture: readFixture(t, pragueFixture),
 	})
-	key := schema.File(pragueFixture).Decl("BetType").Key
+	key := schema.File(pragueFixture).Decl("TicketType").Key
 	if len(key.Parts) != 2 || key.Parts[1].Kind != MemberAlias {
-		t.Errorf("BetType's key parts are %s, want its second part to be the alias", memberString(schema.File(pragueFixture).Decl("BetType"), key))
+		t.Errorf("TicketType's key parts are %s, want its second part to be the alias", memberString(schema.File(pragueFixture).Decl("TicketType"), key))
 	}
 }
 
@@ -2012,7 +2012,7 @@ func TestTheCheckersMessagesSayWhatTheCodeCannot(t *testing.T) {
 			wantCode: diag.MalformedRelation,
 			wantMessageHas: []string{
 				"`references` names the table a member points at",
-				"as in `[references(SportGame)]`",
+				"as in `[references(Show)]`",
 			},
 		},
 	}
@@ -2200,28 +2200,28 @@ table T {
 }
 
 // Section 6's table, and the three rows of it checked against the corpus types
-// the section itself checks: BetType's FK is part of a composite, LiveObject's
-// FK is the whole key, and SportGame.league_id is in no key at all.
+// the section itself checks: TicketType's FK is part of a composite, LiveObject's
+// FK is the whole key, and Show.tour_id is in no key at all.
 func TestCardinalityIsDerivedFromTheKey(t *testing.T) {
 	const src = `revision 1;
 namespace A;
-table SportGame {
+table Show {
   key int64 event_id = 1;
-  int64 league_id = 4 [references(League)];
+  int64 tour_id = 4 [references(Tour)];
 }
-table League {
-  key int64 league_id = 1;
+table Tour {
+  key int64 tour_id = 1;
 }
-table BetType {
-  key key = 1 (event_id, bet_type_id);
-  int64 event_id = 2 [references(SportGame)];
-  int64 bet_type_id = 3;
+table TicketType {
+  key key = 1 (event_id, ticket_type_id);
+  int64 event_id = 2 [references(Show)];
+  int64 ticket_type_id = 3;
 }
 table LiveObject {
-  key int64 event_id = 1 [references(SportGame)];
+  key int64 event_id = 1 [references(Show)];
 }
 record Embedded {
-  int64 event_id = 1 [references(SportGame)];
+  int64 event_id = 1 [references(Show)];
 }
 `
 	schema := checkClean(t, map[string]string{"a.prague": src})
@@ -2231,9 +2231,9 @@ record Embedded {
 		decl, member string
 		want         Cardinality
 	}{
-		{"BetType", "event_id", ManyToOne},    // part of a composite
+		{"TicketType", "event_id", ManyToOne}, // part of a composite
 		{"LiveObject", "event_id", OneToOne},  // the whole key
-		{"SportGame", "league_id", ManyToOne}, // in no key
+		{"Show", "tour_id", ManyToOne},        // in no key
 		{"Embedded", "event_id", ManyToOne},   // no key at all to be part of
 	}
 	for _, tt := range tests {
@@ -2271,7 +2271,7 @@ table U {
 }
 
 // A key part may be an alias, which is how section 1 writes its own: the part
-// is `bet_type_id` and the field is `id`. Deriving cardinality against the
+// is `ticket_type_id` and the field is `id`. Deriving cardinality against the
 // alias rather than against what it passes through to would call a whole key
 // something else, so the rule follows it.
 func TestAKeyPartThatIsAnAliasIsTheMemberItPassesThroughTo(t *testing.T) {
@@ -2302,12 +2302,12 @@ func TestAViewInheritsItsSourcesRelations(t *testing.T) {
 		pragueFixture:   readFixture(t, pragueFixture),
 		consumerFixture: readFixture(t, consumerFixture),
 	})
-	m := schema.File(consumerFixture).Decl("SlimBetType").Member("event_id")
+	m := schema.File(consumerFixture).Decl("SlimTicketType").Member("event_id")
 	if len(m.Relations) != 0 {
 		t.Errorf("the view declared %d relations of its own, want 0", len(m.Relations))
 	}
-	if len(m.From.Relations) != 1 || m.From.Relations[0].Target.Name != "SportGame" {
-		t.Errorf("the member it selects carries %v, want one relation to SportGame", m.From.Relations)
+	if len(m.From.Relations) != 1 || m.From.Relations[0].Target.Name != "Show" {
+		t.Errorf("the member it selects carries %v, want one relation to Show", m.From.Relations)
 	}
 }
 
@@ -2360,7 +2360,7 @@ table T {
 // part of a broken one would report an unknown name the user never typed,
 // underlined at a bracket that looks fine.
 func TestARelationsTargetIsOneNameInsideMatchedParentheses(t *testing.T) {
-	const decls = `table SportGame {
+	const decls = `table Show {
   key int64 event_id = 1;
 }
 `
@@ -2368,14 +2368,14 @@ func TestARelationsTargetIsOneNameInsideMatchedParentheses(t *testing.T) {
 	// first loses its last character to the missing `)` and the second keeps
 	// only its first word, and either one would resolve to something.
 	tests := []struct{ name, annotation string }{
-		{"a closing parenthesis that is not there", "[references(SportGame]"},
-		{"two names where one goes", "[references(SportGame Odd)]"},
+		{"a closing parenthesis that is not there", "[references(Show]"},
+		{"two names where one goes", "[references(Show Quote)]"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			set, _, bag := checkSet(t, map[string]string{
 				"a.prague": "revision 1;\nnamespace A;\n" + decls +
-					"table U {\n  key int64 id = 1;\n  int64 game_id = 2 " + tt.annotation + ";\n}\n",
+					"table U {\n  key int64 id = 1;\n  int64 show_id = 2 " + tt.annotation + ";\n}\n",
 			})
 			assertCodes(t, set, bag, diag.MalformedRelation)
 			// The whole annotation, which is the one shape of it that is

@@ -282,14 +282,14 @@ func number(t *testing.T, line string) int {
 func TestTheManifestIsTheShapeItSpecifies(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "praguec.manifest.json")
-	if err := writeManifest(path, []string{filepath.Join(dir, "Odd.cs"), filepath.Join(dir, "SportGame.cs")}); err != nil {
+	if err := writeManifest(path, []string{filepath.Join(dir, "Quote.cs"), filepath.Join(dir, "Show.cs")}); err != nil {
 		t.Fatal(err)
 	}
 	got, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := "{\n  \"version\": 1,\n  \"files\": [\n    \"Odd.cs\",\n    \"SportGame.cs\"\n  ]\n}\n"
+	want := "{\n  \"version\": 1,\n  \"files\": [\n    \"Quote.cs\",\n    \"Show.cs\"\n  ]\n}\n"
 	if string(got) != want {
 		t.Errorf("manifest =\n%s\nwant\n%s", got, want)
 	}
@@ -549,7 +549,7 @@ func TestGenerateWritesTheTargetsAndNotTheirImports(t *testing.T) {
 	// branded.prague's three declarations, and nothing from the file it
 	// imports: common-feed-enums.prague's four enums are read to resolve the
 	// target's types and are not written.
-	want := []string{"BaseProviderObject.cs", "Odd.cs", "StaticDataRef.cs"}
+	want := []string{"BaseProviderObject.cs", "Quote.cs", "StaticDataRef.cs"}
 	if !slices.Equal(got, want) {
 		t.Errorf("wrote %v, want %v", got, want)
 	}
@@ -565,7 +565,7 @@ func TestGenerateWritesTheBackendsTextUnchanged(t *testing.T) {
 		filepath.Join(examplesDir, "branded.prague")); got != exitOK {
 		t.Fatalf("generate exited %d", got)
 	}
-	b, err := os.ReadFile(filepath.Join(out, "Odd.cs"))
+	b, err := os.ReadFile(filepath.Join(out, "Quote.cs"))
 	if err != nil {
 		t.Fatal(err)
 	}

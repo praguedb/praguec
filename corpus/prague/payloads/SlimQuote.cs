@@ -4,27 +4,27 @@ using MessagePack;
 namespace Common.EventApi.Cache.Prague.Models;
 
 [MessagePackObject]
-public class SlimOdd
+public class SlimQuote
 {
-    public SlimOdd()
+    public SlimQuote()
     {
         
     }
 
-    public SlimOdd(string name,
+    public SlimQuote(string name,
         string? line,
-        OddStatus status,
-        OddStatus? statusManual,
+        QuoteStatus status,
+        QuoteStatus? statusManual,
         WinStatus winStatusId,
         WinStatus? winStatusIdManual,
         bool isDynamic,
         long timestamp,
-        double oddsActual,
-        double oddsFair,
-        double? oddsManual,
-        bool? isBoosted,
+        double quotesActual,
+        double quotesFair,
+        double? quotesManual,
+        bool? isFeatured,
         bool? isBalancedLine,
-        long? playerId)
+        long? customerId)
     {
         Name = name;
         Line = line;
@@ -34,12 +34,12 @@ public class SlimOdd
         WinStatusIdManual = winStatusIdManual;
         IsDynamic = isDynamic;
         Timestamp = timestamp;
-        OddsActual = oddsActual;
-        OddsFair = oddsFair;
-        OddsManual = oddsManual;
-        IsBoosted = isBoosted;
+        QuotesActual = quotesActual;
+        QuotesFair = quotesFair;
+        QuotesManual = quotesManual;
+        IsFeatured = isFeatured;
         IsBalancedLine = isBalancedLine;
-        PlayerId = playerId;
+        CustomerId = customerId;
     }
 
     [Key(0)]
@@ -55,19 +55,19 @@ public class SlimOdd
     public string? Line { get; init; }
 
     [Key(8)]
-    public double OddsActual { get; init; }
+    public double QuotesActual { get; init; }
 
     [Key(9)]
-    public double OddsFair { get; init; }
+    public double QuotesFair { get; init; }
 
     [Key(10)]
-    public double? OddsManual { get; init; }
+    public double? QuotesManual { get; init; }
 
     [Key(12)]
-    public OddStatus Status { get; init; }
+    public QuoteStatus Status { get; init; }
 
     [Key(13)]
-    public OddStatus? StatusManual { get; init; }
+    public QuoteStatus? StatusManual { get; init; }
 
     [Key(19)]
     public WinStatus WinStatusId { get; init; }
@@ -76,11 +76,11 @@ public class SlimOdd
     public WinStatus? WinStatusIdManual { get; init; }
 
     [Key(23)]
-    public bool? IsBoosted { get; init; }
+    public bool? IsFeatured { get; init; }
 
     [Key(26)]
     public bool? IsBalancedLine { get; init; }
 
     [Key(27)]
-    public long? PlayerId { get; init; }
+    public long? CustomerId { get; init; }
 }

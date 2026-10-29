@@ -4,29 +4,29 @@ using MessagePack;
 namespace BrandReader.Services.Cache;
 
 [MessagePackObject]
-public sealed partial class SlimBetType
+public sealed partial class SlimTicketType
 {
     [Key(0)]
     [DataCacheKey]
-    public (long EventId, long BetTypeId) Id => (EventId, BetTypeId);
+    public (long EventId, long TicketTypeId) Id => (EventId, TicketTypeId);
 
     [Key(1)]
     public long EventId { get; set; }
 
     [Key(2)]
-    public long BetTypeId { get; set; }
+    public long TicketTypeId { get; set; }
 
     [Key(3)]
     public string Name { get; set; }
 
     [Key(6)]
-    public BetTypeStatus Status { get; set; }
+    public TicketTypeStatus Status { get; set; }
 
     [Key(7)]
-    public BetTypeStatus? StatusManual { get; set; }
+    public TicketTypeStatus? StatusManual { get; set; }
 
     [Key(8)]
-    public BetTypeStatus? StatusWatchDog { get; set; }
+    public TicketTypeStatus? StatusWatchDog { get; set; }
 
     [Key(21)]
     public decimal? LimitManualSingle { get; set; }
@@ -35,5 +35,5 @@ public sealed partial class SlimBetType
     public long Timestamp { get; set; }
 
     [Key(25)]
-    public List<SlimOdd> Odds { get; set; }
+    public List<SlimQuote> Quotes { get; set; }
 }

@@ -15,7 +15,7 @@ namespace BO.Services.Prague.Models;
 import "api-enums.prague";
 import "branded.prague";
 import "common-feed-enums.prague";
-import "virtual-game-entity.prague";
+import "virtual-show-entity.prague";
 
 // BOVenue is Venue under another name and in another namespace, tag for tag.
 struct BOVenue
@@ -24,16 +24,16 @@ struct BOVenue
   string name = 3;
 }
 
-// BOSportGameCacheItem carries one annotation its BP twin does not:
-// `[DataCacheIndex(nameof(FixtureIdIndex), ...)]` names a computed member that
+// BOShowCacheItem carries one annotation its BP twin does not:
+// `[DataCacheIndex(nameof(ListingIdIndex), ...)]` names a computed member that
 // lives in the hand-written partial half (#25). praguec copies the text and
 // does not look inside it, so the name resolving is the C# compiler's problem
 // and not praguec's -- which is section 3's passthrough rule doing exactly what
 // it promises, and also its sharpest edge.
-table BOSportGameCacheItem
-  [cs: DataCache(CacheClassName = nameof(BOSportGameCache))]
-  [cs: DataCacheTopic("Cache.[v:brandId].SportGame")]
-  [cs: DataCacheIndex(nameof(FixtureIdIndex), nameof(FixtureId), DataCacheIndexType.Many)]
+table BOShowCacheItem
+  [cs: DataCache(CacheClassName = nameof(BOShowCache))]
+  [cs: DataCacheTopic("Cache.[v:brandId].Show")]
+  [cs: DataCacheIndex(nameof(ListingIdIndex), nameof(ListingId), DataCacheIndexType.Many)]
 {
   // Tags this declaration owns and cannot write. `reserved` is how protop
   // keeps a tag it does not transcribe (section 7): the C# member keeps its
@@ -44,30 +44,30 @@ table BOSportGameCacheItem
   //   30  DateTime?  EventDateManual        #15, a temporal type
   //   31  DateTime?  ResultedTime           #15, a temporal type
   //   32  DateTime?  SettledTime            #15, a temporal type
-  //   51  DateTime?  BetDataLastUpdateAt    #15, a temporal type
+  //   51  DateTime?  PurchaseDataLastUpdateAt    #15, a temporal type
   reserved 12, 28..32, 51;
 
   key int64          event_id                           = 1;
-  int64              sport_type_id                      = 2;
+  int64              genre_id                      = 2;
   int64              country_id                         = 3;
-  int64              league_id                          = 4;
-  int64?             home_team_id                       = 5;
-  int64?             away_team_id                       = 6;
+  int64              tour_id                          = 4;
+  int64?             headliner_id                       = 5;
+  int64?             opener_id                       = 6;
   BOVenue?           venue                              = 7;
   int64?             statistics_center_id               = 8;
   string             name                               = 9;
   string?            provider_source_key                = 10;
   int64              provider_key                       = 11;
   int32              event_type_id                      = 13;
-  int32?             fixture_id                         = 15;
+  int32?             listing_id                         = 15;
   bool               is_live                            = 16;
   bool               is_all_resulted                    = 17;
   bool               is_all_settled                     = 18;
   bool               is_manual_changed                  = 19;
   bool?              is_pinned                          = 20;
-  bool               is_contains_pending_odds_with_bets = 21;
+  bool               is_contains_pending_quotes_with_purchases = 21;
   WatchDogAction     watch_dog_action                   = 22 [cs: DataCacheIndex];
-  string?            bet_radar_event_status             = 23;
+  string?            feed_provider_event_status             = 23;
   EventStatus        event_status                       = 24 [cs: DataCacheIndex];
   EventStatus?       event_status_manual                = 25;
   EventStatus?       event_status_watch_dog             = 26;
@@ -76,31 +76,31 @@ table BOSportGameCacheItem
   int64              internal_timestamp                 = 34;
   int64              provider_timestamp                 = 35 [cs: DataCacheIndex(DataCacheIndexType.Range)];
   decimal(4)?        live_limit_manual_single           = 36;
-  decimal(4)?        prematch_limit_manual_single       = 37;
-  decimal(4)?        live_limit_manual_combo            = 38;
-  decimal(4)?        prematch_limit_manual_combo        = 39;
-  decimal(4)?        live_bet_builder_manual_limit      = 40;
-  decimal(4)?        prematch_bet_builder_manual_limit  = 41;
-  bool               has_bet_types                      = 45;
+  decimal(4)?        presale_limit_manual_single       = 37;
+  decimal(4)?        live_limit_manual_bundle            = 38;
+  decimal(4)?        presale_limit_manual_bundle        = 39;
+  decimal(4)?        live_purchase_builder_manual_limit      = 40;
+  decimal(4)?        presale_purchase_builder_manual_limit  = 41;
+  bool               has_ticket_types                      = 45;
   bool               is_settlement_blocked              = 46;
-  list<Runner>       runners                            = 47;
+  list<Performer>       performers                            = 47;
   string?            coverage_source                    = 48;
   string?            coverage_level                     = 49;
-  int32?             period_length                      = 50;
+  int32?             segment_length                      = 50;
   int64              events_hub_received_timestamp_ms   = 52;
   int64              events_hub_produce_timestamp_ms    = 53;
   int32?             event_source                       = 54;
-  StaticDataRef      sport_type                         = 55;
+  StaticDataRef      genre                         = 55;
   StaticDataRef      country                            = 56;
-  StaticDataRef      league                             = 57;
-  StaticDataRef?     home_team                          = 58;
-  StaticDataRef?     away_team                          = 59;
+  StaticDataRef      tour                             = 57;
+  StaticDataRef?     headliner                          = 58;
+  StaticDataRef?     opener                          = 59;
 }
 
-// BOBetTypeCacheItem, composite key and alias included.
-table BOBetTypeCacheItem
-  [cs: DataCache(CacheClassName = nameof(BOBetTypeCache))]
-  [cs: DataCacheTopic("Cache.[v:brandId].BetType")]
+// BOTicketTypeCacheItem, composite key and alias included.
+table BOTicketTypeCacheItem
+  [cs: DataCache(CacheClassName = nameof(BOTicketTypeCache))]
+  [cs: DataCacheTopic("Cache.[v:brandId].TicketType")]
 {
   // Tags this declaration owns and cannot write. `reserved` is how protop
   // keeps a tag it does not transcribe (section 7): the C# member keeps its
@@ -110,32 +110,32 @@ table BOBetTypeCacheItem
   //   18  DateTime?  SettledTime            #15, a temporal type
   reserved 16..18;
 
-  alias bet_type_id = id [cs: JsonIgnore];
-  key key = 1 (event_id, bet_type_id);
+  alias ticket_type_id = id [cs: JsonIgnore];
+  key key = 1 (event_id, ticket_type_id);
   int64          event_id                 = 2 [cs: DataCacheIndex];
   int64          id                       = 3;
   string         name                     = 4;
   string?        provider_source_key      = 5;
   int64          provider_key             = 6;
-  BetTypeStatus  status                   = 7;
-  BetTypeStatus? status_manual            = 8;
-  BetTypeStatus? status_watch_dog         = 9;
+  TicketTypeStatus  status                   = 7;
+  TicketTypeStatus? status_manual            = 8;
+  TicketTypeStatus? status_watch_dog         = 9;
   bool           is_live                  = 10;
-  bool           is_lineable              = 11;
+  bool           is_listable              = 11;
   bool           is_resulted              = 12;
   bool           is_settled               = 13;
   bool           is_manual_changed        = 14;
-  string         winning_selection_id     = 15;
+  string         assigned_seat_id     = 15;
   double         feed_margin              = 19;
   double         actual_margin            = 20;
   double?        actual_margin_manual     = 21;
   decimal(4)?    limit_manual_single      = 22;
-  decimal(4)?    limit_manual_combo       = 23;
-  decimal(4)?    limit_manual_bet_builder = 24;
+  decimal(4)?    limit_manual_bundle       = 23;
+  decimal(4)?    limit_manual_purchase_builder = 24;
   int64          timestamp                = 25;
-  list<Odd>      odds                     = 26;
+  list<Quote>      quotes                     = 26;
   list<string>   groups                   = 27;
-  Odd?           t                        = 28;
+  Quote?           t                        = 28;
 }
 
 // BOSearchCacheItem.
@@ -152,10 +152,10 @@ table BOSearchCacheItem
   key key = 1 (event_id, channel_id);
   int64          event_id                           = 2 [cs: DataCacheIndex];
   Channel        channel_id                         = 3 [cs: DataCacheIndex];
-  string?        home_team_display_name             = 4;
-  int64?         away_team_id                       = 5;
-  string?        away_team_name                     = 6;
-  string?        away_team_display_name             = 7;
+  string?        headliner_display_name             = 4;
+  int64?         opener_id                       = 5;
+  string?        opener_name                     = 6;
+  string?        opener_display_name             = 7;
   EventStatus    event_status                       = 8;
   EventStatus?   event_status_manual                = 9;
   EventStatus?   event_status_watch_dog             = 10;
@@ -163,36 +163,36 @@ table BOSearchCacheItem
   BookingStatus  booking_status                     = 12;
   bool           is_top_event                       = 13;
   int32          top_event_order                    = 14;
-  int32          active_bet_types_count             = 15;
-  int32          total_bet_types_count              = 16;
+  int32          active_ticket_types_count             = 15;
+  int32          total_ticket_types_count              = 16;
   int32          event_type_id                      = 18;
-  int32?         fixture_id                         = 19;
+  int32?         listing_id                         = 19;
   bool           is_live                            = 20;
   string?        live_object_minute                 = 21;
   bool?          is_pinned                          = 22;
-  bool           is_contains_pending_odds_with_bets = 23;
+  bool           is_contains_pending_quotes_with_purchases = 23;
   bool           is_manual_changed                  = 24;
-  string?        home_team_name                     = 25;
-  bool           has_is_boosted_odds                = 26;
-  int64?         home_team_id                       = 27;
-  int32?         league_display_order               = 28;
+  string?        headliner_name                     = 25;
+  bool           has_is_featured_quotes                = 26;
+  int64?         headliner_id                       = 27;
+  int32?         tour_display_order               = 28;
   string         event_name                         = 31;
   int64?         timestamp                          = 33;
-  int64          sport_type_id                      = 34;
-  string         sport_type_name                    = 35;
-  string?        sport_type_display_name            = 36;
-  int32?         sport_type_display_order           = 37;
-  bool           sport_type_disabled                = 38;
+  int64          genre_id                      = 34;
+  string         genre_name                    = 35;
+  string?        genre_display_name            = 36;
+  int32?         genre_display_order           = 37;
+  bool           genre_disabled                = 38;
   int64          country_id                         = 39;
   string         country_name                       = 40;
   string?        country_display_name               = 41;
   int32?         country_display_order              = 42;
   bool           country_disabled                   = 43;
-  int64          league_id                          = 44;
-  string         league_name                        = 45;
-  string?        league_display_name                = 46;
-  bool           league_disabled                    = 47;
-  bool           has_bet_types                      = 48;
+  int64          tour_id                          = 44;
+  string         tour_name                        = 45;
+  string?        tour_display_name                = 46;
+  bool           tour_disabled                    = 47;
+  bool           has_ticket_types                      = 48;
 }
 
 // BOLiveObjectCacheItem, whose second member is #9's union and is reserved.

@@ -5,43 +5,43 @@ using MessagePack;
 namespace Common.EventApi.Cache.Prague.Models;
 
 [MessagePackObject]
-[DataCache(CacheClassName = nameof(SlimBetTypeCache))]
-[DataCacheTopic("Cache.[v:brandId].BetType")]
-public sealed partial class SlimBetType
+[DataCache(CacheClassName = nameof(SlimTicketTypeCache))]
+[DataCacheTopic("Cache.[v:brandId].TicketType")]
+public sealed partial class SlimTicketType
 {
-    public SlimBetType()
+    public SlimTicketType()
     {
         
     }
 
-    public SlimBetType(long betTypeId,
+    public SlimTicketType(long ticketTypeId,
         long eventId,
         string name,
         long timestamp,
         bool isLive,
-        bool isLineable,
-        BetTypeStatus status,
-        BetTypeStatus? statusManual,
+        bool isListable,
+        TicketTypeStatus status,
+        TicketTypeStatus? statusManual,
         decimal? limitManualSingle,
-        decimal? limitManualCombo,
-        decimal? limitManualBetBuilder)
+        decimal? limitManualBundle,
+        decimal? limitManualPurchaseBuilder)
     {
-        BetTypeId = betTypeId;
+        TicketTypeId = ticketTypeId;
         EventId = eventId;
         Name = name;
         Timestamp = timestamp;
         IsLive = isLive;
-        IsLineable = isLineable;
+        IsListable = isListable;
         Status = status;
         StatusManual = statusManual;
         LimitManualSingle = limitManualSingle;
-        LimitManualCombo = limitManualCombo;
-        LimitManualBetBuilder = limitManualBetBuilder;
+        LimitManualBundle = limitManualBundle;
+        LimitManualPurchaseBuilder = limitManualPurchaseBuilder;
     }
 
     [Key(0)]
     [DataCacheKey]
-    public (long EventId, long BetTypeId) Id => (EventId, BetTypeId);
+    public (long EventId, long TicketTypeId) Id => (EventId, TicketTypeId);
 
     [Key(1)]
     [DataCacheIndex]
@@ -49,36 +49,36 @@ public sealed partial class SlimBetType
 
     [Key(2)]
     [DataCacheIndex]
-    public long BetTypeId { get; set; }
+    public long TicketTypeId { get; set; }
 
     [Key(3)]
     public string Name { get; set; } = string.Empty;
 
     [Key(6)]
     [DataCacheIndex]
-    public BetTypeStatus Status { get; set; }
+    public TicketTypeStatus Status { get; set; }
 
     [Key(7)]
-    public BetTypeStatus? StatusManual { get; set; }
+    public TicketTypeStatus? StatusManual { get; set; }
 
     [Key(8)]
-    public BetTypeStatus? StatusWatchDog { get; set; }
+    public TicketTypeStatus? StatusWatchDog { get; set; }
 
     [Key(9)]
     [DataCacheIndex]
     public bool IsLive { get; set; }
 
     [Key(10)]
-    public bool IsLineable { get; set; }
+    public bool IsListable { get; set; }
 
     [Key(21)]
     public decimal? LimitManualSingle { get; set; }
 
     [Key(22)]
-    public decimal? LimitManualCombo { get; set; }
+    public decimal? LimitManualBundle { get; set; }
 
     [Key(23)]
-    public decimal? LimitManualBetBuilder { get; set; }
+    public decimal? LimitManualPurchaseBuilder { get; set; }
 
     [Key(24)]
     [DataCacheIndex(DataCacheIndexType.Range)]
@@ -86,5 +86,5 @@ public sealed partial class SlimBetType
     public long Timestamp { get; set; }
 
     [Key(25)]
-    public SlimOdd[] Odds { get; set; } = [];
+    public SlimQuote[] Quotes { get; set; } = [];
 }

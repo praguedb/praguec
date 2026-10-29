@@ -131,14 +131,14 @@ private readonly <#= item.CustomFormatter.InstanceTypeName... #> __<#= item.Name
 
 The call sites are `src/MessagePack.SourceGenerator/CodeAnalysis/MemberSerializationInfo.cs:36-39` and `52-55`.
 
-**Measured output.** For `[Key(0)] [MessagePackFormatter(typeof(ScaledDecimalFormatter), 4)] public decimal Stake { get; set; }`, the generator emitted: **[measured]**
+**Measured output.** For `[Key(0)] [MessagePackFormatter(typeof(ScaledDecimalFormatter), 4)] public decimal Amount { get; set; }`, the generator emitted: **[measured]**
 
 ```csharp
-internal sealed class BetFormatter : MsgPack::Formatters.IMessagePackFormatter<global::Bet>
+internal sealed class PurchaseFormatter : MsgPack::Formatters.IMessagePackFormatter<global::Purchase>
 {
-    private readonly global::ScaledDecimalFormatter __StakeCustomFormatter__ = new global::ScaledDecimalFormatter();
+    private readonly global::ScaledDecimalFormatter __AmountCustomFormatter__ = new global::ScaledDecimalFormatter();
     ...
-    this.__StakeCustomFormatter__.Serialize(ref writer, value.Stake, options);
+    this.__AmountCustomFormatter__.Serialize(ref writer, value.Amount, options);
 ```
 
 Build succeeded. Zero warnings about the dropped `4`.
@@ -159,7 +159,7 @@ which fails to compile with `CS1001: Identifier expected` pointing into a genera
 
 ### 3.4 Why the divergence is dangerous rather than merely annoying
 
-Both paths are reachable in the same process. A payload written by one and read by the other is **silently misinterpreted**: same schema, same types, no exception, wrong number. For a wallet/betting domain that is a corruption bug, not a serialization bug.
+Both paths are reachable in the same process. A payload written by one and read by the other is **silently misinterpreted**: same schema, same types, no exception, wrong number. For a wallet/ticketing domain that is a corruption bug, not a serialization bug.
 
 > **Correction (2026-09-12).** An earlier revision of this paragraph said `MessagePackSerializerOptions.Standard` reaches `DynamicObjectResolver` on a JIT platform, implying the reflection path is what a consumer gets by default. **That is wrong, and it inverts the risk.** Measured on 3.1.8 with a plain `[MessagePackObject]` type in the same compilation as the generator:
 >
