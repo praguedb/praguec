@@ -1,0 +1,59 @@
+revision 1;
+
+// Common.IntegratedEventApi.Models.Branded: the shared payload types the Prague
+// caches embed.
+namespace Common.IntegratedEventApi.Models.Branded;
+
+import "common-feed-enums.protop";
+
+// BaseProviderObject is corpus/prague/deps/BaseProviderObject.cs, whole.
+//
+// Its `public virtual string Name` emits as an ordinary member. #11 ruled that
+// protop flattens a C# hierarchy and that the fork is accepted, and under
+// flattening there is nothing left for `virtual` to mean: no protop declaration
+// derives from another, so no member overrides another.
+record BaseProviderObject {
+  int64  id                  = 1;
+  string name                = 2;
+  string? provider_source_key = 3;
+  int64  provider_key        = 4;
+}
+
+// StaticDataRef is corpus/prague/deps/StaticDataRef.cs *flattened*, and it is
+// the one declaration in this example whose corpus file the emitter cannot
+// reproduce. The corpus writes `public class StaticDataRef : BaseProviderObject`
+// with an empty body; #11 ruled inheritance out of protop and flattening in, so
+// here the four inherited members are written inline and the emission carries
+// them. The C# hierarchy forks. That is #11's accepted cost and not a defect to
+// file -- but it does mean StaticDataRef.cs is a corpus file this harness
+// cannot compare, and the coverage table says so.
+record StaticDataRef
+  [cs: BsonIgnoreExtraElements]
+{
+  int64  id                  = 1;
+  string name                = 2;
+  string? provider_source_key = 3;
+  int64  provider_key        = 4;
+}
+
+// Odd is not in the corpus either -- SOURCE.md does not copy it -- but unlike
+// Runner its tag space is fully recoverable, because corpus/prague/payloads/
+// SlimOdd.cs is a view of it and a view carries its source's tags. Every member
+// below is one of SlimOdd's keys, at that key plus one, with the type SlimOdd's
+// own constructor parameter gives it.
+record Odd {
+  string     name                  = 1;
+  bool       is_dynamic            = 4;
+  int64      timestamp             = 5;
+  string?    line                  = 7;
+  double     odds_actual           = 9;
+  double     odds_fair             = 10;
+  double?    odds_manual           = 11;
+  OddStatus  status                = 13;
+  OddStatus? status_manual         = 14;
+  WinStatus  win_status_id         = 20;
+  WinStatus? win_status_id_manual  = 21;
+  bool?      is_boosted            = 24;
+  bool?      is_balanced_line      = 27;
+  int64?     player_id             = 28;
+}

@@ -13,8 +13,13 @@ import (
 //
 // The lexer covers protop's entire punctuation set, including what the parser
 // cannot read yet: `[`, `]` and `:` belong to annotations, `..` to reserved
-// ranges. Tokenising is cheap, and a complete lexer means growing the language
-// is a parser change alone.
+// ranges, `<` and `>` to a type's arguments. Tokenising is cheap, and a
+// complete lexer means growing the language is a parser change alone.
+//
+// `<` and `>` are also what make an annotation carrying a generic -- `[cs:
+// Foo<Bar>]` -- scan as text rather than as two unexpected characters:
+// annotation contents are read out of the token stream after the whole file has
+// been lexed, so a character the lexer rejects is rejected even inside them.
 //
 // Integer literals have no decimal point, which is what makes `8..14` lex as
 // 8, `..`, 14 rather than as two malformed floats. Nothing in the grammar is a
@@ -75,7 +80,7 @@ func (l *lexer) run() {
 			}
 			_, width := utf8.DecodeRuneInString(l.src[start:])
 			l.i += width
-			l.bag.Errorf(diag.UnexpectedCharacter, source.Span{Start: source.Pos(start), End: source.Pos(l.i)},
+			l.bag.Raise(diag.UnexpectedCharacter, source.Span{Start: source.Pos(start), End: source.Pos(l.i)},
 				"unexpected character %q", l.src[start:l.i])
 		}
 	}
@@ -114,6 +119,10 @@ func (l *lexer) punctuation(i int) (Kind, int) {
 		return KindLBracket, 1
 	case ']':
 		return KindRBracket, 1
+	case '<':
+		return KindLAngle, 1
+	case '>':
+		return KindRAngle, 1
 	}
 	return 0, 0
 }
@@ -148,7 +157,7 @@ func (l *lexer) lexString(start int) {
 }
 
 func (l *lexer) unterminatedString(start int) {
-	l.bag.Errorf(diag.UnterminatedString, source.Span{Start: source.Pos(start), End: source.Pos(l.i)},
+	l.bag.Raise(diag.UnterminatedString, source.Span{Start: source.Pos(start), End: source.Pos(l.i)},
 		"unterminated string literal")
 	l.emit(KindString, start, l.i)
 }
@@ -185,7 +194,7 @@ func (l *lexer) skipBlockComment() {
 	l.i = len(l.src)
 	// The span is the opening delimiter alone. Underlining the rest of the file
 	// would be accurate and useless; the `/*` is what has to be found.
-	l.bag.Errorf(diag.UnterminatedBlockComment, source.Span{Start: source.Pos(start), End: source.Pos(start + 2)},
+	l.bag.Raise(diag.UnterminatedBlockComment, source.Span{Start: source.Pos(start), End: source.Pos(start + 2)},
 		"unterminated block comment")
 }
 
@@ -200,7 +209,7 @@ func (l *lexer) emitInt(start, end int) {
 		// Out of range is the only way ParseUint fails here: the scan admitted
 		// digits and nothing else. Emitting the token anyway keeps the parser
 		// on its feet, and the bag already says the file is bad.
-		l.bag.Errorf(diag.IntegerOutOfRange, span, "integer literal %s does not fit in 64 bits", l.src[start:end])
+		l.bag.Raise(diag.IntegerOutOfRange, span, "integer literal %s does not fit in 64 bits", l.src[start:end])
 	}
 	l.toks = append(l.toks, Token{Kind: KindInt, Span: span, Int: v})
 }

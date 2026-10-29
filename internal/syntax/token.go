@@ -44,6 +44,13 @@ const (
 	KindRParen   // )
 	KindLBracket // [
 	KindRBracket // ]
+
+	// KindLAngle and KindRAngle delimit a type's arguments: `list<Odd>`,
+	// `map<string, Odd>`. They are punctuation and nothing more -- the words
+	// `list` and `map` still lex as KindIdent, because a field may be named
+	// either one and the parser decides by position.
+	KindLAngle // <
+	KindRAngle // >
 )
 
 // String describes the kind the way a diagnostic wants to read it: punctuation
@@ -84,6 +91,10 @@ func (k Kind) String() string {
 		return "`[`"
 	case KindRBracket:
 		return "`]`"
+	case KindLAngle:
+		return "`<`"
+	case KindRAngle:
+		return "`>`"
 	}
 	return "an unknown token"
 }

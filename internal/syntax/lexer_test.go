@@ -16,6 +16,7 @@ func lex(t *testing.T, src string) (*source.File, []Token) {
 	if bag.HasErrors() {
 		t.Fatalf("unexpected diagnostics:\n%s", diag.RenderAll(f, &bag))
 	}
+	assertGate(t, f, &bag, nil)
 	return f, toks
 }
 
@@ -39,15 +40,48 @@ func assertKinds(t *testing.T, got []Kind, want ...Kind) {
 	}
 }
 
-// The whole punctuation set lexes, including the three pieces the parser cannot
-// read yet: `[`, `]` and `:` for annotations, `..` for reserved ranges. A
-// complete lexer is what makes growing the language a parser change alone.
+// The whole punctuation set lexes: `[`, `]` and `:` for annotations, `..` for
+// reserved ranges, `<` and `>` for a type's arguments. A complete lexer is what
+// makes growing the language a parser change alone, and this is the assertion
+// that says the set is complete rather than merely sufficient for today.
 func TestLexCoversTheWholePunctuationSet(t *testing.T) {
-	_, toks := lex(t, "{ } ( ) [ ] ; , : = ? . ..")
+	_, toks := lex(t, "{ } ( ) [ ] < > ; , : = ? . ..")
 	assertKinds(t, kinds(toks),
 		KindLBrace, KindRBrace, KindLParen, KindRParen, KindLBracket, KindRBracket,
+		KindLAngle, KindRAngle,
 		KindSemi, KindComma, KindColon, KindAssign, KindQuestion, KindDot, KindDotDot,
 		KindEOF)
+}
+
+// A collection type is a name and two angle brackets, and the words inside are
+// words: `list` and `map` lex as idents like everything else, which is what
+// leaves a field free to be named either.
+func TestLexTypeArguments(t *testing.T) {
+	_, toks := lex(t, "map<string, list<Odd>> m = 1;")
+	assertKinds(t, kinds(toks),
+		KindIdent, KindLAngle, KindIdent, KindComma, KindIdent, KindLAngle, KindIdent,
+		KindRAngle, KindRAngle, KindIdent, KindAssign, KindInt, KindSemi, KindEOF)
+}
+
+// `>>` is two tokens and not a shift operator, which is what keeps
+// `list<list<int64>>` from needing a lexer hack the way C++ did.
+func TestLexDoesNotJoinClosingAngles(t *testing.T) {
+	f, toks := lex(t, ">>")
+	assertKinds(t, kinds(toks), KindRAngle, KindRAngle, KindEOF)
+	if got := f.Slice(toks[0].Span); got != ">" {
+		t.Errorf("first angle spans %q, want %q", got, ">")
+	}
+}
+
+// What the two new token kinds buy beyond the type syntax. Annotation contents
+// are scanned out of the token stream after the whole file is lexed, so a
+// character the lexer rejects is rejected even inside an annotation: before
+// `<` and `>` lexed, a C# attribute carrying a generic cost two PROTOP0003s.
+func TestLexAnnotationCarryingAGeneric(t *testing.T) {
+	_, toks := lex(t, "[cs: Foo<Bar>]")
+	assertKinds(t, kinds(toks),
+		KindLBracket, KindIdent, KindColon, KindIdent, KindLAngle, KindIdent, KindRAngle,
+		KindRBracket, KindEOF)
 }
 
 // A reserved range is two integers and a `..`, not two malformed floats. This
@@ -102,6 +136,21 @@ func TestLexStringLiteralSpansItsQuotes(t *testing.T) {
 	}
 }
 
+// Every diagnostic the lexer raises, pinned by code, by where it starts and by
+// what it underlines.
+//
+// wantSpan is the third of those and was the missing one: a line and a column
+// say where a caret goes and nothing said how far it runs, so the underline
+// under `99999999999999999999` could shrink to the first `9` with the suite
+// green. Three of these five codes -- 0002, 0003 and 0004 -- had no width
+// assertion anywhere in the repo.
+//
+// It is a plain string and not the parser table's *string because a lexical
+// span cannot be empty: the lexer raises about bytes it has already consumed,
+// so there is always at least the one it choked on. An unterminated block
+// comment is deliberately the narrowest of them -- the two opening bytes rather
+// than the rest of the file, which is what keeps the caret off every line below
+// it.
 func TestLexDiagnostics(t *testing.T) {
 	tests := []struct {
 		name     string
@@ -109,12 +158,13 @@ func TestLexDiagnostics(t *testing.T) {
 		wantCode diag.Code
 		wantLine int
 		wantCol  int
+		wantSpan string
 	}{
-		{"unterminated block comment", "revision 1;\n/* and then nothing\n", diag.UnterminatedBlockComment, 2, 1},
-		{"unterminated string at a newline", "import \"prague.protop\n;", diag.UnterminatedString, 1, 8},
-		{"unterminated string at end of file", "import \"prague", diag.UnterminatedString, 1, 8},
-		{"unexpected character", "revision @ 1;", diag.UnexpectedCharacter, 1, 10},
-		{"integer out of range", "tag = 99999999999999999999;", diag.IntegerOutOfRange, 1, 7},
+		{"unterminated block comment", "revision 1;\n/* and then nothing\n", diag.UnterminatedBlockComment, 2, 1, "/*"},
+		{"unterminated string at a newline", "import \"prague.protop\n;", diag.UnterminatedString, 1, 8, "\"prague.protop"},
+		{"unterminated string at end of file", "import \"prague", diag.UnterminatedString, 1, 8, "\"prague"},
+		{"unexpected character", "revision @ 1;", diag.UnexpectedCharacter, 1, 10, "@"},
+		{"integer out of range", "tag = 99999999999999999999;", diag.IntegerOutOfRange, 1, 7, "99999999999999999999"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -129,8 +179,12 @@ func TestLexDiagnostics(t *testing.T) {
 			if d.Code != tt.wantCode {
 				t.Errorf("code = %s, want %s", d.Code, tt.wantCode)
 			}
+			assertGate(t, f, &bag, []diag.Code{tt.wantCode})
 			if pos := f.Position(d.Span.Start); pos.Line != tt.wantLine || pos.Column != tt.wantCol {
 				t.Errorf("reported at %d:%d, want %d:%d", pos.Line, pos.Column, tt.wantLine, tt.wantCol)
+			}
+			if got := f.Slice(d.Span); got != tt.wantSpan {
+				t.Errorf("underlines %q, want %q", got, tt.wantSpan)
 			}
 		})
 	}

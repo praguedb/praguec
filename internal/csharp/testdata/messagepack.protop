@@ -1,0 +1,7 @@
+revision 1;
+
+namespace MessagePack;
+
+record Local {
+  int64 id = 1;
+}

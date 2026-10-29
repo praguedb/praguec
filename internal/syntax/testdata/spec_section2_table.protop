@@ -1,0 +1,6 @@
+table BetTypeBrandSettings
+  [cs: DataCache]
+{
+  key int64 bet_type_id = 1;
+  bool is_enabled = 2;
+}

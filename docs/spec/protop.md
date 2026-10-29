@@ -11,10 +11,13 @@
 > cardinality, annotation passthrough, tag ownership via `reserved`.
 >
 > **Deliberately not covered.** Four things the corpus contains and this document
-> does not spell. Each is a tracker ticket, not an oversight:
-> unions (`IBaseLiveData`'s 19 arms), maps, a temporal type (the corpus and this
-> document both carry instants as `int64`), and the closed set of scalar type
-> keywords.
+> does not settle. Each is a tracker ticket, not an oversight:
+> unions (`IBaseLiveData`'s 19 arms), a temporal type (the corpus and this
+> document both carry instants as `int64`), the closed set of scalar type
+> keywords, and what a `map` means. §1 spells the map syntax and reserves it —
+> protopc parses one in full and reports `PROTOP0900` against it — but its key
+> types, its wire form, and whether an absent map and an empty one are the same
+> thing are all open.
 
 **The rule everything else falls out of: tables are written, views are read.**
 
@@ -37,7 +40,7 @@ resolves.
 | 2 | [`import-resolution.md`](protop/import-resolution.md) | where `import "prague.protop";` resolves from — git, by tag | you are working on module resolution, the lock file or distribution |
 | 3 | [`annotations.md`](protop/annotations.md) | one position, one form; the prefix rule and passthrough | you are parsing or emitting `[...]` |
 | 4 | [`declaration-keywords.md`](protop/declaration-keywords.md) | `struct` / `record` / `table` / `view`: identity, emission, referenceability | you need to know what a declaration keyword means |
-| 5 | [`views.md`](protop/views.md) | field subsets, narrowing, computed members, composite identity, aliases | you are working on views, `key` or `alias` |
+| 5 | [`views.md`](protop/views.md) | field subsets, narrowing, narrowing with a rename, computed members, composite identity, aliases | you are working on views, `key` or `alias` |
 | 6 | [`relations.md`](protop/relations.md) | `references(T)` and derived cardinality | you are working on relations or name resolution |
 | 7 | [`tag-ownership.md`](protop/tag-ownership.md) | `reserved`, and why single ownership is what makes it safe | you are working on `reserved` or cross-repo skew |
 | TBD | [`versioning.md`](protop/versioning.md) | sketched, not decided: two hashes, per-table versions, `protop.lock` | you are working on versioning or the breaking check |
