@@ -133,10 +133,11 @@ const (
 )
 
 // backends is the legal set of annotation prefixes, which is exactly the
-// backends praguec has: `cs` (internal/csharp) and `go` (internal/golang).
+// backends praguec has: `cs` (internal/csharp), `go` (internal/golang) and `rust` (internal/rust).
 var backends = map[string]bool{
-	"cs": true,
-	"go": true,
+	"cs":   true,
+	"go":   true,
+	"rust": true,
 }
 
 // protopAnnotations is protop's own set, the annotations written with no

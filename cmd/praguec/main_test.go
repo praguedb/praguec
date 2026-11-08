@@ -437,7 +437,7 @@ func TestExitCodes(t *testing.T) {
 		{"a format praguec does not have", []string{"check", "--error-format=json", good}, exitUsage},
 		{"a flag praguec does not have", []string{"check", "--strict", good}, exitUsage},
 		{"generate Go", []string{"generate", "--lang", "go", "-I", examplesDir, "-o", t.TempDir(), good}, exitOK},
-		{"a language praguec does not have", []string{"generate", "--lang", "rust", "-o", t.TempDir(), good}, exitUsage},
+		{"a language praguec does not have", []string{"generate", "--lang", "zig", "-o", t.TempDir(), good}, exitUsage},
 		{"--lang on check", []string{"check", "--lang", "go", good}, exitUsage},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

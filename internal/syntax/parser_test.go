@@ -2107,7 +2107,7 @@ struct S
 // narrowed with the suite green is not closed in any sense that matters.
 var (
 	wantScalarTypes       = []string{"bool", "bytes", "date", "decimal", "double", "int32", "int64", "raw", "string", "timestamp", "uuid"}
-	wantBackends          = []string{"cs", "go"}
+	wantBackends          = []string{"cs", "go", "rust"}
 	wantProtopAnnotations = []string{"from_timestamp", "header", "references"}
 	wantCollectionTypes   = map[string]int{"list": 1, "map": 2}
 )

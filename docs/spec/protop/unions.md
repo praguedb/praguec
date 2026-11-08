@@ -4,26 +4,26 @@
 
 Three scalars join the set:
 
-| protop | C# | Go | On the wire |
-|---|---|---|---|
-| `uuid` | `Guid` | `wire.UUID` | a 36-character string, as MessagePack-CSharp writes a `Guid` member |
-| `bytes` | `byte[]` | `[]byte` | MessagePack bin |
-| `raw` | `ReadOnlyMemory<byte>` | `msgpack.RawMessage` | any one MessagePack value, kept undecoded |
+| protop | C# | Go | Rust | On the wire |
+|---|---|---|---|---|
+| `uuid` | `Guid` | `wire.UUID` | `wire::Uuid` | a 36-character string, as MessagePack-CSharp writes a `Guid` member |
+| `bytes` | `byte[]` | `[]byte` | `wire::Bytes` | MessagePack bin |
+| `raw` | `ReadOnlyMemory<byte>` | `msgpack.RawMessage` | `wire::Raw` | any one MessagePack value, kept undecoded |
 
-A `uuid` header is different from a `uuid` member. Prague's `HeadersSerDe` writes a header `Guid` as its 16 `ToByteArray` bytes, and the Go runtime reads it that way.
+A `uuid` header is different from a `uuid` member. Prague's `HeadersSerDe` writes a header `Guid` as its 16 `ToByteArray` bytes, and the Go and Rust runtimes read it that way.
 
 `raw` is only allowed as a union arm's payload (PROTOP0327). On a plain member it would be a hole in the contract that nothing checks.
 
 ## Time: `timestamp`, `date`
 
-| protop | C# | Go | On the wire |
-|---|---|---|---|
-| `timestamp` | `DateTime` | `wire.Timestamp` | the int64 of `DateTime.ToBinary()`, as Prague writes a `DateTime`; a reader also takes MessagePack's timestamp extension |
-| `date` | `DateOnly` | `wire.Date` | the day number, days since 0001-01-01 |
+| protop | C# | Go | Rust | On the wire |
+|---|---|---|---|---|
+| `timestamp` | `DateTime` | `wire.Timestamp` | `wire::Timestamp` | the int64 of `DateTime.ToBinary()`, as Prague writes a `DateTime`; a reader also takes MessagePack's timestamp extension |
+| `date` | `DateOnly` | `wire.Date` | `wire::Date` | the day number, days since 0001-01-01 |
 
 `ToBinary()` carries no offset: the ticks sit in the low 62 bits and the `DateTimeKind` in the top two. A `Utc` value is an instant, and so is a `Local` one, whose ticks .NET shifts to UTC before writing. An `Unspecified` value is a wall-clock time with no zone and is read as UTC. A `timestamp` is therefore an instant, and the kind is not kept.
 
-Both read as integers in Go -- `wire.Timestamp` is UTC ticks, `wire.Date` the day number -- so they compare, sort and key a range index as the time they are.
+Both read as integers in Go and Rust -- `Timestamp` is UTC ticks, `Date` the day number -- so they compare, sort and key a range index as the time they are.
 
 ## `union`
 
@@ -55,5 +55,6 @@ Rules:
 Emission:
 - **C#:** a class carrying `Kind`, one property per arm and `Raw`, plus a `[MessagePackFormatter]` that writes and reads the pair. It reads a nil union, and skips elements past the second.
 - **Go:** a struct with the same fields, and a `DecodeMsgpack`. A kind with no arm in the reader's schema keeps its payload in `Raw` instead of failing, so a producer can add a kind before its consumers learn it.
+- **Rust:** an `enum` with a variant per arm (a unit variant for an arm with no payload) and a fallback `Unknown(Kind, wire::Raw)` that keeps an unknown kind and its payload, named `UnknownArm` when an arm is already called `UNKNOWN`. It reads a nil union as the first arm.
 
 An arm named `KIND` or `RAW` collides with the generated fields. This is not checked yet.

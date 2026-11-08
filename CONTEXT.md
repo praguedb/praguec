@@ -24,7 +24,9 @@ Split frontend/backend, the way LLVM is: the frontend parses and checks source
 into one resolved **schema model**, and a **backend** turns that model into a
 target language. A backend never sees source or AST. C# is the first backend,
 not the only one — `internal/golang` is the second, emitting consumer-side
-decoders for `github.com/praguedb/prague.go` (`praguec generate --lang go`).
+decoders for `github.com/praguedb/prague.go` (`praguec generate --lang go`),
+and `internal/rust` the third, for `github.com/praguedb/prague.rs`
+(`--lang rust`).
 
 ## oracle
 
