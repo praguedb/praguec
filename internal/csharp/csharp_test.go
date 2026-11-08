@@ -477,15 +477,17 @@ func TestAViewWithNoSourceStillHasAShape(t *testing.T) {
 // what this test says is only that no one widened it here without going there.
 func TestScalarRowsAreClosed(t *testing.T) {
 	want := map[string]string{
-		"int64":   "long",
-		"int32":   "int",
-		"string":  "string",
-		"double":  "double",
-		"bool":    "bool",
-		"decimal": "decimal",
-		"uuid":    "Guid",
-		"bytes":   "byte[]",
-		"raw":     "ReadOnlyMemory<byte>",
+		"int64":     "long",
+		"int32":     "int",
+		"string":    "string",
+		"double":    "double",
+		"bool":      "bool",
+		"decimal":   "decimal",
+		"uuid":      "Guid",
+		"bytes":     "byte[]",
+		"timestamp": "DateTime",
+		"date":      "DateOnly",
+		"raw":       "ReadOnlyMemory<byte>",
 	}
 	for protop, cs := range want {
 		got, ok := csScalars[protop]

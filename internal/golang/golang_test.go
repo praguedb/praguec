@@ -222,3 +222,21 @@ union Value of Kind {
 		"default:\n\t\tx.Raw, err = d.DecodeRaw()",
 	)
 }
+
+// A timestamp and a date are wire integers, so they order and key a range index.
+func TestTimestampAndDateAreWireIntegers(t *testing.T) {
+	src := emitOne(t, `revision 1;
+namespace Clock;
+table Tick {
+  key int64 id = 1;
+  timestamp  at  = 2;
+  timestamp? end = 3;
+  date       on  = 4;
+}`)
+	assertHas(t, src,
+		"At  wire.Timestamp",
+		"End *wire.Timestamp",
+		"On  wire.Date",
+		`"github.com/praguedb/prague.go/wire"`,
+	)
+}

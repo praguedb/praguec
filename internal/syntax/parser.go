@@ -34,8 +34,12 @@ var scalarTypes = map[string]bool{
 	"uuid": true,
 	// bytes is MessagePack bin; raw is one MessagePack value kept undecoded,
 	// as a union arm whose payload the writer passes through untouched.
-	"bytes":      true,
-	"raw":        true,
+	"bytes": true,
+	"raw":   true,
+	// timestamp is a DateTime, which Prague writes as ToBinary()'s int64;
+	// date is a DateOnly, which MessagePack-CSharp writes as its day number.
+	"timestamp":  true,
+	"date":       true,
 	scaledScalar: true,
 }
 

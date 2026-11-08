@@ -14,6 +14,17 @@ A `uuid` header is different from a `uuid` member. Prague's `HeadersSerDe` write
 
 `raw` is only allowed as a union arm's payload (PROTOP0327). On a plain member it would be a hole in the contract that nothing checks.
 
+## Time: `timestamp`, `date`
+
+| protop | C# | Go | On the wire |
+|---|---|---|---|
+| `timestamp` | `DateTime` | `wire.Timestamp` | the int64 of `DateTime.ToBinary()`, as Prague writes a `DateTime`; a reader also takes MessagePack's timestamp extension |
+| `date` | `DateOnly` | `wire.Date` | the day number, days since 0001-01-01 |
+
+`ToBinary()` carries no offset: the ticks sit in the low 62 bits and the `DateTimeKind` in the top two. A `Utc` value is an instant, and so is a `Local` one, whose ticks .NET shifts to UTC before writing. An `Unspecified` value is a wall-clock time with no zone and is read as UTC. A `timestamp` is therefore an instant, and the kind is not kept.
+
+Both read as integers in Go -- `wire.Timestamp` is UTC ticks, `wire.Date` the day number -- so they compare, sort and key a range index as the time they are.
+
 ## `union`
 
 A union is a value that is one of several kinds, with a kind-specific payload, discriminated by an enum:
