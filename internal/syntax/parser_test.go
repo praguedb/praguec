@@ -2106,7 +2106,7 @@ struct S
 // are read rather than passed through -- and a set that can be widened or
 // narrowed with the suite green is not closed in any sense that matters.
 var (
-	wantScalarTypes       = []string{"bool", "bytes", "decimal", "double", "int32", "int64", "raw", "string", "uuid"}
+	wantScalarTypes       = []string{"bool", "bytes", "date", "decimal", "double", "int32", "int64", "raw", "string", "timestamp", "uuid"}
 	wantBackends          = []string{"cs", "go"}
 	wantProtopAnnotations = []string{"from_timestamp", "header", "references"}
 	wantCollectionTypes   = map[string]int{"list": 1, "map": 2}

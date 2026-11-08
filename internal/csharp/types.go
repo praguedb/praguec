@@ -12,8 +12,8 @@ import (
 // closed at all is praguedb/praguec#32, which is
 // human-in-the-loop and unresolved. **Do not add a row to make a golden pass.**
 // The corpus's `byte ProviderId` (3 sites) has no protop spelling and that is
-// #32's question rather than a gap to fill here; so is the corpus's `DateTime`,
-// which is #15. Widening this map without widening #32's map first produces a
+// #32's question rather than a gap to fill here. `DateTime` and `DateOnly` are
+// `timestamp` and `date` (unions.md, "Time"). Widening this map without widening #32's map first produces a
 // keyword the parser rejects, and widening both is #32 ruling itself through
 // the back door.
 //
@@ -22,13 +22,15 @@ import (
 // under test gets weaker every time the map grows -- which is the mistake #35's
 // reviewer found in the frontend's suite.
 var csScalars = map[string]string{
-	"int64":  "long",
-	"int32":  "int",
-	"string": "string",
-	"double": "double",
-	"bool":   "bool",
-	"uuid":   "Guid",
-	"bytes":  "byte[]",
+	"int64":     "long",
+	"int32":     "int",
+	"string":    "string",
+	"double":    "double",
+	"bool":      "bool",
+	"uuid":      "Guid",
+	"bytes":     "byte[]",
+	"timestamp": "DateTime",
+	"date":      "DateOnly",
 	// raw is only ever a union payload (PROTOP0327), written and read by the
 	// union's formatter.
 	"raw": "ReadOnlyMemory<byte>",

@@ -460,13 +460,17 @@ var goScalars = map[string]string{
 	"uuid":   "wire.UUID",
 	"bytes":  "[]byte",
 	"raw":    "msgpack.RawMessage",
+	// wire.Timestamp is UTC .NET ticks and wire.Date the day number: both
+	// integers, so they order and key a range index.
+	"timestamp": "wire.Timestamp",
+	"date":      "wire.Date",
 	// MessagePack-CSharp writes a decimal as its invariant-culture string;
 	// wire.Decimal reads that (and numeric forms) into shopspring/decimal.
 	"decimal": "wire.Decimal",
 }
 
 func usesWire(t check.Type) bool {
-	if t.Kind == check.TypeScalar && (t.Name == "decimal" || t.Name == "uuid") {
+	if t.Kind == check.TypeScalar && (t.Name == "decimal" || t.Name == "uuid" || t.Name == "timestamp" || t.Name == "date") {
 		return true
 	}
 	for _, a := range t.Args {
