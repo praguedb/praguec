@@ -1,8 +1,6 @@
 package csharp
 
 import (
-	"strings"
-
 	"github.com/praguedb/praguec/internal/check"
 )
 
@@ -29,6 +27,11 @@ var csScalars = map[string]string{
 	"string": "string",
 	"double": "double",
 	"bool":   "bool",
+	"uuid":   "Guid",
+	"bytes":  "byte[]",
+	// raw is only ever a union payload (PROTOP0327), written and read by the
+	// union's formatter.
+	"raw": "ReadOnlyMemory<byte>",
 
 	// PROVISIONAL -- #13, the scaled-decimal option.
 	//
@@ -118,15 +121,4 @@ func typeName(t check.Type) string {
 // `eventId` becomes `Eventid`. That is a consequence of the language having one
 // convention rather than a defect in the conversion, and every one of the
 // corpus's 339 member names is reachable from a `snake_case` spelling.
-func pascal(name string) string {
-	var b strings.Builder
-	b.Grow(len(name))
-	for _, part := range strings.Split(name, "_") {
-		if part == "" {
-			continue
-		}
-		b.WriteString(strings.ToUpper(part[:1]))
-		b.WriteString(strings.ToLower(part[1:]))
-	}
-	return b.String()
-}
+func pascal(name string) string { return check.Pascal(name) }

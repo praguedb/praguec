@@ -4,7 +4,7 @@ An annotation follows what it describes. There is no second position and no befo
 
 ```protop
 table Show [cs: DataCacheTopic("...")] { }      // after the declaration head
-int64 timestamp = 25 [cs: DataCacheFromTimestamp];   // after the tag
+int64 timestamp = 25 [from_timestamp];               // after the tag
 alias ticket_type_id = id [cs: JsonIgnore];             // after the alias
 ```
 
@@ -17,6 +17,7 @@ Legal on a table, record, struct, view, field, view member, or alias. Same rule 
 | Form | Meaning |
 |---|---|
 | `[references(Show)]` | protop's own closed set. Read, checked, unknown is an error. |
+| `[header]`, `[header("x-region")]`, `[from_timestamp]` | protop's own: the member is written from the Kafka message. See [enrichment](enrichment.md). |
 | `[cs: DataCacheTopic("...")]` | Verbatim C# attribute text. Copied out, never inspected. |
 | `[go: json:"show"]` | On a member: verbatim Go struct-tag text. On a declaration: a doc-comment line. |
 

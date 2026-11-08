@@ -171,3 +171,54 @@ func TestTheExamplesEmit(t *testing.T) {
 		t.Fatalf("%d units for %d files", len(units), len(files))
 	}
 }
+
+func TestEnrichmentWritesFromTheMessageAndSaysWhatItReads(t *testing.T) {
+	src := emitOne(t, `revision 1;
+namespace Shop;
+
+table Product {
+  key int64 id = 1;
+  string tenant_id = 2 [header];
+  string? region = 3 [header("x-region")];
+  int64 written_at = 4 [from_timestamp];
+}
+
+table Plain {
+  key int64 id = 1;
+}
+`)
+	assertHas(t, src,
+		"func (x *Product) Enrich(m wire.Meta) {\n\twire.Header(m, \"TenantId\", &x.TenantId)\n\twire.HeaderOpt(m, \"x-region\", &x.Region)\n\tx.WrittenAt = m.Timestamp()\n}",
+		`var productEnrichment = wire.Enrichment{Headers: []string{"TenantId", "x-region"}, Timestamp: true}`,
+		"func (*Product) Enrichment() wire.Enrichment { return productEnrichment }",
+	)
+	if strings.Contains(src, "func (x *Plain) Enrich") {
+		t.Error("a type with nothing to enrich has an Enrich")
+	}
+}
+
+// A kind the reader has no arm for keeps its payload in Raw rather than
+// failing, so a producer can add a kind ahead of its consumers.
+func TestAUnionDecodesItsPairAndKeepsWhatItDoesNotKnow(t *testing.T) {
+	src := emitOne(t, `revision 1;
+namespace A;
+enum Kind {
+  NONE = 0;
+  NUMBER = 1;
+  BLOB = 2;
+}
+union Value of Kind {
+  NONE;
+  NUMBER int64;
+  BLOB raw;
+}
+`)
+	assertHas(t, src,
+		"Number int64",
+		"Blob   msgpack.RawMessage",
+		"Raw msgpack.RawMessage",
+		"case KindNone:\n\t\terr = d.Skip()",
+		"case KindNumber:\n\t\terr = d.Decode(&x.Number)",
+		"default:\n\t\tx.Raw, err = d.DecodeRaw()",
+	)
+}

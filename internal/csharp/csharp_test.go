@@ -483,6 +483,9 @@ func TestScalarRowsAreClosed(t *testing.T) {
 		"double":  "double",
 		"bool":    "bool",
 		"decimal": "decimal",
+		"uuid":    "Guid",
+		"bytes":   "byte[]",
+		"raw":     "ReadOnlyMemory<byte>",
 	}
 	for protop, cs := range want {
 		got, ok := csScalars[protop]
@@ -1200,5 +1203,85 @@ struct S [go: Deprecated: use T.] [cs: Serializable] {
 		if !strings.Contains(src, want) {
 			t.Errorf("C# lacks %s:\n%s", want, src)
 		}
+	}
+}
+
+func TestEnrichmentIsPraguesAttributes(t *testing.T) {
+	files := map[string]string{"a.prague": `revision 1;
+namespace Shop;
+
+table Product {
+  key int64 id = 1;
+  string tenant_id = 2 [header];
+  string region = 3 [header("x-region")];
+  int64 written_at = 4 [from_timestamp];
+}
+
+view SlimProduct of Product {
+  id;
+  tenant_id as tenant;
+}
+`}
+	var all strings.Builder
+	for _, u := range emitSource(t, files) {
+		all.WriteString(u.Source)
+	}
+	src := all.String()
+	for _, want := range []string{
+		"    [DataCacheHeader]\n    public string TenantId",
+		"    [DataCacheHeader(\"x-region\")]\n    public string Region",
+		"    [DataCacheFromTimestamp]\n    public long WrittenAt",
+		// The view renamed the member, not the header.
+		"    [DataCacheHeader(\"TenantId\")]\n    public string Tenant",
+	} {
+		if !strings.Contains(src, want) {
+			t.Errorf("emission lacks %q\n---\n%s", want, src)
+		}
+	}
+}
+
+const unionSource = `revision 1;
+namespace A;
+enum Kind {
+  NONE = 0;
+  NUMBER = 1;
+  BLOB = 2;
+  LATER = 3;
+}
+union Value of Kind {
+  NONE;
+  NUMBER int64;
+  BLOB raw;
+}
+`
+
+// A union is [arm, payload] behind a formatter of its own. The formatter's
+// default arm keeps an unknown kind's payload with ReadRaw().ToArray(), an
+// extension in System.Buffers, so that using is always there: without it the
+// call binds to nothing and the unit does not compile.
+func TestAUnionIsAPairBehindItsOwnFormatter(t *testing.T) {
+	var src string
+	for _, u := range emitSource(t, map[string]string{"a.prague": unionSource}) {
+		if u.TypeName == "Value" {
+			src = u.Source
+		}
+	}
+	if got, want := strings.Join(usingsOf(src), ","), "MessagePack,MessagePack.Formatters,System.Buffers"; got != want {
+		t.Errorf("usings %s, want %s", got, want)
+	}
+	for _, w := range []string{
+		"[MessagePackFormatter(typeof(ValueFormatter))]",
+		"writer.WriteArrayHeader(2);",
+		"case Kind.None:\n                writer.WriteNil();",
+		"case Kind.Blob:\n                value.Blob = reader.ReadRaw().ToArray();",
+		"default:\n                value.Raw = reader.ReadRaw().ToArray();",
+		"for (var i = 2; i < count; i++)",
+	} {
+		if !strings.Contains(src, w) {
+			t.Errorf("emission lacks %q\n---\n%s", w, src)
+		}
+	}
+	if strings.Contains(src, "case Kind.Later") {
+		t.Error("a kind that is not an arm got a case of its own")
 	}
 }

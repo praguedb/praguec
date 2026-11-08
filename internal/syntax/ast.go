@@ -199,6 +199,28 @@ type Enum struct {
 
 func (*Enum) isDecl() {}
 
+// Union is `union SettingValue of SettingKind { INT int64; NIL; }`: a value
+// whose payload type is chosen by an arm of an enum. On the wire it is the
+// array [arm, payload], and a reader keeps an arm it does not know as raw
+// MessagePack rather than failing, so a writer may add arms.
+type Union struct {
+	Name         Ident
+	Discriminant Ident
+	Annotations  []*Annotation
+	Arms         []*UnionArm
+	Span         source.Span
+}
+
+func (*Union) isDecl() {}
+
+// UnionArm is `INT int64;`, or `NIL;` for an arm with no payload. Arm names an
+// arm of the union's enum.
+type UnionArm struct {
+	Arm  Ident
+	Type *TypeRef // nil: the payload is MessagePack nil
+	Span source.Span
+}
+
 // Member is one line of a struct, record or table body. Like Decl it is a
 // marker: the member shapes have little in common beyond appearing between the
 // same braces, and every caller type-switches.

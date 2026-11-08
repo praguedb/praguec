@@ -54,12 +54,16 @@ type Unit struct {
 // The output is gofmt-formatted; a formatting failure is a backend defect and is
 // returned rather than hidden.
 func Emit(s *check.Schema, pkg string, want func(*check.File) bool) ([]Unit, error) {
+	keys := map[*check.Decl]bool{}
+	for _, f := range s.Files {
+		markKeys(f, keys)
+	}
 	var units []Unit
 	for _, f := range s.Files {
 		if !want(f) || len(f.Decls) == 0 {
 			continue
 		}
-		src, err := EmitFile(f, pkg)
+		src, err := emitFile(f, pkg, keys)
 		if err != nil {
 			return nil, err
 		}
@@ -71,6 +75,33 @@ func Emit(s *check.Schema, pkg string, want func(*check.File) bool) ([]Unit, err
 
 // EmitFile renders one file as a complete, formatted Go compilation unit.
 func EmitFile(f *check.File, pkg string) (string, error) {
+	keys := map[*check.Decl]bool{}
+	markKeys(f, keys)
+	return emitFile(f, pkg, keys)
+}
+
+// markKeys finds the declarations a table is keyed by, and every declaration
+// they hold. A Go map key must be comparable by value, so their optional
+// members are wire.Opt rather than a pointer, which would compare by address.
+func markKeys(f *check.File, keys map[*check.Decl]bool) {
+	var mark func(t check.Type)
+	mark = func(t check.Type) {
+		if t.Kind != check.TypeDecl || t.Decl == nil || keys[t.Decl] {
+			return
+		}
+		keys[t.Decl] = true
+		for _, m := range t.Decl.Members {
+			mark(m.Type)
+		}
+	}
+	for _, d := range f.Decls {
+		if d.Kind == check.DeclTable && d.Key != nil && d.Key.Kind == check.MemberField {
+			mark(d.Key.Type)
+		}
+	}
+}
+
+func emitFile(f *check.File, pkg string, keys map[*check.Decl]bool) (string, error) {
 	var body strings.Builder
 	imports := map[string]bool{}
 	for _, d := range f.Decls {
@@ -79,7 +110,11 @@ func EmitFile(f *check.File, pkg string) (string, error) {
 			writeEnum(&body, d)
 			continue
 		}
-		writeType(&body, d, imports)
+		if d.Kind == check.DeclUnion {
+			writeUnion(&body, d, imports)
+			continue
+		}
+		writeType(&body, d, keys[d], imports)
 	}
 
 	var b strings.Builder
@@ -142,18 +177,22 @@ func writeEnum(b *strings.Builder, d *check.Decl) {
 	b.WriteString(")\n")
 }
 
-func writeType(b *strings.Builder, d *check.Decl, imports map[string]bool) {
+func writeType(b *strings.Builder, d *check.Decl, isKey bool, imports map[string]bool) {
 	imports[msgpackImport] = true
 	imports["fmt"] = true
 
 	writeDeclAnnotations(b, d.Annotations)
 	fmt.Fprintf(b, "type %s struct {\n", d.Name)
 	for _, m := range d.Members {
-		if m.Kind != check.MemberField || !m.HasTag() {
+		// A field with no tag is on the struct only when the message writes it.
+		if m.Kind != check.MemberField || !m.HasTag() && !m.Enriched() {
 			continue
 		}
 		t := TypeName(m.Type)
-		if usesWire(m.Type) {
+		if isKey && m.Type.Optional {
+			t = "wire.Opt[" + TypeName(withoutPresence(m.Type)) + "]"
+		}
+		if usesWire(m.Type) || isKey && m.Type.Optional {
 			imports[wireImport] = true
 		}
 		fmt.Fprintf(b, "\t%s %s", Pascal(m.Name), t)
@@ -168,6 +207,9 @@ func writeType(b *strings.Builder, d *check.Decl, imports map[string]bool) {
 		writeKeyType(b, d)
 	}
 	writeDecoder(b, d)
+	if writeEnrich(b, d) {
+		imports[wireImport] = true
+	}
 	writeCacheKey(b, d)
 	for _, m := range d.Members {
 		if m.Kind == check.MemberAlias {
@@ -194,6 +236,99 @@ func writeDecoder(b *strings.Builder, d *check.Decl) {
 	fmt.Fprintf(b, "\t\tif err != nil {\n\t\t\treturn fmt.Errorf(\"%s[%%d]: %%w\", i, err)\n\t\t}\n", d.Name)
 	b.WriteString("\t}\n\treturn nil\n}\n")
 }
+
+// writeUnion emits a union as a struct holding the arm and one field per
+// payload, and the decoder of [arm, payload]. An arm the schema gives no
+// payload keeps the payload in Raw, undecoded; elements after the payload are
+// skipped, for a later shape.
+func writeUnion(b *strings.Builder, d *check.Decl, imports map[string]bool) {
+	imports[msgpackImport] = true
+	imports["fmt"] = true
+	disc := d.Discriminant.Name
+	writeDeclAnnotations(b, d.Annotations)
+	fmt.Fprintf(b, "type %s struct {\n\tKind %s\n", d.Name, disc)
+	for _, a := range d.Arms {
+		if a.Type != nil {
+			if usesWire(*a.Type) {
+				imports[wireImport] = true
+			}
+			fmt.Fprintf(b, "\t%s %s\n", Pascal(a.Name), TypeName(*a.Type))
+		}
+	}
+	b.WriteString("\t// Raw is the payload of an arm this schema gives no type, as written.\n\tRaw msgpack.RawMessage\n}\n")
+
+	fmt.Fprintf(b, "\n// DecodeMsgpack reads %s from [arm, payload].\n", d.Name)
+	fmt.Fprintf(b, "func (x *%s) DecodeMsgpack(d *msgpack.Decoder) error {\n", d.Name)
+	b.WriteString("\tn, err := d.DecodeArrayLen()\n\tif err != nil {\n\t\treturn err\n\t}\n")
+	fmt.Fprintf(b, "\tif n < 2 {\n\t\treturn fmt.Errorf(\"%s is [arm, payload]; this array has %%d elements\", n)\n\t}\n", d.Name)
+	b.WriteString("\tif err := d.Decode(&x.Kind); err != nil {\n\t\treturn err\n\t}\n")
+	b.WriteString("\tswitch x.Kind {\n")
+	for _, a := range d.Arms {
+		fmt.Fprintf(b, "\tcase %s%s:\n", disc, Pascal(a.Name))
+		if a.Type == nil {
+			b.WriteString("\t\terr = d.Skip()\n")
+		} else {
+			fmt.Fprintf(b, "\t\terr = d.Decode(&x.%s)\n", Pascal(a.Name))
+		}
+	}
+	b.WriteString("\tdefault:\n\t\tx.Raw, err = d.DecodeRaw()\n\t}\n")
+	fmt.Fprintf(b, "\tif err != nil {\n\t\treturn fmt.Errorf(\"%s %%d: %%w\", x.Kind, err)\n\t}\n", d.Name)
+	b.WriteString("\tfor i := 2; i < n; i++ {\n\t\tif err := d.Skip(); err != nil {\n\t\t\treturn err\n\t\t}\n\t}\n\treturn nil\n}\n")
+}
+
+// writeEnrich emits Enrich and Enrichment for a type with members written from
+// the Kafka message, and reports whether it did. A consumer calls Enrich after
+// the value decodes and its value filters pass, which is Prague's order, and
+// reads Enrichment to fold what Enrich reads into its change detection: a
+// re-publish with the same value and a new header is a change.
+func writeEnrich(b *strings.Builder, d *check.Decl) bool {
+	var headers []string
+	stamped := false
+	for _, m := range d.Members {
+		if m.Header != nil {
+			headers = append(headers, fmt.Sprintf("%q", m.Header.Name))
+		}
+		stamped = stamped || m.FromTimestamp
+	}
+	if len(headers) == 0 && !stamped {
+		return false
+	}
+
+	fmt.Fprintf(b, "\n// Enrich writes the members of %s that Prague writes from the Kafka message.\n", d.Name)
+	fmt.Fprintf(b, "func (x *%s) Enrich(m wire.Meta) {\n", d.Name)
+	for _, m := range d.Members {
+		f := Pascal(m.Name)
+		switch {
+		case m.FromTimestamp:
+			fmt.Fprintf(b, "\tx.%s = m.Timestamp()\n", f)
+		case m.Header != nil && m.Type.Optional:
+			fmt.Fprintf(b, "\twire.HeaderOpt(m, %q, &x.%s)\n", m.Header.Name, f)
+		case m.Header != nil:
+			fmt.Fprintf(b, "\twire.Header(m, %q, &x.%s)\n", m.Header.Name, f)
+		}
+	}
+	b.WriteString("}\n")
+
+	v := lowerFirst(d.Name) + "Enrichment"
+	var fields []string
+	if len(headers) > 0 {
+		fields = append(fields, "Headers: []string{"+strings.Join(headers, ", ")+"}")
+	}
+	if stamped {
+		fields = append(fields, "Timestamp: true")
+	}
+	fmt.Fprintf(b, "\nvar %s = wire.Enrichment{%s}\n", v, strings.Join(fields, ", "))
+	fmt.Fprintf(b, "\n// Enrichment is what Enrich reads from the Kafka message.\n")
+	fmt.Fprintf(b, "func (*%s) Enrichment() wire.Enrichment { return %s }\n", d.Name, v)
+	return true
+}
+
+func withoutPresence(t check.Type) check.Type {
+	t.Optional = false
+	return t
+}
+
+func lowerFirst(s string) string { return strings.ToLower(s[:1]) + s[1:] }
 
 // writeKeyType emits a table's composite identity as a comparable struct, the
 // Go spelling of the C# ValueTuple. It decodes the Kafka message key, which the
@@ -322,13 +457,16 @@ var goScalars = map[string]string{
 	"string": "string",
 	"double": "float64",
 	"bool":   "bool",
+	"uuid":   "wire.UUID",
+	"bytes":  "[]byte",
+	"raw":    "msgpack.RawMessage",
 	// MessagePack-CSharp writes a decimal as its invariant-culture string;
 	// wire.Decimal reads that (and numeric forms) into shopspring/decimal.
 	"decimal": "wire.Decimal",
 }
 
 func usesWire(t check.Type) bool {
-	if t.Kind == check.TypeScalar && t.Name == "decimal" {
+	if t.Kind == check.TypeScalar && (t.Name == "decimal" || t.Name == "uuid") {
 		return true
 	}
 	for _, a := range t.Args {
@@ -369,14 +507,4 @@ func writeDeclAnnotations(b *strings.Builder, anns []*syntax.Annotation) {
 // Pascal is the C# backend's member spelling, kept identical so that one
 // schema names a member the same way in both languages: split on `_`,
 // title-case each part.
-func Pascal(name string) string {
-	var b strings.Builder
-	for _, part := range strings.Split(name, "_") {
-		if part == "" {
-			continue
-		}
-		b.WriteString(strings.ToUpper(part[:1]))
-		b.WriteString(strings.ToLower(part[1:]))
-	}
-	return b.String()
-}
+func Pascal(name string) string { return check.Pascal(name) }

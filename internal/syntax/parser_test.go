@@ -826,7 +826,7 @@ revision 1;
 			wantCodes: []diag.Code{diag.UnknownDeclaration},
 			wantMessageHas: []string{
 				"unknown declaration `widget`",
-				"`struct`, `enum`, `record`, `table`, `view` or `import`",
+				"`struct`, `enum`, `record`, `table`, `view`, `union` or `import`",
 			},
 			wantLine: 3, wantCol: 1,
 			wantSpan: underlines("widget"),
@@ -894,7 +894,7 @@ struct S {
 			wantCodes: []diag.Code{diag.UnknownAnnotation},
 			wantMessageHas: []string{
 				"unknown annotation `refrences`",
-				"protop's own annotations are `references`",
+				"protop's own annotations are `from_timestamp`, `header`, `references`",
 				"as in `[cs: refrences]`",
 			},
 			wantLine: 4, wantCol: 16,
@@ -2106,9 +2106,9 @@ struct S
 // are read rather than passed through -- and a set that can be widened or
 // narrowed with the suite green is not closed in any sense that matters.
 var (
-	wantScalarTypes       = []string{"bool", "decimal", "double", "int32", "int64", "string"}
+	wantScalarTypes       = []string{"bool", "bytes", "decimal", "double", "int32", "int64", "raw", "string", "uuid"}
 	wantBackends          = []string{"cs", "go"}
-	wantProtopAnnotations = []string{"references"}
+	wantProtopAnnotations = []string{"from_timestamp", "header", "references"}
 	wantCollectionTypes   = map[string]int{"list": 1, "map": 2}
 )
 
