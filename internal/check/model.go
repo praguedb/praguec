@@ -20,6 +20,8 @@
 package check
 
 import (
+	"strings"
+
 	"github.com/praguedb/praguec/internal/source"
 	"github.com/praguedb/praguec/internal/syntax"
 )
@@ -99,6 +101,9 @@ const (
 	DeclView
 	// DeclEnum is `enum EventStatus { ... }`.
 	DeclEnum
+	// DeclUnion is `union SettingValue of SettingKind { ... }`: [arm, payload]
+	// on the wire, the payload's type chosen by the arm.
+	DeclUnion
 )
 
 func (k DeclKind) String() string {
@@ -113,6 +118,8 @@ func (k DeclKind) String() string {
 		return "view"
 	case DeclEnum:
 		return "enum"
+	case DeclUnion:
+		return "union"
 	}
 	return "declaration"
 }
@@ -147,6 +154,11 @@ type Decl struct {
 	// array, which is why 0 is legal here and is not a tag.
 	EnumMembers []*EnumMember
 
+	// Discriminant is the enum a union's arm is an arm of, and Arms are the
+	// arms it gives a payload, in source order. Both nil outside a union.
+	Discriminant *Decl
+	Arms         []*UnionArm
+
 	// Annotations are carried through verbatim, in source order. praguec does
 	// not know what a backend's annotation means and is not entitled to an
 	// opinion; the backend that reads them is the one that checks them.
@@ -172,6 +184,15 @@ type Decl struct {
 // view the name is the view's -- `event_id as id;` is looked up as `id`,
 // because that is what the view calls it and the rename is the view's alone.
 func (d *Decl) Member(name string) *Member { return d.byName[name] }
+
+// UnionArm is one arm of a union: an arm of its enum, and the payload's type,
+// nil when the payload is MessagePack nil.
+type UnionArm struct {
+	Name   string
+	Number int64
+	Type   *Type
+	Span   source.Span
+}
 
 // EnumMember is one arm of an enum.
 type EnumMember struct {
@@ -248,12 +269,52 @@ type Member struct {
 	// that owns it.
 	From *Member
 
+	// Header is where `[header]` says the member is written from, and nil
+	// when it is not. A view member inherits its source's: the producer names
+	// the header, and a view renaming the member does not rename what is on
+	// the message.
+	Header *Header
+
+	// FromTimestamp is `[from_timestamp]`: the member is written from the Kafka
+	// message timestamp, in Unix milliseconds. A view member inherits it.
+	FromTimestamp bool
+
 	// Annotations are the member's own, verbatim and in source order. A view
 	// member's are its own; the ones it inherits are on From, because section 6
 	// has a view inherit the relations of the members it lists.
 	Annotations []*syntax.Annotation
 
 	Span source.Span
+}
+
+// Header is a member written from a Kafka header after its value decodes. The
+// member keeps its wire slot: a message without the header leaves what the
+// value carried.
+type Header struct {
+	// Name is the header's key. `[header]` alone reads the header named as
+	// Prague names the member, its PascalCase spelling; `[header("x")]` reads x.
+	Name string
+	Span source.Span
+}
+
+// Enriched reports whether anything on the Kafka message besides the value
+// writes the member.
+func (m *Member) Enriched() bool { return m.Header != nil || m.FromTimestamp }
+
+// Pascal is how Prague spells a protop name: split on `_`, title-case each
+// part. Every backend names members this way, and `[header]`'s default header
+// name is defined by it, so it lives with the model rather than in a backend.
+func Pascal(name string) string {
+	var b strings.Builder
+	b.Grow(len(name))
+	for _, part := range strings.Split(name, "_") {
+		if part == "" {
+			continue
+		}
+		b.WriteString(strings.ToUpper(part[:1]))
+		b.WriteString(strings.ToLower(part[1:]))
+	}
+	return b.String()
 }
 
 // HasTag reports whether the member occupies a slot on the wire. An alias does

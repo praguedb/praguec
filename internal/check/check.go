@@ -81,6 +81,14 @@ func Check(files FileSet, bag *diag.Bag) *Schema {
 	for _, w := range c.work {
 		c.resolveRelations(w)
 	}
+	// Enrichment in two sweeps, because a view inherits its source's and the
+	// source may be declared in a file that comes later.
+	for _, w := range c.work {
+		c.resolveEnrichment(w, false)
+	}
+	for _, w := range c.work {
+		c.resolveEnrichment(w, true)
+	}
 
 	schema := &Schema{Files: make([]*File, len(c.work))}
 	for i, w := range c.work {
@@ -108,7 +116,8 @@ type fileWork struct {
 
 type declWork struct {
 	decl    *Decl
-	view    *syntax.View // nil unless the declaration is a view
+	view    *syntax.View  // nil unless the declaration is a view
+	union   *syntax.Union // nil unless the declaration is a union
 	members []*memberWork
 }
 
@@ -160,6 +169,10 @@ func (c *checker) declareOne(w *fileWork, d syntax.Decl) *declWork {
 		dw.decl.NameSpan = d.Name.Span
 		dw.view = d
 		c.declareViewMembers(w, dw, d.Members)
+	case *syntax.Union:
+		dw.decl.Kind, dw.decl.Name, dw.decl.Annotations, dw.decl.Span = DeclUnion, d.Name.Text, d.Annotations, d.Span
+		dw.decl.NameSpan = d.Name.Span
+		dw.union = d
 	case *syntax.Enum:
 		dw.decl.Kind, dw.decl.Name, dw.decl.Span = DeclEnum, d.Name.Text, d.Span
 		dw.decl.NameSpan = d.Name.Span
@@ -332,6 +345,10 @@ func (c *checker) resolveDecls(w *fileWork) {
 			c.resolveViewSource(w, dw)
 			continue
 		}
+		if dw.decl.Kind == DeclUnion {
+			c.resolveUnion(w, dw)
+			continue
+		}
 		// Two passes over the body, and the order is the point. An alias takes
 		// its target's type by value, so every field has to have one before any
 		// alias is resolved -- otherwise `alias ticket_type_id = id;` written
@@ -350,6 +367,7 @@ func (c *checker) resolveDecls(w *fileWork) {
 		for _, mw := range dw.members {
 			if m, ok := mw.ast.(*syntax.Field); ok {
 				mw.member.Type = c.resolveType(w, m.Type)
+				rejectRaw(w, mw.member.Type)
 			}
 		}
 		for _, mw := range dw.members {

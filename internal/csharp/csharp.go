@@ -20,6 +20,7 @@
 package csharp
 
 import (
+	"fmt"
 	"slices"
 	"strconv"
 	"strings"
@@ -79,9 +80,12 @@ func EmitDecl(d *check.Decl) string {
 	b.WriteString("namespace ")
 	b.WriteString(d.File.Namespace)
 	b.WriteString(";\n\n")
-	if d.Kind == check.DeclEnum {
+	switch d.Kind {
+	case check.DeclEnum:
 		writeEnum(&b, d)
-	} else {
+	case check.DeclUnion:
+		writeUnion(&b, d)
+	default:
 		writeType(&b, d)
 	}
 	return b.String()
@@ -112,6 +116,23 @@ const Prefix = "cs"
 func usings(d *check.Decl) []string {
 	if d.Kind == check.DeclEnum {
 		return nil
+	}
+	if d.Kind == check.DeclUnion {
+		out := []string{messagePackNamespace, "MessagePack.Formatters", "System.Buffers"}
+		if ns := d.Discriminant.File.Namespace; ns != d.File.Namespace {
+			out = append(out, ns)
+		}
+		for _, a := range d.Arms {
+			if a.Type != nil {
+				for _, ns := range typeNamespaces(*a.Type) {
+					if ns != d.File.Namespace && !slices.Contains(out, ns) {
+						out = append(out, ns)
+					}
+				}
+			}
+		}
+		slices.Sort(out)
+		return out
 	}
 	seen := map[string]bool{d.File.Namespace: true}
 	out := []string{messagePackNamespace}
@@ -235,6 +256,65 @@ func writeEnum(b *strings.Builder, d *check.Decl) {
 	b.WriteString("}\n")
 }
 
+// writeUnion emits a union as a class carrying the arm and one property per
+// payload, and the formatter that writes it as [arm, payload]. An arm the
+// schema gives no payload type round-trips through Raw, as written, so a
+// reader passes on what a newer writer put there.
+func writeUnion(b *strings.Builder, d *check.Decl) {
+	disc := d.Discriminant.Name
+	writeAnnotations(b, "", d.Annotations)
+	fmt.Fprintf(b, "[MessagePackFormatter(typeof(%sFormatter))]\npublic sealed partial class %s\n{\n", d.Name, d.Name)
+	fmt.Fprintf(b, "    public %s Kind { get; set; }\n", disc)
+	for _, a := range d.Arms {
+		if a.Type != nil {
+			fmt.Fprintf(b, "\n    public %s %s { get; set; }\n", typeName(*a.Type), pascal(a.Name))
+		}
+	}
+	b.WriteString("\n    /// <summary>The payload of an arm this schema gives no type, as written.</summary>\n")
+	b.WriteString("    public ReadOnlyMemory<byte> Raw { get; set; }\n}\n\n")
+
+	fmt.Fprintf(b, "public sealed class %sFormatter : IMessagePackFormatter<%s?>\n{\n", d.Name, d.Name)
+	fmt.Fprintf(b, "    public void Serialize(ref MessagePackWriter writer, %s? value, MessagePackSerializerOptions options)\n    {\n", d.Name)
+	b.WriteString("        if (value is null)\n        {\n            writer.WriteNil();\n            return;\n        }\n")
+	b.WriteString("        writer.WriteArrayHeader(2);\n")
+	b.WriteString("        MessagePackSerializer.Serialize(ref writer, value.Kind, options);\n")
+	b.WriteString("        switch (value.Kind)\n        {\n")
+	for _, a := range d.Arms {
+		fmt.Fprintf(b, "            case %s.%s:\n", disc, pascal(a.Name))
+		switch {
+		case a.Type == nil:
+			b.WriteString("                writer.WriteNil();\n")
+		case a.Type.Name == "raw":
+			fmt.Fprintf(b, "                writer.WriteRaw(value.%s.Span);\n", pascal(a.Name))
+		default:
+			fmt.Fprintf(b, "                MessagePackSerializer.Serialize(ref writer, value.%s, options);\n", pascal(a.Name))
+		}
+		b.WriteString("                break;\n")
+	}
+	b.WriteString("            default:\n                if (value.Raw.IsEmpty)\n                    writer.WriteNil();\n                else\n                    writer.WriteRaw(value.Raw.Span);\n                break;\n        }\n    }\n\n")
+
+	fmt.Fprintf(b, "    public %s? Deserialize(ref MessagePackReader reader, MessagePackSerializerOptions options)\n    {\n", d.Name)
+	b.WriteString("        if (reader.TryReadNil())\n            return null;\n")
+	b.WriteString("        var count = reader.ReadArrayHeader();\n        if (count < 2)\n")
+	fmt.Fprintf(b, "            throw new MessagePackSerializationException(\"%s is [arm, payload]; this array has \" + count + \" elements.\");\n", d.Name)
+	fmt.Fprintf(b, "        var value = new %s { Kind = MessagePackSerializer.Deserialize<%s>(ref reader, options) };\n", d.Name, disc)
+	b.WriteString("        switch (value.Kind)\n        {\n")
+	for _, a := range d.Arms {
+		fmt.Fprintf(b, "            case %s.%s:\n", disc, pascal(a.Name))
+		switch {
+		case a.Type == nil:
+			b.WriteString("                reader.Skip();\n")
+		case a.Type.Name == "raw":
+			fmt.Fprintf(b, "                value.%s = reader.ReadRaw().ToArray();\n", pascal(a.Name))
+		default:
+			fmt.Fprintf(b, "                value.%s = MessagePackSerializer.Deserialize<%s>(ref reader, options);\n", pascal(a.Name), typeName(*a.Type))
+		}
+		b.WriteString("                break;\n")
+	}
+	b.WriteString("            default:\n                value.Raw = reader.ReadRaw().ToArray();\n                break;\n        }\n")
+	b.WriteString("        for (var i = 2; i < count; i++)\n            reader.Skip();\n        return value;\n    }\n}\n")
+}
+
 // dataCacheKeyAttribute marks the member that carries the declaration's
 // identity. It is the one attribute praguec writes that belongs to
 // `Prague.Feed.Cache.Core` rather than to MessagePack, and it is written
@@ -269,6 +349,7 @@ func writeField(b *strings.Builder, d *check.Decl, m *check.Member) {
 		b.WriteString("    ")
 		b.WriteString(dataCacheKeyAttribute)
 	}
+	writeEnrichment(b, m)
 	writeAnnotations(b, "    ", m.Annotations)
 	b.WriteString("    public ")
 	b.WriteString(TypeName(m.Type))
@@ -398,9 +479,29 @@ func emittedType(d *check.Decl, m *check.Member) check.Type {
 }
 
 func writeKey(b *strings.Builder, m *check.Member) {
+	if !m.HasTag() {
+		// A member Prague fills from the message and MessagePack never sees.
+		b.WriteString("    [IgnoreMember]\n")
+		return
+	}
 	b.WriteString("    [Key(")
 	b.WriteString(strconv.FormatUint(m.Tag-1, 10))
 	b.WriteString(")]\n")
+}
+
+// writeEnrichment emits protop's `[header]` and `[from_timestamp]` as Prague's
+// attributes. DataCacheHeader without an argument reads the header named as the
+// property is, so the name is written only when it differs -- which it does
+// for `[header("x")]`, and for a view member that renamed what it selects.
+func writeEnrichment(b *strings.Builder, m *check.Member) {
+	switch {
+	case m.Header != nil && m.Header.Name == pascal(m.Name):
+		b.WriteString("    [DataCacheHeader]\n")
+	case m.Header != nil:
+		fmt.Fprintf(b, "    [DataCacheHeader(%q)]\n", m.Header.Name)
+	case m.FromTimestamp:
+		b.WriteString("    [DataCacheFromTimestamp]\n")
+	}
 }
 
 // writeAnnotations copies each annotation's contents out between brackets, in

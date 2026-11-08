@@ -12,9 +12,10 @@
 >
 > **Deliberately not covered.** Four things the corpus contains and this document
 > does not settle. Each is a tracker ticket, not an oversight:
-> unions (`IBaseLiveData`'s 19 arms), a temporal type (the corpus and this
+> unions in any form other than §9's `[kind, payload]` (`IBaseLiveData`'s 19
+> arms), a temporal type (the corpus and this
 > document both carry instants as `int64`), the closed set of scalar type
-> keywords, and what a `map` means. §1 spells the map syntax and reserves it —
+> keywords beyond §9's additions, and what a `map` means. §1 spells the map syntax and reserves it —
 > praguec parses one in full and reports `PROTOP0900` against it — but its key
 > types, its wire form, and whether an absent map and an empty one are the same
 > thing are all open.
@@ -43,6 +44,8 @@ resolves.
 | 5 | [`views.md`](protop/views.md) | field subsets, narrowing, narrowing with a rename, computed members, composite identity, aliases | you are working on views, `key` or `alias` |
 | 6 | [`relations.md`](protop/relations.md) | `references(T)` and derived cardinality | you are working on relations or name resolution |
 | 7 | [`tag-ownership.md`](protop/tag-ownership.md) | `reserved`, and why single ownership is what makes it safe | you are working on `reserved` or cross-repo skew |
+| 8 | [`enrichment.md`](protop/enrichment.md) | `[header]`, `[from_timestamp]`, members without a tag | you are working on headers or the message timestamp |
+| 9 | [`unions.md`](protop/unions.md) | `union … of Enum`, and the `uuid`, `bytes`, `raw` scalars | you are working on unions or those scalars |
 | TBD | [`versioning.md`](protop/versioning.md) | sketched, not decided: two hashes, per-table versions, `protop.lock` | you are working on versioning or the breaking check |
 
 ## Out of scope

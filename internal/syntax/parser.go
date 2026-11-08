@@ -18,17 +18,24 @@ const scaledScalar = "decimal"
 
 // scalarTypes is the closed set of protop's scalar type keywords, hard-coded
 // from a census of every fenced protop block in docs/spec/protop.md -- which
-// returns these six and nothing else.
+// returned six -- plus `uuid`, which Prague's production caches key by.
 //
 // Whether the set is closed at all is one of the four things the spec
 // deliberately leaves open, tracked as praguedb/praguec#32.
 // Widening protop's scalars is one edit here.
 var scalarTypes = map[string]bool{
-	"int64":      true,
-	"int32":      true,
-	"string":     true,
-	"double":     true,
-	"bool":       true,
+	"int64":  true,
+	"int32":  true,
+	"string": true,
+	"double": true,
+	"bool":   true,
+	// uuid is a Guid in C#, which MessagePack-CSharp writes as its 36-character
+	// string and Prague writes to a header as 16 raw bytes.
+	"uuid": true,
+	// bytes is MessagePack bin; raw is one MessagePack value kept undecoded,
+	// as a union arm whose payload the writer passes through untouched.
+	"bytes":      true,
+	"raw":        true,
 	scaledScalar: true,
 }
 
@@ -111,6 +118,16 @@ func BuiltinTypeNames() []string {
 // that can look a name up, which is not this one.
 const RelationAnnotation = "references"
 
+// HeaderAnnotation and FromTimestampAnnotation are protop's enrichment
+// annotations: `[header]`, `[header("tenant-id")]` and `[from_timestamp]` say a
+// cached member is written from the Kafka message rather than only from its
+// value. Like `references` they are read by the checker, and every backend
+// emits what they mean in its own terms.
+const (
+	HeaderAnnotation        = "header"
+	FromTimestampAnnotation = "from_timestamp"
+)
+
 // backends is the legal set of annotation prefixes, which is exactly the
 // backends praguec has: `cs` (internal/csharp) and `go` (internal/golang).
 var backends = map[string]bool{
@@ -122,7 +139,9 @@ var backends = map[string]bool{
 // prefix. It is closed and read -- an unknown one is an error -- which is the
 // whole difference between it and the text praguec passes through untouched.
 var protopAnnotations = map[string]bool{
-	RelationAnnotation: true,
+	RelationAnnotation:      true,
+	HeaderAnnotation:        true,
+	FromTimestampAnnotation: true,
 }
 
 // ofWord and asWord are the two words that read as keywords inside a view and
@@ -215,11 +234,13 @@ func (p *parser) parseDecl(file *File) {
 		file.Decls = append(file.Decls, p.parseEnum())
 	case "view":
 		file.Decls = append(file.Decls, p.parseView())
+	case "union":
+		file.Decls = append(file.Decls, p.parseUnion())
 	case "import":
 		p.parseImport(file)
 	default:
 		p.bag.Raise(diag.UnknownDeclaration, tok.Span,
-			"unknown declaration `%s`; expected `struct`, `enum`, `record`, `table`, `view` or `import`", word)
+			"unknown declaration `%s`; expected `struct`, `enum`, `record`, `table`, `view`, `union` or `import`", word)
 		p.recoverDecl()
 	}
 }
@@ -830,8 +851,8 @@ func (p *parser) parseReserved() *Reserved {
 	return r
 }
 
-// parseField reads one tagged member, `decimal(4)? live_limit_manual_single =
-// 36;`. It consumes at least one token on every path, which is what keeps the
+// parseField reads one member, `decimal(4)? live_limit_manual_single = 36;`, or
+// one with no tag at all. It consumes at least one token on every path, which is what keeps the
 // body loop that calls it moving.
 func (p *parser) parseField() *Field {
 	if tok := p.peek(); tok.Kind != KindIdent {
@@ -859,6 +880,19 @@ func (p *parser) parseField() *Field {
 	}
 	f := &Field{Type: typ, Name: name, Span: typ.Span.To(name.Span)}
 
+	// A field with no `= N` has no slot on the wire: `int32 schema_version
+	// [header("schema-version")];`. Whether it may be written that way is the
+	// checker's question -- only a member written from the Kafka message may.
+	if k := p.peek().Kind; k == KindSemi || k == KindLBracket && !p.annotationsPrecedeTag() {
+		if f.Annotations, ok = p.parseAnnotations(); !ok {
+			p.recoverStmt()
+			return f
+		}
+		if semi, ok := p.expect(KindSemi); ok {
+			f.Span = f.Span.To(semi.Span)
+		}
+		return f
+	}
 	p.rejectAnnotations("the member's tag")
 	if _, ok := p.expect(KindAssign); !ok {
 		p.recoverStmt()
@@ -882,6 +916,35 @@ func (p *parser) parseField() *Field {
 		f.Span = f.Span.To(semi.Span)
 	}
 	return f
+}
+
+// annotationsPrecedeTag looks past the annotations at the cursor, the way
+// scanAnnotation counts them, and reports whether a `=` follows -- annotations
+// written before a tag, which is PROTOP0400 -- or whether they never close,
+// which that path reports too. Otherwise they end a field that has no tag.
+func (p *parser) annotationsPrecedeTag() bool {
+	i := 0
+	for p.peekAt(i).Kind == KindLBracket {
+		brackets, braces := 1, 0
+		for i++; brackets > 0; i++ {
+			switch p.peekAt(i).Kind {
+			case KindEOF:
+				return true
+			case KindLBracket:
+				brackets++
+			case KindRBracket:
+				brackets--
+			case KindLBrace:
+				braces++
+			case KindRBrace:
+				if braces == 0 {
+					return true
+				}
+				braces--
+			}
+		}
+	}
+	return p.peekAt(i).Kind == KindAssign
 }
 
 // checkKeyAllowed reports a `key` on a declaration that has none to give. A
@@ -1246,6 +1309,78 @@ func plural(n int, noun string) string {
 		return "1 " + noun
 	}
 	return strconv.Itoa(n) + " " + noun + "s"
+}
+
+// parseUnion reads `union SettingValue of SettingKind { INT int64; NIL; }`.
+func (p *parser) parseUnion() *Union {
+	kw := p.next()
+	u := &Union{Span: kw.Span}
+
+	name, ok := p.expectIdent()
+	if !ok {
+		p.recoverDecl()
+		return u
+	}
+	u.Name = name
+	u.Span = u.Span.To(name.Span)
+
+	if tok := p.peek(); tok.Kind != KindIdent || p.text(tok) != "of" {
+		p.bag.Raise(diag.UnexpectedToken, tok.Span,
+			"a union names the enum that chooses its arm, as in `union %s of Kind`", name.Text)
+		p.recoverDecl()
+		return u
+	}
+	p.next()
+	disc, ok := p.expectIdent()
+	if !ok {
+		p.recoverDecl()
+		return u
+	}
+	u.Discriminant = disc
+	u.Span = u.Span.To(disc.Span)
+
+	if u.Annotations, ok = p.parseAnnotations(); !ok {
+		p.recoverDecl()
+		return u
+	}
+	if _, ok := p.expect(KindLBrace); !ok {
+		p.recoverDecl()
+		return u
+	}
+	for !p.at(KindRBrace) && !p.at(KindEOF) {
+		if a := p.parseUnionArm(); a != nil {
+			u.Arms = append(u.Arms, a)
+		}
+	}
+	if closing, ok := p.expect(KindRBrace); ok {
+		u.Span = u.Span.To(closing.Span)
+	}
+	return u
+}
+
+func (p *parser) parseUnionArm() *UnionArm {
+	tok := p.peek()
+	if tok.Kind != KindIdent {
+		p.raiseMemberStart(tok, "a union arm")
+		p.next()
+		p.recoverStmt()
+		return nil
+	}
+	arm := p.identOf(p.next())
+	a := &UnionArm{Arm: arm, Span: arm.Span}
+	if !p.at(KindSemi) {
+		typ, ok := p.parseTypeRef()
+		if !ok {
+			p.recoverStmt()
+			return a
+		}
+		a.Type = &typ
+		a.Span = a.Span.To(typ.Span)
+	}
+	if semi, ok := p.expect(KindSemi); ok {
+		a.Span = a.Span.To(semi.Span)
+	}
+	return a
 }
 
 func (p *parser) parseEnum() *Enum {

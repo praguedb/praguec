@@ -211,6 +211,42 @@ const (
 	// a record or a struct is stored inside whatever holds it and there is
 	// nothing to point at.
 	RelationTargetNotATable Code = 318
+	// EnrichmentOutsideTable is `[header]` or `[from_timestamp]` anywhere but
+	// on a member of a table or a view. Both say where a cached value's member
+	// comes from on the Kafka message, and only a table or a view is cached: a
+	// record or a struct is decoded inside whatever holds it and never sees the
+	// message at all.
+	EnrichmentOutsideTable Code = 319
+	// HeaderTypeUnsupported is `[header]` on a member whose type a header
+	// cannot carry. A header is one value: a scalar or an enum, never a
+	// collection or a declared record.
+	HeaderTypeUnsupported Code = 320
+	// TimestampTypeUnsupported is `[from_timestamp]` on a member that is not
+	// `int64`. The message timestamp is Unix milliseconds, and protop has no
+	// temporal type to carry it as anything else.
+	TimestampTypeUnsupported Code = 321
+	// ConflictingEnrichment is a member written from two places -- two
+	// `[header]`s, or a header and the timestamp -- or two members of one
+	// declaration reading one header. Each is a copy nobody asked for, and
+	// usually a typo in one name.
+	ConflictingEnrichment Code = 322
+	// FieldWithoutTag is a field written with no `= N` that nothing on the
+	// Kafka message writes either. A field without a tag has no slot on the
+	// wire, which is right for a member Prague fills from a header and is a
+	// forgotten tag anywhere else.
+	FieldWithoutTag Code = 323
+	// UnionOfNotAnEnum is a union whose `of` names something other than an
+	// enum. The arm on the wire is an enum's number, and the enum is what says
+	// which numbers there are.
+	UnionOfNotAnEnum Code = 324
+	// NoSuchArm is a union arm its enum does not have.
+	NoSuchArm Code = 325
+	// DuplicateArm is one arm given two payloads.
+	DuplicateArm Code = 326
+	// RawOutsideUnion is `raw` anywhere but a union arm's payload. A raw value
+	// is MessagePack passed through undecoded, which C# can only do from a
+	// formatter, and a union is the one declaration praguec writes one for.
+	RawOutsideUnion Code = 327
 
 	// AnnotationNotAllowed is an annotation written where the grammar has no
 	// slot for one. An annotation follows what it describes, and there is no
@@ -232,6 +268,12 @@ const (
 	// language -- so protop's own closed set is read here, where a name can be
 	// looked up.
 	MalformedRelation Code = 404
+	// MalformedHeader is protop's own `header` written in some shape other than
+	// `header` or `header("name")` with a non-empty name.
+	MalformedHeader Code = 405
+	// MalformedFromTimestamp is `from_timestamp` written with arguments. It
+	// names the one timestamp a Kafka message has, so there is nothing to pass.
+	MalformedFromTimestamp Code = 406
 
 	// NotYetImplemented is a construct the spec defines and this milestone does
 	// not read. Reporting it as its own code, rather than as a syntax error, is

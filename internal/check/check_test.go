@@ -2643,3 +2643,98 @@ func TestImportPathStripsTheQuotesAndNothingElse(t *testing.T) {
 		}
 	}
 }
+
+// --- enrichment ---------------------------------------------------------------
+
+const enrichDecls = `enum Status {
+  UNKNOWN = 0;
+}
+record R {
+  int64 x = 1;
+}
+`
+
+func enrichTable(members string) map[string]string {
+	return map[string]string{
+		"a.prague": "revision 1;\nnamespace A;\n" + enrichDecls + "table T {\n  key int64 id = 1;\n" + members + "}\n",
+	}
+}
+
+func TestAHeaderIsNamedAsPragueNamesTheMemberUnlessItSaysOtherwise(t *testing.T) {
+	schema := checkClean(t, enrichTable(`  string tenant_id = 2 [header];
+  string region = 3 [header("x-region")];
+  Status? status = 4 [ header ( "st" ) ];
+  int64 written_at = 5 [from_timestamp];
+  decimal(2) price = 6 [header];
+`))
+	d := schema.Files[0].Decls[2]
+	for name, want := range map[string]string{"tenant_id": "TenantId", "region": "x-region", "status": "st", "price": "Price"} {
+		if h := d.Member(name).Header; h == nil || h.Name != want {
+			t.Errorf("%s reads %+v, want %q", name, h, want)
+		}
+	}
+	if m := d.Member("written_at"); !m.FromTimestamp || m.Header != nil {
+		t.Errorf("written_at: %+v", m)
+	}
+	if d.Member("id").Enriched() {
+		t.Error("the key is enriched")
+	}
+}
+
+// A view's header is the source's: the producer names what is on the message,
+// and a rename in the view does not rename the header.
+func TestAViewInheritsItsSourcesEnrichment(t *testing.T) {
+	files := enrichTable("  string tenant_id = 2 [header];\n  int64 at = 3 [from_timestamp];\n")
+	files["b.prague"] = "revision 1;\nnamespace A;\nimport \"a.prague\";\nview V of T {\n  id;\n  tenant_id as tenant;\n  at;\n}\n"
+	schema := checkClean(t, files)
+	var v *Decl
+	for _, f := range schema.Files {
+		for _, d := range f.Decls {
+			if d.Name == "V" {
+				v = d
+			}
+		}
+	}
+	if h := v.Member("tenant").Header; h == nil || h.Name != "TenantId" {
+		t.Errorf("tenant reads %+v", h)
+	}
+	if !v.Member("at").FromTimestamp {
+		t.Error("at lost its timestamp")
+	}
+}
+
+func TestEnrichmentIsCheckedWhereItIsWritten(t *testing.T) {
+	tests := []struct {
+		name  string
+		files map[string]string
+		want  diag.Code
+	}{
+		{"on a record member", map[string]string{"a.prague": "revision 1;\nnamespace A;\nrecord R {\n  string t = 1 [header];\n}\n"}, diag.EnrichmentOutsideTable},
+		{"on a declaration", map[string]string{"a.prague": "revision 1;\nnamespace A;\ntable T [header] {\n  key int64 id = 1;\n}\n"}, diag.EnrichmentOutsideTable},
+		{"on an alias", enrichTable("  int64 n = 2;\n  alias m = n [header];\n"), diag.EnrichmentOutsideTable},
+		{"a list header", enrichTable("  list<string> t = 2 [header];\n"), diag.HeaderTypeUnsupported},
+		{"a record header", enrichTable("  R r = 2 [header];\n"), diag.HeaderTypeUnsupported},
+		{"a string timestamp", enrichTable("  string at = 2 [from_timestamp];\n"), diag.TimestampTypeUnsupported},
+		{"an optional timestamp", enrichTable("  int64? at = 2 [from_timestamp];\n"), diag.TimestampTypeUnsupported},
+		{"one header, two members", enrichTable("  string a = 2 [header(\"h\")];\n  string b = 3 [header(\"h\")];\n"), diag.ConflictingEnrichment},
+		{"two sources, one member", enrichTable("  int64 a = 2 [header] [from_timestamp];\n"), diag.ConflictingEnrichment},
+		{"an unquoted name", enrichTable("  string a = 2 [header(h)];\n"), diag.MalformedHeader},
+		{"an empty name", enrichTable("  string a = 2 [header(\"\")];\n"), diag.MalformedHeader},
+		{"a timestamp with arguments", enrichTable("  int64 a = 2 [from_timestamp(ms)];\n"), diag.MalformedFromTimestamp},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			set, _, bag := checkSet(t, tt.files)
+			assertCodes(t, set, bag, tt.want)
+		})
+	}
+}
+
+// A view member written from somewhere its source member is not would decode
+// the same bytes into a different value than the table does.
+func TestAViewCannotEnrichOnTopOfItsSource(t *testing.T) {
+	files := enrichTable("  string tenant_id = 2 [header];\n")
+	files["b.prague"] = "revision 1;\nnamespace A;\nimport \"a.prague\";\nview V of T {\n  id;\n  tenant_id [header(\"other\")];\n}\n"
+	set, _, bag := checkSet(t, files)
+	assertCodes(t, set, bag, diag.ConflictingEnrichment)
+}
