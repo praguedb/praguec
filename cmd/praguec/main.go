@@ -28,6 +28,7 @@ import (
 	"github.com/praguedb/praguec/internal/diag"
 	"github.com/praguedb/praguec/internal/golang"
 	"github.com/praguedb/praguec/internal/load"
+	"github.com/praguedb/praguec/internal/rust"
 	"github.com/praguedb/praguec/internal/source"
 )
 
@@ -62,7 +63,7 @@ Flags:
                            searched in the order given. Defaults to the
                            directory of each named file.
         -o dir             where generate writes (default ".")
-        --lang l           generate: cs (default) or go
+        --lang l           generate: cs (default), go or rust
         --go-package name  generate --lang go: the Go package name (default:
                            the last segment of the first file's namespace,
                            lower-cased)
@@ -122,7 +123,7 @@ func compile(name string, args []string, write bool, stdout, stderr io.Writer) i
 	if write {
 		outDir = fs.String("o", ".", "output directory")
 		manifestPath = fs.String("manifest", "", "write the list of emitted files here")
-		lang = fs.String("lang", "cs", "target language: cs or go")
+		lang = fs.String("lang", "cs", "target language: cs, go or rust")
 		goPkg = fs.String("go-package", "", "Go package name for --lang go")
 	}
 
@@ -134,8 +135,8 @@ func compile(name string, args []string, write bool, stdout, stderr io.Writer) i
 		fmt.Fprintf(stderr, "praguec: unknown --error-format %q; praguec has gcc and msvs\n", *format)
 		return exitUsage
 	}
-	if write && *lang != "cs" && *lang != "go" {
-		fmt.Fprintf(stderr, "praguec: unknown --lang %q; praguec has cs and go\n", *lang)
+	if write && *lang != "cs" && *lang != "go" && *lang != "rust" {
+		fmt.Fprintf(stderr, "praguec: unknown --lang %q; praguec has cs, go and rust\n", *lang)
 		return exitUsage
 	}
 	inputs := fs.Args()
@@ -165,9 +166,12 @@ func compile(name string, args []string, write bool, stdout, stderr io.Writer) i
 	}
 
 	var written []string
-	if *lang == "go" {
+	switch *lang {
+	case "go":
 		written, err = emitGo(*outDir, *goPkg, schema, res.Targets)
-	} else {
+	case "rust":
+		written, err = emitRust(*outDir, schema, res.Targets)
+	default:
 		written, err = emit(*outDir, schema, res.Targets)
 	}
 	if err != nil {
@@ -284,16 +288,48 @@ func emitGo(dir, pkg string, schema *check.Schema, targets []string) ([]string, 
 	if err != nil {
 		return nil, err
 	}
-	if len(units) == 0 {
+	files := make(map[string]string, len(units))
+	for _, u := range units {
+		files[u.Name] = u.Source
+	}
+	return writeFiles(dir, files)
+}
+
+// emitRust writes one .rs module file per target file, flat under -o. The
+// files are sibling modules: the crate declares them (`mod catalog;`) and a
+// file reaches what it imports through `super::<module>`, so, as with Go, an
+// imported file must be named too for the output to compile.
+func emitRust(dir string, schema *check.Schema, targets []string) ([]string, error) {
+	want := make(map[string]bool, len(targets))
+	for _, t := range targets {
+		want[t] = true
+	}
+	units, err := rust.Emit(schema, func(f *check.File) bool { return want[f.Path] })
+	if err != nil {
+		return nil, err
+	}
+	files := make(map[string]string, len(units))
+	for _, u := range units {
+		if prev, clash := files[u.Name]; clash && prev != u.Source {
+			return nil, fmt.Errorf("two target files would both be written to %s", u.Name)
+		}
+		files[u.Name] = u.Source
+	}
+	return writeFiles(dir, files)
+}
+
+// writeFiles writes name -> source under dir and returns the paths, sorted.
+func writeFiles(dir string, files map[string]string) ([]string, error) {
+	if len(files) == 0 {
 		return nil, errors.New("nothing to write: the named files declare nothing")
 	}
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return nil, err
 	}
 	var written []string
-	for _, u := range units {
-		p := filepath.Join(dir, u.Name)
-		if err := os.WriteFile(p, []byte(u.Source), 0o644); err != nil {
+	for name, src := range files {
+		p := filepath.Join(dir, name)
+		if err := os.WriteFile(p, []byte(src), 0o644); err != nil {
 			return nil, err
 		}
 		written = append(written, p)
